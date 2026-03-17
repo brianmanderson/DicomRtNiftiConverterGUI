@@ -1,0 +1,105 @@
+<Window x:Class="Dicom_RT_images_Csharp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Dicom_RT_images_Csharp"
+        xmlns:vm="clr-namespace:Dicom_RT_images_Csharp.ViewModels"
+        xmlns:conv="clr-namespace:Dicom_RT_images_Csharp.Converters"
+        mc:Ignorable="d"
+        Title="DICOM RT to NIfTI Converter" Height="700" Width="1000"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:InverseBoolConverter x:Key="InverseBool"/>
+    </Window.Resources>
+    <DockPanel>
+        <!-- Top Toolbar -->
+        <StackPanel DockPanel.Dock="Top" Margin="8">
+            <DockPanel Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowseInputCommand}"
+                        Width="80" Margin="4,0,0,0"/>
+                <TextBlock DockPanel.Dock="Left" Text="Input:" VerticalAlignment="Center" Width="50"/>
+                <TextBox Text="{Binding InputFolder, UpdateSourceTrigger=PropertyChanged}"
+                         VerticalAlignment="Center"/>
+            </DockPanel>
+            <DockPanel Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Content="Output..." Command="{Binding BrowseOutputCommand}"
+                        Width="80" Margin="4,0,0,0"/>
+                <TextBlock DockPanel.Dock="Left" Text="Output:" VerticalAlignment="Center" Width="50"/>
+                <TextBox Text="{Binding OutputFolder, UpdateSourceTrigger=PropertyChanged}"
+                         VerticalAlignment="Center"/>
+            </DockPanel>
+            <DockPanel Margin="0,0,0,4">
+                <Button DockPanel.Dock="Left" Content="Scan" Command="{Binding ScanCommand}"
+                        Width="80" Margin="0,0,4,0"/>
+                <Button DockPanel.Dock="Left" Content="Cancel" Command="{Binding CancelCommand}"
+                        Width="80" Margin="0,0,4,0"/>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" VerticalAlignment="Center"
+                           Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
+                <ProgressBar Value="{Binding ProgressValue}" Minimum="0" Maximum="100" Height="20"/>
+            </DockPanel>
+        </StackPanel>
+
+        <!-- Bottom Panel -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="8">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,4,0,4">
+                <Button Content="Convert Selected" Command="{Binding ConvertSelectedCommand}"
+                        Width="120" Margin="0,0,4,0"/>
+                <Button Content="ROI Associations..." Command="{Binding ManageAssociationsCommand}"
+                        Width="130" Margin="0,0,4,0"/>
+                <Button Content="Settings..." Command="{Binding OpenSettingsCommand}"
+                        Width="80"/>
+            </StackPanel>
+            <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                     VerticalScrollBarVisibility="Auto" Height="120"
+                     FontFamily="Consolas" FontSize="11"
+                     TextWrapping="Wrap" AcceptsReturn="True"/>
+        </DockPanel>
+
+        <!-- Center TreeView -->
+        <TreeView Margin="8" ItemsSource="{Binding Patients}">
+            <TreeView.Resources>
+                <!-- Patient Level -->
+                <HierarchicalDataTemplate DataType="{x:Type vm:PatientGroupViewModel}"
+                                          ItemsSource="{Binding Studies}">
+                    <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" FontSize="13"/>
+                </HierarchicalDataTemplate>
+
+                <!-- Study Level -->
+                <HierarchicalDataTemplate DataType="{x:Type vm:StudyGroupViewModel}"
+                                          ItemsSource="{Binding ImageSeries}">
+                    <TextBlock Text="{Binding DisplayName}" FontStyle="Italic"/>
+                </HierarchicalDataTemplate>
+
+                <!-- Series Level -->
+                <DataTemplate DataType="{x:Type vm:SeriesGroupViewModel}">
+                    <StackPanel Margin="0,2">
+                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                        <StackPanel Orientation="Horizontal" Margin="16,2,0,0">
+                            <CheckBox Content="Export Images" IsChecked="{Binding ExportImages}"
+                                      Margin="0,0,12,0"/>
+                            <CheckBox Content="Include Structures" IsChecked="{Binding IncludeStructures}"
+                                      Visibility="{Binding HasLinkedRtStruct, Converter={StaticResource BoolToVis}}"
+                                      Margin="0,0,12,0"/>
+                            <CheckBox Content="Include Dose" IsChecked="{Binding IncludeDose}"
+                                      Visibility="{Binding HasLinkedRtDose, Converter={StaticResource BoolToVis}}"/>
+                        </StackPanel>
+                        <!-- ROI Names from linked RTSTRUCT -->
+                        <Expander Header="ROI Names" Margin="16,2,0,0"
+                                  Visibility="{Binding HasLinkedRtStruct, Converter={StaticResource BoolToVis}}"
+                                  IsExpanded="{Binding IsExpanded}">
+                            <ItemsControl ItemsSource="{Binding RoiNames}" Margin="16,0,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" Foreground="DarkSlateGray" FontSize="11"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Expander>
+                    </StackPanel>
+                </DataTemplate>
+            </TreeView.Resources>
+        </TreeView>
+    </DockPanel>
+</Window>

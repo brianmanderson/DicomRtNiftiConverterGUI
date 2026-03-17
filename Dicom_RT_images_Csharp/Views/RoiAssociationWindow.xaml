@@ -1,0 +1,87 @@
+<Window x:Class="Dicom_RT_images_Csharp.Views.RoiAssociationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Manage ROI Associations" Height="500" Width="750"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="8">
+        <!-- Bottom buttons -->
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Import..." Command="{Binding ImportCommand}" Width="80" Margin="0,0,4,0"/>
+            <Button Content="Export..." Command="{Binding ExportCommand}" Width="80" Margin="0,0,4,0"/>
+            <Button Content="Save" Command="{Binding SaveCommand}" Width="80" Margin="0,0,4,0"/>
+            <Button Content="Close" Click="CloseButton_Click" Width="80"/>
+        </StackPanel>
+
+        <!-- Main content: left list + right detail -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left panel: association list -->
+            <DockPanel Grid.Column="0">
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
+                    <Button Content="Add" Command="{Binding AddAssociationCommand}" Width="60" Margin="0,0,4,0"/>
+                    <Button Content="Remove" Command="{Binding RemoveAssociationCommand}" Width="60"/>
+                </StackPanel>
+                <ListBox ItemsSource="{Binding Associations}"
+                         SelectedItem="{Binding SelectedAssociation}"
+                         DisplayMemberPath="CanonicalName"/>
+            </DockPanel>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+
+            <!-- Right panel: detail editor -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel DataContext="{Binding SelectedAssociation}" Margin="4">
+                    <!-- Canonical Name -->
+                    <TextBlock Text="Canonical Name:" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding CanonicalName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"/>
+
+                    <!-- Aliases -->
+                    <TextBlock Text="Aliases:" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <ItemsControl ItemsSource="{Binding Aliases}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Margin="0,0,0,2">
+                                    <Button DockPanel.Dock="Right" Content="X" Width="24"
+                                            Command="{Binding DataContext.RemoveAliasCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}" Margin="4,0,0,0"/>
+                                    <TextBox Text="{Binding Mode=OneWay}" IsReadOnly="True"/>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="Add Alias" Command="{Binding AddAliasCommand}"
+                            Width="80" HorizontalAlignment="Left" Margin="0,4,0,12"/>
+
+                    <!-- Extra Attributes -->
+                    <TextBlock Text="Extra Attributes:" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <DataGrid ItemsSource="{Binding ExtraAttributes}" AutoGenerateColumns="False"
+                              CanUserAddRows="False" CanUserDeleteRows="False" Height="150">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="*"/>
+                            <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"/>
+                            <DataGridTemplateColumn Width="30">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="X"
+                                                Command="{Binding DataContext.RemoveAttributeCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <Button Content="Add Attribute" Command="{Binding AddAttributeCommand}"
+                            Width="100" HorizontalAlignment="Left" Margin="0,4,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>
