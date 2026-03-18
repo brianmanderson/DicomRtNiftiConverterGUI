@@ -37,5 +37,16 @@ namespace Dicom_RT_images_Csharp.Models
         /// When false, all ROIs are exported regardless of associations.
         /// </summary>
         public bool OnlyExportSpecificRois { get; set; } = false;
+
+        /// <summary>
+        /// When true, exports use anonymized integer folder IDs and generate a CSV manifest.
+        /// </summary>
+        public bool AnonymizeExport { get; set; } = false;
+
+        /// <summary>
+        /// Salt used for deterministic hashing during anonymized exports.
+        /// Same salt + same input always produces the same hash.
+        /// </summary>
+        public string HashSalt { get; set; } = "DicomToNifti";
     }
 }

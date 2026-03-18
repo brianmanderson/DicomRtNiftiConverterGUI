@@ -7,7 +7,7 @@
         xmlns:vm="clr-namespace:Dicom_RT_images_Csharp.ViewModels"
         xmlns:conv="clr-namespace:Dicom_RT_images_Csharp.Converters"
         mc:Ignorable="d"
-        Title="DICOM RT to NIfTI Converter" Height="750" Width="1100"
+        Title="DICOM RT to NIfTI Converter" Height="850" Width="1100"
         WindowStartupLocation="CenterScreen"
         Background="#F5F5F5">
     <Window.Resources>
@@ -211,38 +211,50 @@
             <!-- Right Side Panel -->
             <Border Grid.Column="1" Background="White" BorderBrush="#DDDDDD"
                     BorderThickness="1" CornerRadius="4" Padding="16">
-                <StackPanel>
-                    <TextBlock Text="Export Options" Style="{StaticResource SectionHeader}"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Export Options" Style="{StaticResource SectionHeader}"/>
 
-                    <TextBlock Text="Data to Export:" FontWeight="Medium"
-                               Margin="0,0,0,8" Foreground="#555555"/>
+                        <TextBlock Text="Data to Export:" FontWeight="Medium"
+                                   Margin="0,0,0,8" Foreground="#555555"/>
 
-                    <CheckBox Content="Export Images" IsChecked="{Binding ExportImages}"
-                              Style="{StaticResource CheckBoxStyle}"/>
-                    <CheckBox Content="Include Structures" IsChecked="{Binding IncludeStructures}"
-                              Style="{StaticResource CheckBoxStyle}"/>
-                    <CheckBox Content="Include Dose" IsChecked="{Binding IncludeDose}"
-                              Style="{StaticResource CheckBoxStyle}"/>
+                        <CheckBox Content="Export Images" IsChecked="{Binding ExportImages}"
+                                  Style="{StaticResource CheckBoxStyle}"/>
+                        <CheckBox Content="Include Structures" IsChecked="{Binding IncludeStructures}"
+                                  Style="{StaticResource CheckBoxStyle}"/>
+                        <CheckBox Content="Include Dose" IsChecked="{Binding IncludeDose}"
+                                  Style="{StaticResource CheckBoxStyle}"/>
 
-                    <Separator Margin="0,12"/>
+                        <Separator Margin="0,12"/>
 
-                    <CheckBox Content="Only export specific ROIs?"
-                              IsChecked="{Binding OnlyExportSpecificRois}"
-                              Style="{StaticResource CheckBoxStyle}" Margin="4,8"/>
+                        <CheckBox Content="Only export specific ROIs?"
+                                  IsChecked="{Binding OnlyExportSpecificRois}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="4,8"/>
 
-                    <Button Content="Edit ROI Associations..."
-                            Command="{Binding ManageAssociationsCommand}"
-                            IsEnabled="{Binding OnlyExportSpecificRois}"
-                            Padding="12,8" Margin="4,4,4,12" FontSize="13" Cursor="Hand"
-                            Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+                        <Button Content="Edit ROI Associations..."
+                                Command="{Binding ManageAssociationsCommand}"
+                                IsEnabled="{Binding OnlyExportSpecificRois}"
+                                Padding="12,8" Margin="4,4,4,12" FontSize="13" Cursor="Hand"
+                                Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
 
-                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4">
-                        When unchecked, all ROIs found in RT Struct files are exported.
-                    </TextBlock>
-                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0">
-                        When checked, only ROIs matching your defined associations will be exported.
-                    </TextBlock>
-                </StackPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4">
+                            When unchecked, all ROIs found in RT Struct files are exported.
+                        </TextBlock>
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0">
+                            When checked, only ROIs matching your defined associations will be exported.
+                        </TextBlock>
+
+                        <Separator Margin="0,12"/>
+
+                        <CheckBox Content="Anonymize export?"
+                                  IsChecked="{Binding AnonymizeExport}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="4,8"/>
+
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0">
+                            When checked, exports use integer folder IDs instead of patient names. A CSV manifest (export_manifest.csv) maps export IDs back to MRN, StudyUID, and SeriesUID.
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
             </Border>
         </Grid>
 

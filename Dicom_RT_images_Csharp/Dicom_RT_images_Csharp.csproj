@@ -199,6 +199,7 @@
     <Compile Include="Services\NiftiConversionService.cs" />
     <Compile Include="Services\RtStructMaskService.cs" />
     <Compile Include="Services\SettingsService.cs" />
+    <Compile Include="Services\AnonymizationService.cs" />
     <Compile Include="Converters\BoolToVisibilityConverter.cs" />
     <Compile Include="Converters\InverseBoolConverter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">

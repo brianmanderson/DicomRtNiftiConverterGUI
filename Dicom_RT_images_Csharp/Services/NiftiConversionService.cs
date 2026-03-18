@@ -110,6 +110,7 @@ namespace Dicom_RT_images_Csharp.Services
             string outputDir,
             List<RoiAssociation> associations,
             bool exportUnmatched,
+            bool flatOutput,
             IProgress<string> progress,
             CancellationToken ct)
         {
@@ -141,8 +142,16 @@ namespace Dicom_RT_images_Csharp.Services
                 rtStructFilePath, referenceImage, roiNamesToExport, progress, ct);
 
             // Write mask files
-            string masksDir = Path.Combine(outputDir, "masks");
-            Directory.CreateDirectory(masksDir);
+            string masksDir;
+            if (flatOutput)
+            {
+                masksDir = outputDir;
+            }
+            else
+            {
+                masksDir = Path.Combine(outputDir, "masks");
+                Directory.CreateDirectory(masksDir);
+            }
 
             foreach (var kvp in masks)
             {

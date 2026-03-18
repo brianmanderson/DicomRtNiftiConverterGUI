@@ -41,6 +41,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private bool _includeStructures = true;
         private bool _includeDose = true;
         private bool _onlyExportSpecificRois = false;
+        private bool _anonymizeExport = false;
 
         /// <summary>
         /// Creates a new MainViewModel with the required services.
@@ -81,6 +82,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _includeStructures = _settings.IncludeStructures;
             _includeDose = _settings.IncludeDose;
             _onlyExportSpecificRois = _settings.OnlyExportSpecificRois;
+            _anonymizeExport = _settings.AnonymizeExport;
         }
 
         /// <summary>
@@ -184,6 +186,15 @@ namespace Dicom_RT_images_Csharp.ViewModels
         }
 
         /// <summary>
+        /// When true, exports use anonymized integer folder IDs and generate a CSV manifest.
+        /// </summary>
+        public bool AnonymizeExport
+        {
+            get { return _anonymizeExport; }
+            set { _anonymizeExport = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
         /// Patient groups discovered during scanning.
         /// </summary>
         public ObservableCollection<PatientGroupViewModel> Patients { get; }
@@ -203,33 +214,37 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
         private void BrowseInput()
         {
-            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+            var dialog = new Microsoft.Win32.OpenFileDialog();
+            dialog.Title = "Select DICOM input folder";
+            dialog.ValidateNames = false;
+            dialog.CheckFileExists = false;
+            dialog.CheckPathExists = true;
+            dialog.FileName = "Select Folder";
+            if (!string.IsNullOrEmpty(InputFolder) && Directory.Exists(InputFolder))
             {
-                dialog.Description = "Select DICOM input folder";
-                if (!string.IsNullOrEmpty(InputFolder) && Directory.Exists(InputFolder))
-                {
-                    dialog.SelectedPath = InputFolder;
-                }
-                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                {
-                    InputFolder = dialog.SelectedPath;
-                }
+                dialog.InitialDirectory = InputFolder;
+            }
+            if (dialog.ShowDialog() == true)
+            {
+                InputFolder = Path.GetDirectoryName(dialog.FileName);
             }
         }
 
         private void BrowseOutput()
         {
-            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+            var dialog = new Microsoft.Win32.OpenFileDialog();
+            dialog.Title = "Select output folder for NIfTI files";
+            dialog.ValidateNames = false;
+            dialog.CheckFileExists = false;
+            dialog.CheckPathExists = true;
+            dialog.FileName = "Select Folder";
+            if (!string.IsNullOrEmpty(OutputFolder) && Directory.Exists(OutputFolder))
             {
-                dialog.Description = "Select output folder for NIfTI files";
-                if (!string.IsNullOrEmpty(OutputFolder) && Directory.Exists(OutputFolder))
-                {
-                    dialog.SelectedPath = OutputFolder;
-                }
-                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                {
-                    OutputFolder = dialog.SelectedPath;
-                }
+                dialog.InitialDirectory = OutputFolder;
+            }
+            if (dialog.ShowDialog() == true)
+            {
+                OutputFolder = Path.GetDirectoryName(dialog.FileName);
             }
         }
 
@@ -359,6 +374,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _settings.IncludeStructures = IncludeStructures;
             _settings.IncludeDose = IncludeDose;
             _settings.OnlyExportSpecificRois = OnlyExportSpecificRois;
+            _settings.AnonymizeExport = AnonymizeExport;
             _settingsService.SaveSettings(_settings);
 
             // Reload associations in case they were edited
@@ -379,13 +395,23 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 int total = selectedSeries.Count;
                 int completed = 0;
 
+                // Create anonymization service if anonymizing
+                AnonymizationService anonService = null;
+                if (AnonymizeExport)
+                {
+                    anonService = new AnonymizationService(_settings.HashSalt);
+                }
+
                 foreach (var seriesVm in selectedSeries)
                 {
                     _cts.Token.ThrowIfCancellationRequested();
                     var model = seriesVm.Model;
 
-                    // Build output path: OutputFolder/PatientID/SeriesDescription
+                    // Find parent patient and study for this series
                     string patientId = "Unknown";
+                    string studyUid = "";
+                    string seriesUid = model.SeriesInstanceUID;
+
                     foreach (var p in Patients)
                     {
                         foreach (var s in p.Studies)
@@ -393,22 +419,38 @@ namespace Dicom_RT_images_Csharp.ViewModels
                             if (s.ImageSeries.Contains(seriesVm))
                             {
                                 patientId = p.Model.PatientID;
+                                studyUid = s.Model.StudyInstanceUID;
                                 break;
                             }
                         }
                     }
 
-                    string seriesLabel = string.IsNullOrEmpty(model.SeriesDescription)
-                        ? model.SeriesInstanceUID.Substring(0, Math.Min(8, model.SeriesInstanceUID.Length))
-                        : SanitizePath(model.SeriesDescription);
-                    string dateLabel = string.IsNullOrEmpty(model.SeriesDate) ? "" : model.SeriesDate + "_";
-                    string outputDir = Path.Combine(OutputFolder, SanitizePath(patientId), dateLabel + seriesLabel);
+                    // Build output path
+                    string outputDir;
+                    string displayLabel;
+
+                    if (AnonymizeExport && anonService != null)
+                    {
+                        int exportId = anonService.GetOrAssignExportId(patientId, studyUid, seriesUid);
+                        outputDir = Path.Combine(OutputFolder, exportId.ToString());
+                        displayLabel = exportId.ToString();
+                    }
+                    else
+                    {
+                        string seriesLabel = string.IsNullOrEmpty(model.SeriesDescription)
+                            ? model.SeriesInstanceUID.Substring(0, Math.Min(8, model.SeriesInstanceUID.Length))
+                            : SanitizePath(model.SeriesDescription);
+                        string dateLabel = string.IsNullOrEmpty(model.SeriesDate) ? "" : model.SeriesDate + "_";
+                        outputDir = Path.Combine(OutputFolder, SanitizePath(patientId), dateLabel + seriesLabel);
+                        displayLabel = patientId + "/" + seriesLabel;
+                    }
+
                     Directory.CreateDirectory(outputDir);
 
                     // Convert image series (controlled by global ExportImages toggle)
                     if (ExportImages)
                     {
-                        progress.Report($"Converting images: {patientId}/{seriesLabel}");
+                        progress.Report($"Converting images: {displayLabel}");
                         await Task.Run(() =>
                             _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token)).ConfigureAwait(true);
                     }
@@ -416,24 +458,31 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     // Convert RT Struct if global IncludeStructures is enabled
                     if (IncludeStructures && model.LinkedRtStruct != null)
                     {
-                        progress.Report($"Rasterizing structures: {patientId}/{seriesLabel}");
+                        progress.Report($"Rasterizing structures: {displayLabel}");
                         await Task.Run(() =>
                             _conversionService.ConvertStructToNifti(
                                 model.LinkedRtStruct, model, outputDir,
                                 effectiveAssociations, effectiveExportUnmatched,
+                                AnonymizeExport,
                                 progress, _cts.Token)).ConfigureAwait(true);
                     }
 
                     // Convert RT Dose if global IncludeDose is enabled
                     if (IncludeDose && model.LinkedRtDose != null)
                     {
-                        progress.Report($"Converting dose: {patientId}/{seriesLabel}");
+                        progress.Report($"Converting dose: {displayLabel}");
                         await Task.Run(() =>
                             _conversionService.ConvertDoseToNifti(model.LinkedRtDose, outputDir, progress, _cts.Token)).ConfigureAwait(true);
                     }
 
                     completed++;
                     ProgressValue = (double)completed / total * 100;
+                }
+
+                // Write CSV manifest when anonymizing
+                if (AnonymizeExport && anonService != null)
+                {
+                    WriteCsvManifest(anonService.GetManifestRows(), OutputFolder);
                 }
 
                 AppendLog($"Conversion complete. {completed} series exported to {OutputFolder}");
@@ -491,6 +540,25 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     OutputFolder = _settings.DefaultOutputDirectory;
                 }
             }
+        }
+
+        /// <summary>
+        /// Writes the export manifest CSV to the output folder.
+        /// </summary>
+        private void WriteCsvManifest(List<ManifestRow> rows, string outputFolder)
+        {
+            string csvPath = Path.Combine(outputFolder, "export_manifest.csv");
+            using (var writer = new StreamWriter(csvPath))
+            {
+                writer.WriteLine("MRN,StudyUID,SeriesUID,ExportID");
+                foreach (var row in rows)
+                {
+                    // Quote fields defensively in case any contain commas
+                    writer.WriteLine(string.Format("\"{0}\",\"{1}\",\"{2}\",{3}",
+                        row.MRN, row.StudyUID, row.SeriesUID, row.ExportID));
+                }
+            }
+            AppendLog($"Wrote manifest: {csvPath}");
         }
 
         private void AppendLog(string message)
