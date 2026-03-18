@@ -4,107 +4,222 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Manage ROI Associations" Height="550" Width="900"
-        WindowStartupLocation="CenterOwner">
-    <DockPanel Margin="8">
-        <!-- Bottom buttons -->
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-            <Button Content="Import..." Command="{Binding ImportCommand}" Width="80" Margin="0,0,4,0"/>
-            <Button Content="Export..." Command="{Binding ExportCommand}" Width="80" Margin="0,0,4,0"/>
-            <Button Content="Save" Command="{Binding SaveCommand}" Width="80" Margin="0,0,4,0"/>
-            <Button Content="Close" Click="CloseButton_Click" Width="80"/>
-        </StackPanel>
+        Title="Manage ROI Associations" Height="600" Width="950"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5">
 
-        <!-- Main three-column layout -->
-        <Grid>
+    <Window.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#333333"/>
+        </Style>
+        <Style x:Key="PanelButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="4,0"/>
+            <Setter Property="MinWidth" Value="70"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Blue Header Bar -->
+        <Border Grid.Row="0" Background="#2196F3" Padding="16,12">
+            <StackPanel>
+                <TextBlock Text="Manage ROI Associations" FontSize="16"
+                           FontWeight="SemiBold" Foreground="White"/>
+                <TextBlock Text="Define canonical names and map alternative ROI names as aliases"
+                           FontSize="12" Foreground="#BBDEFB" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Three-Column Layout -->
+        <Grid Grid.Row="1" Margin="12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="200"/>
+                <ColumnDefinition Width="210"/>
                 <ColumnDefinition Width="4"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="4"/>
-                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="260"/>
             </Grid.ColumnDefinitions>
 
             <!-- Left: Association List -->
-            <DockPanel Grid.Column="0">
-                <TextBlock DockPanel.Dock="Top" Text="Associations" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
-                    <Button Content="Add" Command="{Binding AddAssociationCommand}" Width="60" Margin="0,0,4,0"/>
-                    <Button Content="Remove" Command="{Binding RemoveAssociationCommand}" Width="60"/>
-                </StackPanel>
-                <ListBox ItemsSource="{Binding Associations}"
-                         SelectedItem="{Binding SelectedAssociation}"
-                         DisplayMemberPath="CanonicalName"/>
-            </DockPanel>
+            <Border Grid.Column="0" Background="White" BorderBrush="#DDDDDD"
+                    BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+                    <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
+                            BorderThickness="0,0,0,1" Padding="10,8"
+                            CornerRadius="4,4,0,0">
+                        <TextBlock Text="Associations" Style="{StaticResource SectionHeader}"/>
+                    </Border>
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Associations}"
+                             SelectedItem="{Binding SelectedAssociation}"
+                             DisplayMemberPath="CanonicalName"
+                             BorderThickness="0" Background="Transparent"
+                             Padding="4"/>
+
+                    <Border Grid.Row="2" Background="#FAFAFA" BorderBrush="#EEEEEE"
+                            BorderThickness="0,1,0,0" Padding="8,6"
+                            CornerRadius="0,0,4,4">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Button Content="Add" Command="{Binding AddAssociationCommand}"
+                                    Style="{StaticResource PanelButtonStyle}"
+                                    Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+                            <Button Content="Remove" Command="{Binding RemoveAssociationCommand}"
+                                    Style="{StaticResource PanelButtonStyle}"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch" Background="Transparent"/>
 
             <!-- Center: Detail Editor -->
-            <DockPanel Grid.Column="2" Margin="4,0,4,0">
-                <TextBlock DockPanel.Dock="Top" Text="Selected Association" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel DataContext="{Binding SelectedAssociation}">
-                        <!-- Canonical Name -->
-                        <TextBlock Text="Canonical Name:" Margin="0,0,0,4"/>
-                        <TextBox Text="{Binding CanonicalName, UpdateSourceTrigger=PropertyChanged}"
-                                 Margin="0,0,0,12" FontWeight="SemiBold"/>
+            <Border Grid.Column="2" Background="White" BorderBrush="#DDDDDD"
+                    BorderThickness="1" CornerRadius="4" Margin="4,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                        <!-- Aliases -->
-                        <TextBlock Text="Aliases:" Margin="0,0,0,4"/>
-                        <ItemsControl ItemsSource="{Binding Aliases}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="0,0,0,2">
-                                        <Button DockPanel.Dock="Right" Content="X" Width="24"
-                                                Command="{Binding DataContext.RemoveAliasCommand,
-                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" Margin="4,0,0,0"
-                                                VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                    <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
+                            BorderThickness="0,0,0,1" Padding="10,8"
+                            CornerRadius="4,4,0,0">
+                        <TextBlock Text="Selected Association" Style="{StaticResource SectionHeader}"/>
+                    </Border>
 
-                        <!-- Custom alias input -->
-                        <TextBlock Text="Add alias:" Margin="0,8,0,4"/>
-                        <DockPanel Margin="0,0,0,4">
-                            <Button DockPanel.Dock="Right" Content="Add" Width="50" Margin="4,0,0,0"
-                                    Command="{Binding DataContext.AddCustomAliasCommand,
-                                        RelativeSource={RelativeSource AncestorType=Window}}"/>
-                            <TextBox Text="{Binding DataContext.NewAliasText,
-                                        RelativeSource={RelativeSource AncestorType=Window},
-                                        UpdateSourceTrigger=PropertyChanged}"
-                                     VerticalAlignment="Center"/>
-                        </DockPanel>
-                        <TextBlock Text="Type a custom alias above, or double-click a discovered name on the right."
-                                   FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </ScrollViewer>
-            </DockPanel>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="12">
+                        <StackPanel DataContext="{Binding SelectedAssociation}">
+                            <!-- Canonical Name -->
+                            <TextBlock Text="Canonical Name:" Margin="0,4,0,4"
+                                       FontWeight="Medium" Foreground="#555555"/>
+                            <TextBox Text="{Binding CanonicalName, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,16" FontWeight="SemiBold" FontSize="14"
+                                     Padding="8,6" BorderBrush="#CCCCCC"/>
 
-            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+                            <!-- Aliases -->
+                            <TextBlock Text="Aliases:" Margin="0,0,0,6"
+                                       FontWeight="Medium" Foreground="#555555"/>
+                            <ItemsControl ItemsSource="{Binding Aliases}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#F5F5F5" BorderBrush="#E0E0E0"
+                                                BorderThickness="1" CornerRadius="3"
+                                                Margin="0,0,0,3" Padding="8,4">
+                                            <DockPanel>
+                                                <Button DockPanel.Dock="Right" Content="X" Width="24" Height="24"
+                                                        Command="{Binding DataContext.RemoveAliasCommand,
+                                                            RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" Margin="4,0,0,0"
+                                                        VerticalAlignment="Center" FontSize="10"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        Foreground="#999999" Cursor="Hand"/>
+                                                <TextBlock Text="{Binding}" VerticalAlignment="Center"
+                                                           Foreground="#333333"/>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Custom alias input -->
+                            <TextBlock Text="Add custom alias:" Margin="0,12,0,4"
+                                       FontWeight="Medium" Foreground="#555555"/>
+                            <DockPanel Margin="0,0,0,6">
+                                <Button DockPanel.Dock="Right" Content="Add"
+                                        Style="{StaticResource PanelButtonStyle}"
+                                        Margin="6,0,0,0"
+                                        Background="#4CAF50" Foreground="White" FontWeight="SemiBold"
+                                        Command="{Binding DataContext.AddCustomAliasCommand,
+                                            RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                <TextBox Text="{Binding DataContext.NewAliasText,
+                                            RelativeSource={RelativeSource AncestorType=Window},
+                                            UpdateSourceTrigger=PropertyChanged}"
+                                         VerticalContentAlignment="Center" Padding="6,4"
+                                         BorderBrush="#CCCCCC"/>
+                            </DockPanel>
+                            <TextBlock Text="Type a custom alias above, or double-click a discovered name on the right."
+                                       FontSize="11" Foreground="#999999" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch" Background="Transparent"/>
 
             <!-- Right: Discovered ROI Names -->
-            <DockPanel Grid.Column="4">
-                <TextBlock DockPanel.Dock="Top" Text="Discovered ROI Names" FontWeight="SemiBold" Margin="4,0,0,4"/>
-                <TextBox DockPanel.Dock="Top"
-                         Text="{Binding RoiSearchText, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="4,0,4,4"/>
-                <TextBlock DockPanel.Dock="Top"
-                           Text="Double-click a name to add as alias to the selected association."
-                           FontSize="11" Foreground="Gray" Margin="4,0,4,4" TextWrapping="Wrap"/>
-                <ListBox x:Name="DiscoveredRoiListBox"
-                         ItemsSource="{Binding FilteredDiscoveredRoiNames}"
-                         MouseDoubleClick="DiscoveredRoiListBox_MouseDoubleClick"
-                         Margin="4">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}" Cursor="Hand"/>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </DockPanel>
+            <Border Grid.Column="4" Background="White" BorderBrush="#DDDDDD"
+                    BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
+                            BorderThickness="0,0,0,1" Padding="10,8"
+                            CornerRadius="4,4,0,0">
+                        <TextBlock Text="Discovered ROI Names" Style="{StaticResource SectionHeader}"/>
+                    </Border>
+
+                    <TextBox Grid.Row="1"
+                             Text="{Binding RoiSearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="8,8,8,4" Padding="6,4" BorderBrush="#CCCCCC"
+                             VerticalContentAlignment="Center"/>
+
+                    <TextBlock Grid.Row="2"
+                               Text="Double-click a name to add as alias to the selected association."
+                               FontSize="11" Foreground="#999999" Margin="10,0,10,4" TextWrapping="Wrap"/>
+
+                    <ListBox Grid.Row="3" x:Name="DiscoveredRoiListBox"
+                             ItemsSource="{Binding FilteredDiscoveredRoiNames}"
+                             MouseDoubleClick="DiscoveredRoiListBox_MouseDoubleClick"
+                             BorderThickness="0" Background="Transparent"
+                             Margin="4,0,4,4">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Cursor="Hand" Padding="4,2"
+                                           Foreground="#333333"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
         </Grid>
-    </DockPanel>
+
+        <!-- Bottom Buttons -->
+        <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+                BorderThickness="0,1,0,0" Padding="12,8">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Import..." Command="{Binding ImportCommand}"
+                        Style="{StaticResource PanelButtonStyle}"/>
+                <Button Content="Export..." Command="{Binding ExportCommand}"
+                        Style="{StaticResource PanelButtonStyle}"/>
+                <Button Content="Save" Command="{Binding SaveCommand}"
+                        Style="{StaticResource PanelButtonStyle}"
+                        Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
+                <Button Content="Close" Click="CloseButton_Click"
+                        Style="{StaticResource PanelButtonStyle}"/>
+            </StackPanel>
+        </Border>
+    </Grid>
 </Window>
