@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Manage ROI Associations" Height="500" Width="750"
+        Title="Manage ROI Associations" Height="550" Width="900"
         WindowStartupLocation="CenterOwner">
     <DockPanel Margin="8">
         <!-- Bottom buttons -->
@@ -15,16 +15,19 @@
             <Button Content="Close" Click="CloseButton_Click" Width="80"/>
         </StackPanel>
 
-        <!-- Main content: left list + right detail -->
+        <!-- Main three-column layout -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220"/>
-                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="200"/>
+                <ColumnDefinition Width="4"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="250"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left panel: association list -->
+            <!-- Left: Association List -->
             <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Text="Associations" FontWeight="SemiBold" Margin="0,0,0,4"/>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
                     <Button Content="Add" Command="{Binding AddAssociationCommand}" Width="60" Margin="0,0,4,0"/>
                     <Button Content="Remove" Command="{Binding RemoveAssociationCommand}" Width="60"/>
@@ -36,52 +39,72 @@
 
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
 
-            <!-- Right panel: detail editor -->
-            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
-                <StackPanel DataContext="{Binding SelectedAssociation}" Margin="4">
-                    <!-- Canonical Name -->
-                    <TextBlock Text="Canonical Name:" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <TextBox Text="{Binding CanonicalName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"/>
+            <!-- Center: Detail Editor -->
+            <DockPanel Grid.Column="2" Margin="4,0,4,0">
+                <TextBlock DockPanel.Dock="Top" Text="Selected Association" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel DataContext="{Binding SelectedAssociation}">
+                        <!-- Canonical Name -->
+                        <TextBlock Text="Canonical Name:" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding CanonicalName, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,0,0,12" FontWeight="SemiBold"/>
 
-                    <!-- Aliases -->
-                    <TextBlock Text="Aliases:" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <ItemsControl ItemsSource="{Binding Aliases}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel Margin="0,0,0,2">
-                                    <Button DockPanel.Dock="Right" Content="X" Width="24"
-                                            Command="{Binding DataContext.RemoveAliasCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}" Margin="4,0,0,0"/>
-                                    <TextBox Text="{Binding Mode=OneWay}" IsReadOnly="True"/>
-                                </DockPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Button Content="Add Alias" Command="{Binding AddAliasCommand}"
-                            Width="80" HorizontalAlignment="Left" Margin="0,4,0,12"/>
+                        <!-- Aliases -->
+                        <TextBlock Text="Aliases:" Margin="0,0,0,4"/>
+                        <ItemsControl ItemsSource="{Binding Aliases}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,0,0,2">
+                                        <Button DockPanel.Dock="Right" Content="X" Width="24"
+                                                Command="{Binding DataContext.RemoveAliasCommand,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" Margin="4,0,0,0"
+                                                VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
-                    <!-- Extra Attributes -->
-                    <TextBlock Text="Extra Attributes:" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <DataGrid ItemsSource="{Binding ExtraAttributes}" AutoGenerateColumns="False"
-                              CanUserAddRows="False" CanUserDeleteRows="False" Height="150">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="*"/>
-                            <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"/>
-                            <DataGridTemplateColumn Width="30">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Content="X"
-                                                Command="{Binding DataContext.RemoveAttributeCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                CommandParameter="{Binding}"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                    <Button Content="Add Attribute" Command="{Binding AddAttributeCommand}"
-                            Width="100" HorizontalAlignment="Left" Margin="0,4,0,0"/>
-                </StackPanel>
-            </ScrollViewer>
+                        <!-- Custom alias input -->
+                        <TextBlock Text="Add alias:" Margin="0,8,0,4"/>
+                        <DockPanel Margin="0,0,0,4">
+                            <Button DockPanel.Dock="Right" Content="Add" Width="50" Margin="4,0,0,0"
+                                    Command="{Binding DataContext.AddCustomAliasCommand,
+                                        RelativeSource={RelativeSource AncestorType=Window}}"/>
+                            <TextBox Text="{Binding DataContext.NewAliasText,
+                                        RelativeSource={RelativeSource AncestorType=Window},
+                                        UpdateSourceTrigger=PropertyChanged}"
+                                     VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <TextBlock Text="Type a custom alias above, or double-click a discovered name on the right."
+                                   FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+
+            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+
+            <!-- Right: Discovered ROI Names -->
+            <DockPanel Grid.Column="4">
+                <TextBlock DockPanel.Dock="Top" Text="Discovered ROI Names" FontWeight="SemiBold" Margin="4,0,0,4"/>
+                <TextBox DockPanel.Dock="Top"
+                         Text="{Binding RoiSearchText, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="4,0,4,4"/>
+                <TextBlock DockPanel.Dock="Top"
+                           Text="Double-click a name to add as alias to the selected association."
+                           FontSize="11" Foreground="Gray" Margin="4,0,4,4" TextWrapping="Wrap"/>
+                <ListBox x:Name="DiscoveredRoiListBox"
+                         ItemsSource="{Binding FilteredDiscoveredRoiNames}"
+                         MouseDoubleClick="DiscoveredRoiListBox_MouseDoubleClick"
+                         Margin="4">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Cursor="Hand"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
         </Grid>
     </DockPanel>
 </Window>

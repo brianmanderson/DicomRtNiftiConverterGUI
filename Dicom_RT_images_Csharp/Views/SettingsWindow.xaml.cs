@@ -24,7 +24,6 @@ namespace Dicom_RT_images_Csharp.Views
 
             OutputDirTextBox.Text = settings.DefaultOutputDirectory ?? "";
             AutoOpenCheckBox.IsChecked = settings.AutoOpenAfterConversion;
-            ExportUnmatchedCheckBox.IsChecked = settings.ExportUnmatchedRois;
         }
 
         private void BrowseOutput_Click(object sender, RoutedEventArgs e)
@@ -47,7 +46,6 @@ namespace Dicom_RT_images_Csharp.Views
         {
             _settings.DefaultOutputDirectory = OutputDirTextBox.Text;
             _settings.AutoOpenAfterConversion = AutoOpenCheckBox.IsChecked == true;
-            _settings.ExportUnmatchedRois = ExportUnmatchedCheckBox.IsChecked == true;
             _settingsService.SaveSettings(_settings);
             DialogResult = true;
             Close();

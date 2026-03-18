@@ -122,13 +122,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
     }
 
     /// <summary>
-    /// ViewModel for a series node in the TreeView, with export checkboxes.
+    /// ViewModel for a series node in the TreeView, with a selection checkbox.
     /// </summary>
     public class SeriesGroupViewModel : INotifyPropertyChanged
     {
-        private bool _exportImages = true;
-        private bool _includeStructures = true;
-        private bool _includeDose = true;
+        private bool _isSelected = true;
         private bool _isExpanded;
 
         /// <summary>
@@ -180,30 +178,12 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public ObservableCollection<string> RoiNames { get; }
 
         /// <summary>
-        /// Whether to export this image series as image.nii.gz.
+        /// Whether this series is selected for conversion.
         /// </summary>
-        public bool ExportImages
+        public bool IsSelected
         {
-            get { return _exportImages; }
-            set { _exportImages = value; OnPropertyChanged(); }
-        }
-
-        /// <summary>
-        /// Whether to include RT Struct masks in the export.
-        /// </summary>
-        public bool IncludeStructures
-        {
-            get { return _includeStructures; }
-            set { _includeStructures = value; OnPropertyChanged(); }
-        }
-
-        /// <summary>
-        /// Whether to include RT Dose in the export.
-        /// </summary>
-        public bool IncludeDose
-        {
-            get { return _includeDose; }
-            set { _includeDose = value; OnPropertyChanged(); }
+            get { return _isSelected; }
+            set { _isSelected = value; OnPropertyChanged(); }
         }
 
         /// <summary>

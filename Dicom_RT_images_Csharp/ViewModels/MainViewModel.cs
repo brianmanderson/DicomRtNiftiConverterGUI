@@ -36,6 +36,12 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private AppSettings _settings;
         private List<RoiAssociation> _associations;
 
+        // Global export options
+        private bool _exportImages = true;
+        private bool _includeStructures = true;
+        private bool _includeDose = true;
+        private bool _onlyExportSpecificRois = false;
+
         /// <summary>
         /// Creates a new MainViewModel with the required services.
         /// </summary>
@@ -51,6 +57,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _settingsService = settingsService;
 
             Patients = new ObservableCollection<PatientGroupViewModel>();
+            AllDiscoveredRoiNames = new ObservableCollection<string>();
 
             BrowseInputCommand = new RelayCommand(_ => BrowseInput());
             BrowseOutputCommand = new RelayCommand(_ => BrowseOutput());
@@ -68,6 +75,12 @@ namespace Dicom_RT_images_Csharp.ViewModels
             {
                 _outputFolder = _settings.DefaultOutputDirectory;
             }
+
+            // Initialize global options from settings
+            _exportImages = _settings.ExportImages;
+            _includeStructures = _settings.IncludeStructures;
+            _includeDose = _settings.IncludeDose;
+            _onlyExportSpecificRois = _settings.OnlyExportSpecificRois;
         }
 
         /// <summary>
@@ -134,9 +147,51 @@ namespace Dicom_RT_images_Csharp.ViewModels
         }
 
         /// <summary>
+        /// Global toggle: whether to export image series as image.nii.gz.
+        /// </summary>
+        public bool ExportImages
+        {
+            get { return _exportImages; }
+            set { _exportImages = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// Global toggle: whether to include RT Struct masks in the export.
+        /// </summary>
+        public bool IncludeStructures
+        {
+            get { return _includeStructures; }
+            set { _includeStructures = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// Global toggle: whether to include RT Dose in the export.
+        /// </summary>
+        public bool IncludeDose
+        {
+            get { return _includeDose; }
+            set { _includeDose = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// When true, only ROIs matching defined associations are exported.
+        /// When false, all ROIs are exported.
+        /// </summary>
+        public bool OnlyExportSpecificRois
+        {
+            get { return _onlyExportSpecificRois; }
+            set { _onlyExportSpecificRois = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
         /// Patient groups discovered during scanning.
         /// </summary>
         public ObservableCollection<PatientGroupViewModel> Patients { get; }
+
+        /// <summary>
+        /// All unique ROI names discovered across all scanned RTSTRUCT files, sorted alphabetically.
+        /// </summary>
+        public ObservableCollection<string> AllDiscoveredRoiNames { get; }
 
         public ICommand BrowseInputCommand { get; }
         public ICommand BrowseOutputCommand { get; }
@@ -189,6 +244,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             IsScanning = true;
             _cts = new CancellationTokenSource();
             Patients.Clear();
+            AllDiscoveredRoiNames.Clear();
             ProgressValue = 0;
 
             var progress = new Progress<string>(msg =>
@@ -207,7 +263,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     Patients.Add(new PatientGroupViewModel(patient));
                 }
 
-                AppendLog($"Found {results.Count} patient(s), {results.Sum(p => p.Studies.Count)} study(ies).");
+                // Aggregate all discovered ROI names
+                AggregateDiscoveredRoiNames();
+
+                AppendLog($"Found {results.Count} patient(s), {results.Sum(p => p.Studies.Count)} study(ies), {AllDiscoveredRoiNames.Count} unique ROI name(s).");
                 StatusText = "Scan complete.";
                 ProgressValue = 100;
             }
@@ -229,6 +288,33 @@ namespace Dicom_RT_images_Csharp.ViewModels
             }
         }
 
+        /// <summary>
+        /// Collects all unique ROI names from scanned RTSTRUCT series across all patients.
+        /// </summary>
+        private void AggregateDiscoveredRoiNames()
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var patient in Patients)
+            {
+                foreach (var study in patient.Studies)
+                {
+                    foreach (var series in study.ImageSeries)
+                    {
+                        foreach (var roiName in series.RoiNames)
+                        {
+                            names.Add(roiName);
+                        }
+                    }
+                }
+            }
+
+            AllDiscoveredRoiNames.Clear();
+            foreach (var name in names.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            {
+                AllDiscoveredRoiNames.Add(name);
+            }
+        }
+
         private async void ExecuteConvert()
         {
             if (string.IsNullOrEmpty(OutputFolder))
@@ -242,7 +328,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 Directory.CreateDirectory(OutputFolder);
             }
 
-            // Collect all checked series
+            // Collect all selected series
             var selectedSeries = new List<SeriesGroupViewModel>();
             foreach (var patient in Patients)
             {
@@ -250,7 +336,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 {
                     foreach (var series in study.ImageSeries)
                     {
-                        if (series.ExportImages)
+                        if (series.IsSelected)
                         {
                             selectedSeries.Add(series);
                         }
@@ -268,9 +354,19 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _cts = new CancellationTokenSource();
             ProgressValue = 0;
 
+            // Save global options to settings
+            _settings.ExportImages = ExportImages;
+            _settings.IncludeStructures = IncludeStructures;
+            _settings.IncludeDose = IncludeDose;
+            _settings.OnlyExportSpecificRois = OnlyExportSpecificRois;
+            _settingsService.SaveSettings(_settings);
+
             // Reload associations in case they were edited
             _associations = _settingsService.LoadAssociations();
-            _settings = _settingsService.LoadSettings();
+
+            // Determine association behavior based on global toggle
+            var effectiveAssociations = OnlyExportSpecificRois ? _associations : null;
+            bool effectiveExportUnmatched = !OnlyExportSpecificRois;
 
             IProgress<string> progress = new Progress<string>(msg =>
             {
@@ -309,24 +405,27 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     string outputDir = Path.Combine(OutputFolder, SanitizePath(patientId), dateLabel + seriesLabel);
                     Directory.CreateDirectory(outputDir);
 
-                    // Convert image series
-                    progress.Report($"Converting images: {patientId}/{seriesLabel}");
-                    await Task.Run(() =>
-                        _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token)).ConfigureAwait(true);
+                    // Convert image series (controlled by global ExportImages toggle)
+                    if (ExportImages)
+                    {
+                        progress.Report($"Converting images: {patientId}/{seriesLabel}");
+                        await Task.Run(() =>
+                            _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token)).ConfigureAwait(true);
+                    }
 
-                    // Convert RT Struct if requested
-                    if (seriesVm.IncludeStructures && model.LinkedRtStruct != null)
+                    // Convert RT Struct if global IncludeStructures is enabled
+                    if (IncludeStructures && model.LinkedRtStruct != null)
                     {
                         progress.Report($"Rasterizing structures: {patientId}/{seriesLabel}");
                         await Task.Run(() =>
                             _conversionService.ConvertStructToNifti(
                                 model.LinkedRtStruct, model, outputDir,
-                                _associations, _settings.ExportUnmatchedRois,
+                                effectiveAssociations, effectiveExportUnmatched,
                                 progress, _cts.Token)).ConfigureAwait(true);
                     }
 
-                    // Convert RT Dose if requested
-                    if (seriesVm.IncludeDose && model.LinkedRtDose != null)
+                    // Convert RT Dose if global IncludeDose is enabled
+                    if (IncludeDose && model.LinkedRtDose != null)
                     {
                         progress.Report($"Converting dose: {patientId}/{seriesLabel}");
                         await Task.Run(() =>
@@ -370,7 +469,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
         private void OpenAssociationsWindow()
         {
-            var vm = new RoiAssociationViewModel(_settingsService);
+            var discoveredNames = AllDiscoveredRoiNames.ToList();
+            var vm = new RoiAssociationViewModel(_settingsService, discoveredNames);
             var window = new Views.RoiAssociationWindow();
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;

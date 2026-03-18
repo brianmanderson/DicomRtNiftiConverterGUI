@@ -12,27 +12,34 @@ using Microsoft.Win32;
 namespace Dicom_RT_images_Csharp.ViewModels
 {
     /// <summary>
-    /// ViewModel for the ROI Association editor window.
+    /// ViewModel for the ROI Association editor window with discovered ROI name browsing.
     /// </summary>
     public class RoiAssociationViewModel : INotifyPropertyChanged
     {
         private readonly SettingsService _settingsService;
+        private readonly List<string> _allDiscoveredRoiNames;
         private RoiAssociationItemViewModel _selectedAssociation;
+        private string _roiSearchText = "";
+        private string _newAliasText = "";
 
         /// <summary>
-        /// Creates a new RoiAssociationViewModel and loads existing associations.
+        /// Creates a new RoiAssociationViewModel with discovered ROI names from the scan.
         /// </summary>
-        public RoiAssociationViewModel(SettingsService settingsService)
+        public RoiAssociationViewModel(SettingsService settingsService, List<string> discoveredRoiNames)
         {
             _settingsService = settingsService;
+            _allDiscoveredRoiNames = discoveredRoiNames ?? new List<string>();
 
             Associations = new ObservableCollection<RoiAssociationItemViewModel>();
+            FilteredDiscoveredRoiNames = new ObservableCollection<string>();
 
             AddAssociationCommand = new RelayCommand(_ => AddAssociation());
             RemoveAssociationCommand = new RelayCommand(_ => RemoveAssociation(), _ => SelectedAssociation != null);
             SaveCommand = new RelayCommand(_ => Save());
             ImportCommand = new RelayCommand(_ => Import());
             ExportCommand = new RelayCommand(_ => Export());
+            AddDiscoveredNameAsAliasCommand = new RelayCommand(param => AddDiscoveredNameAsAlias(param));
+            AddCustomAliasCommand = new RelayCommand(_ => AddCustomAlias());
 
             // Load existing associations
             var loaded = _settingsService.LoadAssociations();
@@ -40,12 +47,20 @@ namespace Dicom_RT_images_Csharp.ViewModels
             {
                 Associations.Add(new RoiAssociationItemViewModel(assoc));
             }
+
+            // Initialize discovered names list
+            FilterDiscoveredRoiNames();
         }
 
         /// <summary>
         /// All ROI associations.
         /// </summary>
         public ObservableCollection<RoiAssociationItemViewModel> Associations { get; }
+
+        /// <summary>
+        /// Discovered ROI names filtered by the search text.
+        /// </summary>
+        public ObservableCollection<string> FilteredDiscoveredRoiNames { get; }
 
         /// <summary>
         /// The currently selected association in the list.
@@ -56,11 +71,44 @@ namespace Dicom_RT_images_Csharp.ViewModels
             set { _selectedAssociation = value; OnPropertyChanged(); }
         }
 
+        /// <summary>
+        /// Search/filter text for the discovered ROI names panel.
+        /// </summary>
+        public string RoiSearchText
+        {
+            get { return _roiSearchText; }
+            set
+            {
+                _roiSearchText = value;
+                OnPropertyChanged();
+                FilterDiscoveredRoiNames();
+            }
+        }
+
+        /// <summary>
+        /// Text for adding a custom alias (typed by the user).
+        /// </summary>
+        public string NewAliasText
+        {
+            get { return _newAliasText; }
+            set { _newAliasText = value; OnPropertyChanged(); }
+        }
+
         public ICommand AddAssociationCommand { get; }
         public ICommand RemoveAssociationCommand { get; }
         public ICommand SaveCommand { get; }
         public ICommand ImportCommand { get; }
         public ICommand ExportCommand { get; }
+
+        /// <summary>
+        /// Command to add a discovered ROI name as an alias to the selected association.
+        /// </summary>
+        public ICommand AddDiscoveredNameAsAliasCommand { get; }
+
+        /// <summary>
+        /// Command to add a custom-typed alias to the selected association.
+        /// </summary>
+        public ICommand AddCustomAliasCommand { get; }
 
         private void AddAssociation()
         {
@@ -78,6 +126,45 @@ namespace Dicom_RT_images_Csharp.ViewModels
             {
                 Associations.Remove(SelectedAssociation);
                 SelectedAssociation = Associations.FirstOrDefault();
+            }
+        }
+
+        private void AddDiscoveredNameAsAlias(object param)
+        {
+            var roiName = param as string;
+            if (roiName != null && SelectedAssociation != null)
+            {
+                if (!SelectedAssociation.Aliases.Contains(roiName))
+                {
+                    SelectedAssociation.Aliases.Add(roiName);
+                }
+            }
+        }
+
+        private void AddCustomAlias()
+        {
+            var text = (_newAliasText ?? "").Trim();
+            if (!string.IsNullOrEmpty(text) && SelectedAssociation != null)
+            {
+                if (!SelectedAssociation.Aliases.Contains(text))
+                {
+                    SelectedAssociation.Aliases.Add(text);
+                }
+                NewAliasText = "";
+            }
+        }
+
+        private void FilterDiscoveredRoiNames()
+        {
+            FilteredDiscoveredRoiNames.Clear();
+            var filter = (_roiSearchText ?? "").Trim();
+            foreach (var name in _allDiscoveredRoiNames)
+            {
+                if (string.IsNullOrEmpty(filter) ||
+                    name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    FilteredDiscoveredRoiNames.Add(name);
+                }
             }
         }
 
@@ -161,13 +248,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
         {
             _canonicalName = model.CanonicalName;
             Aliases = new ObservableCollection<string>(model.Aliases);
-            ExtraAttributes = new ObservableCollection<KeyValuePairViewModel>(
-                model.ExtraAttributes.Select(kv => new KeyValuePairViewModel(kv.Key, kv.Value)));
 
-            AddAliasCommand = new RelayCommand(_ => AddAlias());
-            RemoveAliasCommand = new RelayCommand(param => RemoveAlias(param as string), _ => Aliases.Count > 0);
-            AddAttributeCommand = new RelayCommand(_ => AddAttribute());
-            RemoveAttributeCommand = new RelayCommand(param => RemoveAttribute(param as KeyValuePairViewModel));
+            RemoveAliasCommand = new RelayCommand(param => RemoveAlias(param as string));
         }
 
         /// <summary>
@@ -185,38 +267,15 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public ObservableCollection<string> Aliases { get; }
 
         /// <summary>
-        /// Arbitrary key-value metadata for this ROI.
+        /// Command to remove an alias from the list.
         /// </summary>
-        public ObservableCollection<KeyValuePairViewModel> ExtraAttributes { get; }
-
-        public ICommand AddAliasCommand { get; }
         public ICommand RemoveAliasCommand { get; }
-        public ICommand AddAttributeCommand { get; }
-        public ICommand RemoveAttributeCommand { get; }
-
-        private void AddAlias()
-        {
-            Aliases.Add("new_alias");
-        }
 
         private void RemoveAlias(string alias)
         {
             if (alias != null)
             {
                 Aliases.Remove(alias);
-            }
-        }
-
-        private void AddAttribute()
-        {
-            ExtraAttributes.Add(new KeyValuePairViewModel("key", "value"));
-        }
-
-        private void RemoveAttribute(KeyValuePairViewModel attr)
-        {
-            if (attr != null)
-            {
-                ExtraAttributes.Remove(attr);
             }
         }
 
@@ -228,55 +287,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
             return new RoiAssociation
             {
                 CanonicalName = CanonicalName,
-                Aliases = Aliases.ToList(),
-                ExtraAttributes = ExtraAttributes.ToDictionary(a => a.Key, a => a.Value)
+                Aliases = Aliases.ToList()
             };
-        }
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        /// <summary>
-        /// Raises the PropertyChanged event.
-        /// </summary>
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-    }
-
-    /// <summary>
-    /// ViewModel for an editable key-value pair in the ExtraAttributes DataGrid.
-    /// </summary>
-    public class KeyValuePairViewModel : INotifyPropertyChanged
-    {
-        private string _key;
-        private string _value;
-
-        /// <summary>
-        /// Creates a new key-value pair.
-        /// </summary>
-        public KeyValuePairViewModel(string key, string value)
-        {
-            _key = key;
-            _value = value;
-        }
-
-        /// <summary>
-        /// The attribute key.
-        /// </summary>
-        public string Key
-        {
-            get { return _key; }
-            set { _key = value; OnPropertyChanged(); }
-        }
-
-        /// <summary>
-        /// The attribute value.
-        /// </summary>
-        public string Value
-        {
-            get { return _value; }
-            set { _value = value; OnPropertyChanged(); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

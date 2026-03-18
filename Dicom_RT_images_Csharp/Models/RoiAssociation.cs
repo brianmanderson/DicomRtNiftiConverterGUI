@@ -16,10 +16,5 @@ namespace Dicom_RT_images_Csharp.Models
         /// Alternative names that should map to this canonical name (case-insensitive matching).
         /// </summary>
         public List<string> Aliases { get; set; } = new List<string>();
-
-        /// <summary>
-        /// Arbitrary key-value metadata (e.g. color, priority, is_oar, TG-263 code).
-        /// </summary>
-        public Dictionary<string, string> ExtraAttributes { get; set; } = new Dictionary<string, string>();
     }
 }
