@@ -538,7 +538,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                             _conversionService.ConvertStructToNifti(
                                 model.LinkedRtStruct, model, outputDir,
                                 effectiveAssociations, effectiveExportUnmatched,
-                                AnonymizeExport,
+                                false,
                                 progress, _cts.Token)).ConfigureAwait(true);
                     }
 
@@ -558,53 +558,85 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     ProgressValue = (double)completed / total * 100;
                 }
 
-                // Save anonymization key file and write CSV manifest
+                // Save anonymization key file if anonymizing
+                List<ManifestRow> manifestRows;
                 if (AnonymizeExport && anonService != null)
                 {
                     anonService.Save();
-                    var manifestRows = anonService.GetAllManifestRows();
-
-                    // Attach exported ROI names, spacing, and volumes to manifest rows
-                    foreach (var row in manifestRows)
+                    manifestRows = anonService.GetAllManifestRows();
+                }
+                else
+                {
+                    // Build manifest rows from tracked data when not anonymizing
+                    manifestRows = new List<ManifestRow>();
+                    foreach (var seriesVm in selectedSeries)
                     {
-                        List<string> rois;
-                        if (exportedRoisPerSeries.TryGetValue(row.SeriesUID, out rois))
+                        var m = seriesVm.Model;
+                        string pid = "Unknown";
+                        string suid = "";
+                        foreach (var p in Patients)
                         {
-                            row.ExportedRois = string.Join("; ", rois);
-                        }
-
-                        double[] spacing;
-                        if (spacingPerSeries.TryGetValue(row.SeriesUID, out spacing))
-                        {
-                            row.SpacingX = spacing[0];
-                            row.SpacingY = spacing[1];
-                            row.SpacingZ = spacing[2];
-                        }
-
-                        Dictionary<string, double> volumes;
-                        if (roiVolumesPerSeries.TryGetValue(row.SeriesUID, out volumes))
-                        {
-                            row.RoiVolumes = volumes;
-                        }
-                    }
-
-                    // Collect all unique ROI names across exported series for CSV columns
-                    var allExportedRoiNames = new List<string>();
-                    if (IncludeStructures)
-                    {
-                        var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                        foreach (var rois in exportedRoisPerSeries.Values)
-                        {
-                            foreach (var name in rois)
+                            foreach (var st in p.Studies)
                             {
-                                if (roiNameSet.Add(name))
-                                    allExportedRoiNames.Add(name);
+                                if (st.ImageSeries.Contains(seriesVm))
+                                {
+                                    pid = p.Model.PatientID;
+                                    suid = st.Model.StudyInstanceUID;
+                                    break;
+                                }
                             }
                         }
+                        manifestRows.Add(new ManifestRow
+                        {
+                            MRN = pid,
+                            StudyUID = suid,
+                            SeriesUID = m.SeriesInstanceUID,
+                            ExportID = -1,
+                            ExportedRois = ""
+                        });
+                    }
+                }
+
+                // Attach exported ROI names, spacing, and volumes to manifest rows
+                foreach (var row in manifestRows)
+                {
+                    List<string> rois;
+                    if (exportedRoisPerSeries.TryGetValue(row.SeriesUID, out rois))
+                    {
+                        row.ExportedRois = string.Join("; ", rois);
                     }
 
-                    WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames);
+                    double[] spacing;
+                    if (spacingPerSeries.TryGetValue(row.SeriesUID, out spacing))
+                    {
+                        row.SpacingX = spacing[0];
+                        row.SpacingY = spacing[1];
+                        row.SpacingZ = spacing[2];
+                    }
+
+                    Dictionary<string, double> volumes;
+                    if (roiVolumesPerSeries.TryGetValue(row.SeriesUID, out volumes))
+                    {
+                        row.RoiVolumes = volumes;
+                    }
                 }
+
+                // Collect all unique ROI names across exported series for CSV columns
+                var allExportedRoiNames = new List<string>();
+                if (IncludeStructures)
+                {
+                    var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var rois in exportedRoisPerSeries.Values)
+                    {
+                        foreach (var name in rois)
+                        {
+                            if (roiNameSet.Add(name))
+                                allExportedRoiNames.Add(name);
+                        }
+                    }
+                }
+
+                WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames);
 
                 AppendLog($"Conversion complete. {completed} series exported to {OutputFolder}");
                 StatusText = "Conversion complete.";
