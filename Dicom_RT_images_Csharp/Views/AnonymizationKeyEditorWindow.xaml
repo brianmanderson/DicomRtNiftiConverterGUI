@@ -1,0 +1,123 @@
+<Window x:Class="Dicom_RT_images_Csharp.Views.AnonymizationKeyEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Anonymization Key Editor" Height="550" Width="800"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5"
+        Closing="Window_Closing">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
+            <StackPanel>
+                <TextBlock Text="Anonymization Key Editor" FontSize="16"
+                           FontWeight="SemiBold" Foreground="White"/>
+                <TextBlock Text="View and edit MRN to anonymized export ID mappings"
+                           FontSize="12" Foreground="#BBDEFB" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- File Location Section -->
+        <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD"
+                BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="Key File:" VerticalAlignment="Center"
+                               FontWeight="Medium" Foreground="#555555" Margin="0,0,8,0"/>
+                    <TextBox Grid.Column="1" x:Name="KeyFilePathTextBox" IsReadOnly="True"
+                             VerticalContentAlignment="Center" Padding="6,4"
+                             Background="#FAFAFA" BorderBrush="#CCCCCC"/>
+                    <Button Grid.Column="2" Content="Change Folder..." Click="ChangeFolderButton_Click"
+                            Padding="12,6" Margin="8,0,0,0" Cursor="Hand"/>
+                </Grid>
+
+                <TextBlock Grid.Row="1" x:Name="FileStatusTextBlock"
+                           Text="" FontSize="11" Foreground="#666666" Margin="0,6,0,0"/>
+            </Grid>
+        </Border>
+
+        <!-- Mappings DataGrid -->
+        <Border Grid.Row="2" Background="White" BorderBrush="#DDDDDD"
+                BorderThickness="1" CornerRadius="4" Margin="12,12,12,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Toolbar -->
+                <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
+                        BorderThickness="0,0,0,1" Padding="8,6" CornerRadius="4,4,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="+ Add Mapping" Click="AddMappingButton_Click"
+                                Padding="12,6" Margin="0,0,4,0" Cursor="Hand"
+                                Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+                        <Button Content="- Delete Selected" Click="DeleteMappingButton_Click"
+                                Padding="12,6" Cursor="Hand"
+                                Background="#F44336" Foreground="White"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- DataGrid -->
+                <DataGrid Grid.Row="1" x:Name="MappingsDataGrid"
+                          AutoGenerateColumns="False"
+                          SelectionMode="Single"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          CanUserSortColumns="True"
+                          RowHeight="28"
+                          AlternatingRowBackground="#F9F9F9"
+                          GridLinesVisibility="Horizontal"
+                          HeadersVisibility="Column"
+                          BorderThickness="0"
+                          Background="Transparent">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="MRN" Binding="{Binding MRN, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="120" IsReadOnly="False"/>
+                        <DataGridTextColumn Header="Study UID" Binding="{Binding StudyUID, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="*" IsReadOnly="False"/>
+                        <DataGridTextColumn Header="Series UID" Binding="{Binding SeriesUID, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="*" IsReadOnly="False"/>
+                        <DataGridTextColumn Header="Hash" Binding="{Binding HashString, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="100" IsReadOnly="False"/>
+                        <DataGridTextColumn Header="Export ID" Binding="{Binding ExportID, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="70" IsReadOnly="False"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+
+        <!-- Bottom Buttons -->
+        <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#CCCCCC"
+                BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" Click="CancelButton_Click"
+                        Padding="16,8" Margin="0,0,8,0" MinWidth="80" FontSize="13" Cursor="Hand"/>
+                <Button Content="Save" Click="SaveButton_Click"
+                        Padding="16,8" MinWidth="80" FontSize="13" Cursor="Hand"
+                        Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -111,7 +111,7 @@
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0">
                         <ProgressBar Value="{Binding ProgressValue}" Minimum="0" Maximum="100"
-                                     Height="18" Width="200" VerticalAlignment="Center"/>
+                                     Height="18" Width="400" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center"
                                    Margin="10,0,0,0" TextTrimming="CharacterEllipsis"
                                    Foreground="#666666"/>
@@ -140,8 +140,18 @@
                     <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
                             BorderThickness="0,0,0,1" Padding="12,8"
                             CornerRadius="4,4,0,0">
-                        <TextBlock Text="Patient / Study / Series" FontWeight="SemiBold"
-                                   FontSize="13" Foreground="#333333"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Patient / Study / Series" FontWeight="SemiBold"
+                                       FontSize="13" Foreground="#333333" VerticalAlignment="Center"/>
+                            <CheckBox Grid.Column="1" Content="Select All?"
+                                      IsChecked="{Binding AllPatientsSelected}"
+                                      VerticalAlignment="Center" FontSize="12"
+                                      Foreground="#555555"/>
+                        </Grid>
                     </Border>
 
                     <!-- TreeView -->
@@ -157,6 +167,8 @@
                             <HierarchicalDataTemplate DataType="{x:Type vm:PatientGroupViewModel}"
                                                       ItemsSource="{Binding Studies}">
                                 <StackPanel Orientation="Horizontal">
+                                    <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,6,0"
+                                              VerticalAlignment="Center"/>
                                     <TextBlock Text="[P]" Margin="0,0,6,0" FontSize="12"
                                                Foreground="#1976D2" FontWeight="Bold"
                                                VerticalAlignment="Center"/>
@@ -250,8 +262,14 @@
                                   IsChecked="{Binding AnonymizeExport}"
                                   Style="{StaticResource CheckBoxStyle}" Margin="4,8"/>
 
+                        <Button Content="Edit Anonymization Key..."
+                                Command="{Binding OpenAnonymizationKeyEditorCommand}"
+                                IsEnabled="{Binding AnonymizeExport}"
+                                Padding="12,8" Margin="4,4,4,12" FontSize="13" Cursor="Hand"
+                                Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+
                         <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0">
-                            When checked, exports use integer folder IDs instead of patient names. A CSV manifest (export_manifest.csv) maps export IDs back to MRN, StudyUID, and SeriesUID.
+                            When checked, exports use integer folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions.
                         </TextBlock>
                     </StackPanel>
                 </ScrollViewer>

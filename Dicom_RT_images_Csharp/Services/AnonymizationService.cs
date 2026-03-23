@@ -1,24 +1,47 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using Newtonsoft.Json;
 
 namespace Dicom_RT_images_Csharp.Services
 {
     /// <summary>
     /// Provides deterministic hashing for anonymized exports and
     /// assigns incrementing integer export IDs to unique hash keys.
+    /// Persists mappings to AnonymizationKey.json for cross-session continuity.
     /// </summary>
     public class AnonymizationService
     {
         private readonly string _salt;
-        private readonly Dictionary<string, int> _hashToExportId = new Dictionary<string, int>();
-        private int _nextExportId = 0;
-        private readonly List<ManifestRow> _manifestRows = new List<ManifestRow>();
+        private readonly string _keyFilePath;
+        private readonly Dictionary<string, AnonymizationKeyEntry> _entries;
+        private int _nextExportId;
+        private readonly List<ManifestRow> _sessionManifestRows = new List<ManifestRow>();
 
-        public AnonymizationService(string salt)
+        /// <summary>
+        /// Creates a new AnonymizationService. If a key file exists at the given path,
+        /// loads it to resume numbering from the previous session.
+        /// </summary>
+        public AnonymizationService(string keyFilePath, string salt)
         {
+            _keyFilePath = keyFilePath;
             _salt = salt ?? "DicomToNifti";
+
+            // Load existing key file if present
+            var keyFile = LoadKeyFile(_keyFilePath);
+            if (keyFile != null)
+            {
+                _entries = keyFile.Entries ?? new Dictionary<string, AnonymizationKeyEntry>();
+                _nextExportId = keyFile.NextExportID;
+            }
+            else
+            {
+                _entries = new Dictionary<string, AnonymizationKeyEntry>();
+                _nextExportId = 0;
+            }
         }
 
         /// <summary>
@@ -39,7 +62,8 @@ namespace Dicom_RT_images_Csharp.Services
         /// <summary>
         /// Gets or assigns an integer export ID for the given MRN/StudyUID/SeriesUID combination.
         /// The hash key is "{mrn}_{studyUid}_{seriesUid}".
-        /// Each unique hash string gets the next available integer ID (starting at 0).
+        /// If this combination was seen in a previous session (loaded from key file), returns the same ID.
+        /// Otherwise assigns the next available integer ID.
         /// Also records a manifest row for CSV output.
         /// </summary>
         public int GetOrAssignExportId(string mrn, string studyUid, string seriesUid)
@@ -48,13 +72,24 @@ namespace Dicom_RT_images_Csharp.Services
             string hashString = DeterministicHashString(hashKey, _salt);
 
             int exportId;
-            if (!_hashToExportId.TryGetValue(hashString, out exportId))
+            AnonymizationKeyEntry entry;
+            if (_entries.TryGetValue(hashString, out entry))
+            {
+                exportId = entry.ExportID;
+            }
+            else
             {
                 exportId = _nextExportId++;
-                _hashToExportId[hashString] = exportId;
+                _entries[hashString] = new AnonymizationKeyEntry
+                {
+                    ExportID = exportId,
+                    MRN = mrn,
+                    StudyUID = studyUid,
+                    SeriesUID = seriesUid
+                };
             }
 
-            _manifestRows.Add(new ManifestRow
+            _sessionManifestRows.Add(new ManifestRow
             {
                 MRN = mrn,
                 StudyUID = studyUid,
@@ -66,12 +101,104 @@ namespace Dicom_RT_images_Csharp.Services
         }
 
         /// <summary>
-        /// Returns all manifest rows accumulated during export.
+        /// Saves the current key file to disk with all entries (previous + new).
         /// </summary>
-        public List<ManifestRow> GetManifestRows()
+        public void Save()
         {
-            return _manifestRows;
+            var keyFile = new AnonymizationKeyFile
+            {
+                NextExportID = _nextExportId,
+                Salt = _salt,
+                Entries = _entries
+            };
+            SaveKeyFile(_keyFilePath, keyFile);
         }
+
+        /// <summary>
+        /// Returns all manifest rows accumulated during this session (for CSV output).
+        /// </summary>
+        public List<ManifestRow> GetSessionManifestRows()
+        {
+            return _sessionManifestRows;
+        }
+
+        /// <summary>
+        /// Returns ALL entries (previous + current session) for a full manifest CSV.
+        /// </summary>
+        public List<ManifestRow> GetAllManifestRows()
+        {
+            return _entries.Values
+                .OrderBy(e => e.ExportID)
+                .Select(e => new ManifestRow
+                {
+                    MRN = e.MRN,
+                    StudyUID = e.StudyUID,
+                    SeriesUID = e.SeriesUID,
+                    ExportID = e.ExportID
+                })
+                .ToList();
+        }
+
+        /// <summary>
+        /// Loads an AnonymizationKeyFile from the given path. Returns null if file does not exist or is invalid.
+        /// </summary>
+        public static AnonymizationKeyFile LoadKeyFile(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                return null;
+
+            try
+            {
+                string json = File.ReadAllText(path);
+                var keyFile = JsonConvert.DeserializeObject<AnonymizationKeyFile>(json);
+                return keyFile;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Saves an AnonymizationKeyFile to the given path as formatted JSON.
+        /// </summary>
+        public static void SaveKeyFile(string path, AnonymizationKeyFile keyFile)
+        {
+            string dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var settings = new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented
+            };
+            string json = JsonConvert.SerializeObject(keyFile, settings);
+            File.WriteAllText(path, json);
+        }
+    }
+
+    /// <summary>
+    /// Represents the persisted anonymization key file.
+    /// </summary>
+    public class AnonymizationKeyFile
+    {
+        public int NextExportID { get; set; } = 0;
+        public string Salt { get; set; } = "DicomToNifti";
+        public Dictionary<string, AnonymizationKeyEntry> Entries { get; set; }
+            = new Dictionary<string, AnonymizationKeyEntry>();
+    }
+
+    /// <summary>
+    /// A single entry in the anonymization key file.
+    /// </summary>
+    public class AnonymizationKeyEntry
+    {
+        public int ExportID { get; set; }
+        public string MRN { get; set; }
+        public string StudyUID { get; set; }
+        public string SeriesUID { get; set; }
     }
 
     /// <summary>
@@ -83,5 +210,14 @@ namespace Dicom_RT_images_Csharp.Services
         public string StudyUID { get; set; }
         public string SeriesUID { get; set; }
         public int ExportID { get; set; }
+        public string ExportedRois { get; set; }
+        public double SpacingX { get; set; }
+        public double SpacingY { get; set; }
+        public double SpacingZ { get; set; }
+        /// <summary>
+        /// ROI canonical name -> mask volume (voxelCount * spacingX * spacingY * spacingZ).
+        /// Missing ROIs default to -1 at CSV write time.
+        /// </summary>
+        public Dictionary<string, double> RoiVolumes { get; set; } = new Dictionary<string, double>();
     }
 }

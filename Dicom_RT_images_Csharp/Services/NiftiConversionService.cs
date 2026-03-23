@@ -27,7 +27,8 @@ namespace Dicom_RT_images_Csharp.Services
         /// <summary>
         /// Converts a CT/MR/PT image series to image.nii.gz.
         /// </summary>
-        public void ConvertImageSeriesToNifti(
+        /// <returns>Array of [spacingX, spacingY, spacingZ] from the loaded image.</returns>
+        public double[] ConvertImageSeriesToNifti(
             DicomSeriesGroup series,
             string outputDir,
             IProgress<string> progress,
@@ -51,11 +52,37 @@ namespace Dicom_RT_images_Csharp.Services
 
             Image image = reader.Execute();
 
+            var spacing = image.GetSpacing();
+            double[] result = new double[] { spacing[0], spacing[1], spacing[2] };
+
             string outputPath = Path.Combine(outputDir, "image.nii.gz");
             SimpleITK.WriteImage(image, outputPath);
             image.Dispose();
 
             progress?.Report($"  Wrote {outputPath}");
+            return result;
+        }
+
+        /// <summary>
+        /// Reads spacing from an image series without writing any output.
+        /// </summary>
+        public double[] GetImageSpacing(DicomSeriesGroup series)
+        {
+            var sortedFiles = SortFilesBySlicePosition(series.FilePaths);
+            var fileNames = new VectorString();
+            foreach (var f in sortedFiles)
+                fileNames.Add(f);
+
+            var reader = new ImageSeriesReader();
+            reader.SetFileNames(fileNames);
+            reader.MetaDataDictionaryArrayUpdateOn();
+            reader.LoadPrivateTagsOn();
+            Image image = reader.Execute();
+
+            var spacing = image.GetSpacing();
+            double[] result = new double[] { spacing[0], spacing[1], spacing[2] };
+            image.Dispose();
+            return result;
         }
 
         /// <summary>
@@ -104,7 +131,11 @@ namespace Dicom_RT_images_Csharp.Services
         /// <summary>
         /// Converts RT Struct contours to per-ROI binary mask .nii.gz files.
         /// </summary>
-        public void ConvertStructToNifti(
+        /// <returns>
+        /// Dictionary mapping ROI output name to mask volume (voxel count * voxel volume).
+        /// Returns null if input is empty. Also returns spacing via out parameter.
+        /// </returns>
+        public Dictionary<string, double> ConvertStructToNifti(
             DicomSeriesGroup rtStructSeries,
             DicomSeriesGroup imageSeries,
             string outputDir,
@@ -116,7 +147,7 @@ namespace Dicom_RT_images_Csharp.Services
         {
             ct.ThrowIfCancellationRequested();
 
-            if (rtStructSeries.FilePaths.Count == 0 || imageSeries.FilePaths.Count == 0) return;
+            if (rtStructSeries.FilePaths.Count == 0 || imageSeries.FilePaths.Count == 0) return null;
 
             // Load reference image for geometry
             var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths);
@@ -132,6 +163,9 @@ namespace Dicom_RT_images_Csharp.Services
             reader.LoadPrivateTagsOn();
             Image referenceImage = reader.Execute();
 
+            var spacing = referenceImage.GetSpacing();
+            double voxelVolume = spacing[0] * spacing[1] * spacing[2];
+
             string rtStructFilePath = rtStructSeries.FilePaths[0];
 
             // Determine which ROIs to export
@@ -141,7 +175,8 @@ namespace Dicom_RT_images_Csharp.Services
             var masks = _maskService.RasterizeRois(
                 rtStructFilePath, referenceImage, roiNamesToExport, progress, ct);
 
-            // Write mask files
+            // Compute volumes and write mask files
+            var roiVolumes = new Dictionary<string, double>();
             string masksDir;
             if (flatOutput)
             {
@@ -156,6 +191,13 @@ namespace Dicom_RT_images_Csharp.Services
             foreach (var kvp in masks)
             {
                 ct.ThrowIfCancellationRequested();
+
+                // Count non-zero voxels in the binary mask
+                var stats = new StatisticsImageFilter();
+                stats.Execute(kvp.Value);
+                double voxelCount = stats.GetSum(); // binary mask: sum == count of 1-voxels
+                roiVolumes[kvp.Key] = voxelCount * voxelVolume;
+
                 string safeName = SanitizeFileName(kvp.Key);
                 string maskPath = Path.Combine(masksDir, safeName + ".nii.gz");
                 SimpleITK.WriteImage(kvp.Value, maskPath);
@@ -164,6 +206,7 @@ namespace Dicom_RT_images_Csharp.Services
             }
 
             referenceImage.Dispose();
+            return roiVolumes;
         }
 
         /// <summary>

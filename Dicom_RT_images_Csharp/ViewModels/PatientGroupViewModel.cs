@@ -13,6 +13,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
     public class PatientGroupViewModel : INotifyPropertyChanged
     {
         private bool _isExpanded;
+        private bool _isSelected = true;
 
         /// <summary>
         /// Creates a ViewModel from a patient model.
@@ -37,6 +38,32 @@ namespace Dicom_RT_images_Csharp.ViewModels
         /// Display string for the tree node.
         /// </summary>
         public string DisplayName { get; }
+
+        /// <summary>
+        /// Whether this patient is selected for export.
+        /// Propagates to all child series when changed.
+        /// </summary>
+        public bool IsSelected
+        {
+            get { return _isSelected; }
+            set
+            {
+                if (_isSelected != value)
+                {
+                    _isSelected = value;
+                    OnPropertyChanged();
+
+                    // Propagate selection to all child series
+                    foreach (var study in Studies)
+                    {
+                        foreach (var series in study.ImageSeries)
+                        {
+                            series.IsSelected = value;
+                        }
+                    }
+                }
+            }
+        }
 
         /// <summary>
         /// Whether the tree node is expanded.

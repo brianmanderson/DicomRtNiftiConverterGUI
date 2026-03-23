@@ -42,6 +42,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private bool _includeDose = true;
         private bool _onlyExportSpecificRois = false;
         private bool _anonymizeExport = false;
+        private bool _allPatientsSelected = true;
 
         /// <summary>
         /// Creates a new MainViewModel with the required services.
@@ -66,7 +67,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
             ConvertSelectedCommand = new RelayCommand(_ => ExecuteConvert(), _ => !IsScanning && !IsConverting && Patients.Count > 0);
             CancelCommand = new RelayCommand(_ => Cancel(), _ => IsScanning || IsConverting);
             ManageAssociationsCommand = new RelayCommand(_ => OpenAssociationsWindow());
+            OpenAnonymizationKeyEditorCommand = new RelayCommand(_ => OpenAnonymizationKeyEditor());
             OpenSettingsCommand = new RelayCommand(_ => OpenSettingsWindow());
+            SelectAllPatientsCommand = new RelayCommand(_ => ToggleSelectAllPatients());
 
             // Load settings and associations
             _settings = _settingsService.LoadSettings();
@@ -195,6 +198,27 @@ namespace Dicom_RT_images_Csharp.ViewModels
         }
 
         /// <summary>
+        /// Select/deselect all patients toggle. Setting this propagates to all patient ViewModels.
+        /// </summary>
+        public bool AllPatientsSelected
+        {
+            get { return _allPatientsSelected; }
+            set
+            {
+                if (_allPatientsSelected != value)
+                {
+                    _allPatientsSelected = value;
+                    OnPropertyChanged();
+
+                    foreach (var patient in Patients)
+                    {
+                        patient.IsSelected = value;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// Patient groups discovered during scanning.
         /// </summary>
         public ObservableCollection<PatientGroupViewModel> Patients { get; }
@@ -210,7 +234,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public ICommand ConvertSelectedCommand { get; }
         public ICommand CancelCommand { get; }
         public ICommand ManageAssociationsCommand { get; }
+        public ICommand OpenAnonymizationKeyEditorCommand { get; }
         public ICommand OpenSettingsCommand { get; }
+        public ICommand SelectAllPatientsCommand { get; }
 
         private void BrowseInput()
         {
@@ -343,10 +369,12 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 Directory.CreateDirectory(OutputFolder);
             }
 
-            // Collect all selected series
+            // Collect all selected series from selected patients
             var selectedSeries = new List<SeriesGroupViewModel>();
             foreach (var patient in Patients)
             {
+                if (!patient.IsSelected) continue;
+
                 foreach (var study in patient.Studies)
                 {
                     foreach (var series in study.ImageSeries)
@@ -395,12 +423,18 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 int total = selectedSeries.Count;
                 int completed = 0;
 
-                // Create anonymization service if anonymizing
+                // Create anonymization service if anonymizing (loads existing key file for resume)
                 AnonymizationService anonService = null;
                 if (AnonymizeExport)
                 {
-                    anonService = new AnonymizationService(_settings.HashSalt);
+                    string keyFilePath = Path.Combine(OutputFolder, "AnonymizationKey.json");
+                    anonService = new AnonymizationService(keyFilePath, _settings.HashSalt);
                 }
+
+                // Track exported ROI names per series (keyed by seriesUID)
+                var exportedRoisPerSeries = new Dictionary<string, List<string>>();
+                var spacingPerSeries = new Dictionary<string, double[]>();
+                var roiVolumesPerSeries = new Dictionary<string, Dictionary<string, double>>();
 
                 foreach (var seriesVm in selectedSeries)
                 {
@@ -448,24 +482,69 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     Directory.CreateDirectory(outputDir);
 
                     // Convert image series (controlled by global ExportImages toggle)
+                    double[] seriesSpacing = null;
                     if (ExportImages)
                     {
                         progress.Report($"Converting images: {displayLabel}");
-                        await Task.Run(() =>
+                        seriesSpacing = await Task.Run(() =>
                             _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token)).ConfigureAwait(true);
                     }
+
+                    // If images were not exported, still read spacing for the manifest
+                    if (seriesSpacing == null)
+                    {
+                        seriesSpacing = await Task.Run(() =>
+                            _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
+                    }
+
+                    spacingPerSeries[seriesUid] = seriesSpacing;
+
+                    // Track ROI names exported for this series
+                    var exportedRoiNames = new List<string>();
+                    Dictionary<string, double> roiVolumes = null;
 
                     // Convert RT Struct if global IncludeStructures is enabled
                     if (IncludeStructures && model.LinkedRtStruct != null)
                     {
                         progress.Report($"Rasterizing structures: {displayLabel}");
-                        await Task.Run(() =>
+
+                        // Determine which ROI names will be exported for tracking
+                        if (model.LinkedRtStruct.RoiNames != null)
+                        {
+                            if (effectiveAssociations != null && effectiveAssociations.Count > 0)
+                            {
+                                // When using specific ROI associations, track only matched names
+                                foreach (var assoc in effectiveAssociations)
+                                {
+                                    foreach (var roiName in model.LinkedRtStruct.RoiNames)
+                                    {
+                                        if (assoc.Aliases.Any(d => string.Equals(d, roiName, StringComparison.OrdinalIgnoreCase))
+                                            || string.Equals(assoc.CanonicalName, roiName, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            exportedRoiNames.Add(assoc.CanonicalName);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Export all ROIs
+                                exportedRoiNames.AddRange(model.LinkedRtStruct.RoiNames);
+                            }
+                        }
+
+                        roiVolumes = await Task.Run(() =>
                             _conversionService.ConvertStructToNifti(
                                 model.LinkedRtStruct, model, outputDir,
                                 effectiveAssociations, effectiveExportUnmatched,
                                 AnonymizeExport,
                                 progress, _cts.Token)).ConfigureAwait(true);
                     }
+
+                    exportedRoisPerSeries[seriesUid] = exportedRoiNames;
+                    if (roiVolumes != null)
+                        roiVolumesPerSeries[seriesUid] = roiVolumes;
 
                     // Convert RT Dose if global IncludeDose is enabled
                     if (IncludeDose && model.LinkedRtDose != null)
@@ -479,10 +558,52 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     ProgressValue = (double)completed / total * 100;
                 }
 
-                // Write CSV manifest when anonymizing
+                // Save anonymization key file and write CSV manifest
                 if (AnonymizeExport && anonService != null)
                 {
-                    WriteCsvManifest(anonService.GetManifestRows(), OutputFolder);
+                    anonService.Save();
+                    var manifestRows = anonService.GetAllManifestRows();
+
+                    // Attach exported ROI names, spacing, and volumes to manifest rows
+                    foreach (var row in manifestRows)
+                    {
+                        List<string> rois;
+                        if (exportedRoisPerSeries.TryGetValue(row.SeriesUID, out rois))
+                        {
+                            row.ExportedRois = string.Join("; ", rois);
+                        }
+
+                        double[] spacing;
+                        if (spacingPerSeries.TryGetValue(row.SeriesUID, out spacing))
+                        {
+                            row.SpacingX = spacing[0];
+                            row.SpacingY = spacing[1];
+                            row.SpacingZ = spacing[2];
+                        }
+
+                        Dictionary<string, double> volumes;
+                        if (roiVolumesPerSeries.TryGetValue(row.SeriesUID, out volumes))
+                        {
+                            row.RoiVolumes = volumes;
+                        }
+                    }
+
+                    // Collect all unique ROI names across exported series for CSV columns
+                    var allExportedRoiNames = new List<string>();
+                    if (IncludeStructures)
+                    {
+                        var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var rois in exportedRoisPerSeries.Values)
+                        {
+                            foreach (var name in rois)
+                            {
+                                if (roiNameSet.Add(name))
+                                    allExportedRoiNames.Add(name);
+                            }
+                        }
+                    }
+
+                    WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames);
                 }
 
                 AppendLog($"Conversion complete. {completed} series exported to {OutputFolder}");
@@ -511,6 +632,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
             }
         }
 
+        private void ToggleSelectAllPatients()
+        {
+            AllPatientsSelected = !AllPatientsSelected;
+        }
+
         private void Cancel()
         {
             _cts?.Cancel();
@@ -526,6 +652,24 @@ namespace Dicom_RT_images_Csharp.ViewModels
             window.ShowDialog();
             // Reload associations after window closes
             _associations = _settingsService.LoadAssociations();
+        }
+
+        private void OpenAnonymizationKeyEditor()
+        {
+            string keyFilePath;
+            if (!string.IsNullOrEmpty(OutputFolder))
+            {
+                keyFilePath = Path.Combine(OutputFolder, "AnonymizationKey.json");
+            }
+            else
+            {
+                keyFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "DicomToNifti", "AnonymizationKey.json");
+            }
+
+            var window = new Views.AnonymizationKeyEditorWindow(keyFilePath);
+            window.Owner = Application.Current.MainWindow;
+            window.ShowDialog();
         }
 
         private void OpenSettingsWindow()
@@ -545,17 +689,48 @@ namespace Dicom_RT_images_Csharp.ViewModels
         /// <summary>
         /// Writes the export manifest CSV to the output folder.
         /// </summary>
-        private void WriteCsvManifest(List<ManifestRow> rows, string outputFolder)
+        private void WriteCsvManifest(List<ManifestRow> rows, string outputFolder, List<string> roiColumnNames = null)
         {
             string csvPath = Path.Combine(outputFolder, "export_manifest.csv");
             using (var writer = new StreamWriter(csvPath))
             {
-                writer.WriteLine("MRN,StudyUID,SeriesUID,ExportID");
+                // Build header
+                var header = "MRN,StudyUID,SeriesUID,ExportID,ExportedROIs,SpacingX,SpacingY,SpacingZ";
+                if (roiColumnNames != null && roiColumnNames.Count > 0)
+                {
+                    foreach (var roiName in roiColumnNames)
+                    {
+                        header += ",\"" + roiName.Replace("\"", "\"\"") + "\"";
+                    }
+                }
+                writer.WriteLine(header);
+
                 foreach (var row in rows)
                 {
-                    // Quote fields defensively in case any contain commas
-                    writer.WriteLine(string.Format("\"{0}\",\"{1}\",\"{2}\",{3}",
-                        row.MRN, row.StudyUID, row.SeriesUID, row.ExportID));
+                    // Quote fields defensively in case any contain commas or semicolons
+                    var line = string.Format("\"{0}\",\"{1}\",\"{2}\",{3},\"{4}\",{5},{6},{7}",
+                        row.MRN, row.StudyUID, row.SeriesUID, row.ExportID,
+                        row.ExportedRois ?? "",
+                        row.SpacingX, row.SpacingY, row.SpacingZ);
+
+                    // Append ROI volume columns
+                    if (roiColumnNames != null && roiColumnNames.Count > 0)
+                    {
+                        foreach (var roiName in roiColumnNames)
+                        {
+                            double volume;
+                            if (row.RoiVolumes != null && row.RoiVolumes.TryGetValue(roiName, out volume))
+                            {
+                                line += "," + volume;
+                            }
+                            else
+                            {
+                                line += ",-1";
+                            }
+                        }
+                    }
+
+                    writer.WriteLine(line);
                 }
             }
             AppendLog($"Wrote manifest: {csvPath}");
