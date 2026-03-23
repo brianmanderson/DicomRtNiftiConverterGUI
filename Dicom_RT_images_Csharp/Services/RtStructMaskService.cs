@@ -9,7 +9,9 @@ using itk.simple;
 namespace Dicom_RT_images_Csharp.Services
 {
     /// <summary>
-    /// Rasterizes RT Struct contours into binary 3D mask volumes using a scanline fill algorithm.
+    /// Rasterizes RT Struct contours into binary 3D mask volumes.
+    /// Supports all DICOM contour geometry types: CLOSED_PLANAR, OPEN_PLANAR,
+    /// OPEN_NONPLANAR, CLOSED_NONPLANAR, and POINT.
     /// </summary>
     public class RtStructMaskService
     {
@@ -125,7 +127,7 @@ namespace Dicom_RT_images_Csharp.Services
                         // Default to CLOSED_PLANAR
                     }
 
-                    if (geoType != "CLOSED_PLANAR") continue;
+                    geoType = (geoType ?? "CLOSED_PLANAR").Trim().ToUpperInvariant();
 
                     double[] contourData;
                     try
@@ -137,52 +139,33 @@ namespace Dicom_RT_images_Csharp.Services
                         continue;
                     }
 
-                    if (contourData == null || contourData.Length < 9) continue; // Need at least 3 points
+                    if (contourData == null || contourData.Length < 3) continue;
 
-                    int pointCount = contourData.Length / 3;
-                    double[] polyXd = new double[pointCount];
-                    double[] polyYd = new double[pointCount];
-                    double sliceZSum = 0;
-                    bool validContour = true;
-
-                    for (int i = 0; i < pointCount; i++)
+                    bool handled;
+                    switch (geoType)
                     {
-                        double px = contourData[i * 3];
-                        double py = contourData[i * 3 + 1];
-                        double pz = contourData[i * 3 + 2];
-
-                        // Transform physical point to continuous index
-                        var physPt = new VectorDouble(new double[] { px, py, pz });
-                        VectorDouble continuousIdx;
-                        try
-                        {
-                            continuousIdx = referenceImage.TransformPhysicalPointToContinuousIndex(physPt);
-                        }
-                        catch (Exception)
-                        {
-                            validContour = false;
+                        case "CLOSED_PLANAR":
+                            handled = RasterizeClosedPlanar(contourData, referenceImage, maskData, rows, cols, slices);
                             break;
-                        }
-
-                        polyXd[i] = continuousIdx[0]; // column (x)
-                        polyYd[i] = continuousIdx[1]; // row (y)
-                        sliceZSum += continuousIdx[2]; // slice (z)
+                        case "OPEN_PLANAR":
+                            handled = RasterizeOpenPlanar(contourData, referenceImage, maskData, rows, cols, slices);
+                            break;
+                        case "OPEN_NONPLANAR":
+                            handled = RasterizeOpenNonplanar(contourData, referenceImage, maskData, rows, cols, slices);
+                            break;
+                        case "CLOSED_NONPLANAR":
+                            handled = RasterizeClosedNonplanar(contourData, referenceImage, maskData, rows, cols, slices);
+                            break;
+                        case "POINT":
+                            handled = RasterizePoint(contourData, referenceImage, maskData, rows, cols, slices);
+                            break;
+                        default:
+                            // Unknown geometry type — skip
+                            handled = false;
+                            break;
                     }
 
-                    if (!validContour) continue;
-
-                    // Determine slice index (average z, round to nearest)
-                    int sliceIdx = (int)Math.Round(sliceZSum / pointCount);
-
-                    // Clamp slice index
-                    if (sliceIdx < 0 || sliceIdx >= slices)
-                    {
-                        continue;
-                    }
-
-                    // Run scanline fill with XOR (even-odd rule)
-                    ScanlineFillPolygon(maskData, polyXd, polyYd, pointCount, sliceIdx, rows, cols);
-                    contourCount++;
+                    if (handled) contourCount++;
                 }
 
                 if (contourCount == 0)
@@ -197,6 +180,266 @@ namespace Dicom_RT_images_Csharp.Services
             }
 
             return results;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  CLOSED_PLANAR — closed polygon on a single slice, scanline fill
+        // ────────────────────────────────────────────────────────────────
+
+        private bool RasterizeClosedPlanar(
+            double[] contourData, Image referenceImage,
+            byte[] maskData, int rows, int cols, int slices)
+        {
+            if (contourData.Length < 9) return false; // need >= 3 points
+
+            int pointCount = contourData.Length / 3;
+            double[] polyX = new double[pointCount];
+            double[] polyY = new double[pointCount];
+            double sliceZSum = 0;
+
+            for (int i = 0; i < pointCount; i++)
+            {
+                var idx = PhysicalToIndex(contourData, i, referenceImage);
+                if (idx == null) return false;
+                polyX[i] = idx[0];
+                polyY[i] = idx[1];
+                sliceZSum += idx[2];
+            }
+
+            int sliceIdx = (int)Math.Round(sliceZSum / pointCount);
+            if (sliceIdx < 0 || sliceIdx >= slices) return false;
+
+            ScanlineFillPolygon(maskData, polyX, polyY, pointCount, sliceIdx, rows, cols);
+            return true;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  OPEN_PLANAR — open polyline on a single slice, line rasterization
+        // ────────────────────────────────────────────────────────────────
+
+        private bool RasterizeOpenPlanar(
+            double[] contourData, Image referenceImage,
+            byte[] maskData, int rows, int cols, int slices)
+        {
+            if (contourData.Length < 6) return false; // need >= 2 points
+
+            int pointCount = contourData.Length / 3;
+            double[] polyX = new double[pointCount];
+            double[] polyY = new double[pointCount];
+            double sliceZSum = 0;
+
+            for (int i = 0; i < pointCount; i++)
+            {
+                var idx = PhysicalToIndex(contourData, i, referenceImage);
+                if (idx == null) return false;
+                polyX[i] = idx[0];
+                polyY[i] = idx[1];
+                sliceZSum += idx[2];
+            }
+
+            int sliceIdx = (int)Math.Round(sliceZSum / pointCount);
+            if (sliceIdx < 0 || sliceIdx >= slices) return false;
+
+            // Draw line segments between consecutive points (not closed)
+            for (int i = 0; i < pointCount - 1; i++)
+            {
+                RasterizeLine2D(maskData, polyX[i], polyY[i], polyX[i + 1], polyY[i + 1],
+                    sliceIdx, rows, cols);
+            }
+            return true;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  OPEN_NONPLANAR — open polyline spanning multiple slices
+        // ────────────────────────────────────────────────────────────────
+
+        private bool RasterizeOpenNonplanar(
+            double[] contourData, Image referenceImage,
+            byte[] maskData, int rows, int cols, int slices)
+        {
+            if (contourData.Length < 6) return false;
+
+            int pointCount = contourData.Length / 3;
+            var points = new double[pointCount][];
+
+            for (int i = 0; i < pointCount; i++)
+            {
+                points[i] = PhysicalToIndex(contourData, i, referenceImage);
+                if (points[i] == null) return false;
+            }
+
+            // Draw 3D line segments between consecutive points
+            for (int i = 0; i < pointCount - 1; i++)
+            {
+                RasterizeLine3D(maskData, points[i], points[i + 1], rows, cols, slices);
+            }
+            return true;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  CLOSED_NONPLANAR — closed polygon spanning multiple slices
+        //  Slice the 3D polygon at each axial plane it intersects,
+        //  then scanline-fill the resulting cross-section.
+        // ────────────────────────────────────────────────────────────────
+
+        private bool RasterizeClosedNonplanar(
+            double[] contourData, Image referenceImage,
+            byte[] maskData, int rows, int cols, int slices)
+        {
+            if (contourData.Length < 9) return false;
+
+            int pointCount = contourData.Length / 3;
+            var points = new double[pointCount][];
+
+            double minZ = double.MaxValue;
+            double maxZ = double.MinValue;
+
+            for (int i = 0; i < pointCount; i++)
+            {
+                points[i] = PhysicalToIndex(contourData, i, referenceImage);
+                if (points[i] == null) return false;
+                if (points[i][2] < minZ) minZ = points[i][2];
+                if (points[i][2] > maxZ) maxZ = points[i][2];
+            }
+
+            int sliceMin = Math.Max(0, (int)Math.Floor(minZ));
+            int sliceMax = Math.Min(slices - 1, (int)Math.Ceiling(maxZ));
+
+            bool anyFilled = false;
+
+            // For each slice the polygon spans, compute the cross-section
+            for (int sz = sliceMin; sz <= sliceMax; sz++)
+            {
+                double planeZ = sz + 0.5; // slice center
+
+                // Find intersections of each 3D edge with this z-plane
+                var crossX = new List<double>();
+                var crossY = new List<double>();
+
+                for (int i = 0; i < pointCount; i++)
+                {
+                    int j = (i + 1) % pointCount;
+                    double z0 = points[i][2];
+                    double z1 = points[j][2];
+
+                    // Check if this edge crosses the slice plane
+                    if ((z0 <= planeZ && z1 > planeZ) || (z1 <= planeZ && z0 > planeZ))
+                    {
+                        double t = (planeZ - z0) / (z1 - z0);
+                        crossX.Add(points[i][0] + t * (points[j][0] - points[i][0]));
+                        crossY.Add(points[i][1] + t * (points[j][1] - points[i][1]));
+                    }
+                    // If a vertex sits exactly on the plane, include it
+                    else if (Math.Abs(z0 - planeZ) < 0.001)
+                    {
+                        crossX.Add(points[i][0]);
+                        crossY.Add(points[i][1]);
+                    }
+                }
+
+                if (crossX.Count < 3)
+                {
+                    // Fewer than 3 intersection points — not enough for a polygon.
+                    // If there are exactly 2 points, draw a line between them.
+                    if (crossX.Count == 2)
+                    {
+                        RasterizeLine2D(maskData, crossX[0], crossY[0], crossX[1], crossY[1],
+                            sz, rows, cols);
+                        anyFilled = true;
+                    }
+                    continue;
+                }
+
+                // Order intersection points by angle from centroid to form a valid polygon
+                double cx = 0, cy = 0;
+                for (int i = 0; i < crossX.Count; i++)
+                {
+                    cx += crossX[i];
+                    cy += crossY[i];
+                }
+                cx /= crossX.Count;
+                cy /= crossY.Count;
+
+                var ordered = new List<int>(Enumerable.Range(0, crossX.Count));
+                ordered.Sort((a, b) =>
+                {
+                    double angA = Math.Atan2(crossY[a] - cy, crossX[a] - cx);
+                    double angB = Math.Atan2(crossY[b] - cy, crossX[b] - cx);
+                    return angA.CompareTo(angB);
+                });
+
+                double[] polyX = new double[ordered.Count];
+                double[] polyY = new double[ordered.Count];
+                for (int i = 0; i < ordered.Count; i++)
+                {
+                    polyX[i] = crossX[ordered[i]];
+                    polyY[i] = crossY[ordered[i]];
+                }
+
+                ScanlineFillPolygon(maskData, polyX, polyY, ordered.Count, sz, rows, cols);
+                anyFilled = true;
+            }
+
+            return anyFilled;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  POINT — one or more marker points, set nearest voxel(s)
+        // ────────────────────────────────────────────────────────────────
+
+        private bool RasterizePoint(
+            double[] contourData, Image referenceImage,
+            byte[] maskData, int rows, int cols, int slices)
+        {
+            int pointCount = contourData.Length / 3;
+            bool any = false;
+
+            for (int i = 0; i < pointCount; i++)
+            {
+                var idx = PhysicalToIndex(contourData, i, referenceImage);
+                if (idx == null) continue;
+
+                int x = (int)Math.Round(idx[0]);
+                int y = (int)Math.Round(idx[1]);
+                int z = (int)Math.Round(idx[2]);
+
+                if (x < 0 || x >= cols || y < 0 || y >= rows || z < 0 || z >= slices)
+                    continue;
+
+                maskData[z * rows * cols + y * cols + x] = 1;
+                any = true;
+            }
+
+            return any;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  Shared helpers
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Transforms the i-th physical point in contourData to a continuous voxel index.
+        /// Returns [x, y, z] or null on failure.
+        /// </summary>
+        private double[] PhysicalToIndex(double[] contourData, int pointIndex, Image referenceImage)
+        {
+            int offset = pointIndex * 3;
+            var physPt = new VectorDouble(new double[]
+            {
+                contourData[offset],
+                contourData[offset + 1],
+                contourData[offset + 2]
+            });
+
+            try
+            {
+                VectorDouble idx = referenceImage.TransformPhysicalPointToContinuousIndex(physPt);
+                return new double[] { idx[0], idx[1], idx[2] };
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         /// <summary>
@@ -260,6 +503,96 @@ namespace Dicom_RT_images_Csharp.Services
                     {
                         maskData[rowOffset + x] ^= 1;
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Draws a 2D line on a single slice using Bresenham's algorithm.
+        /// Sets voxels to 1 (no XOR — lines should accumulate, not toggle).
+        /// </summary>
+        private void RasterizeLine2D(
+            byte[] maskData,
+            double x0d, double y0d, double x1d, double y1d,
+            int sliceIdx,
+            int rows, int cols)
+        {
+            int x0 = (int)Math.Round(x0d);
+            int y0 = (int)Math.Round(y0d);
+            int x1 = (int)Math.Round(x1d);
+            int y1 = (int)Math.Round(y1d);
+            int sliceOffset = sliceIdx * rows * cols;
+
+            int dx = Math.Abs(x1 - x0);
+            int dy = Math.Abs(y1 - y0);
+            int sx = x0 < x1 ? 1 : -1;
+            int sy = y0 < y1 ? 1 : -1;
+            int err = dx - dy;
+
+            while (true)
+            {
+                if (x0 >= 0 && x0 < cols && y0 >= 0 && y0 < rows)
+                {
+                    maskData[sliceOffset + y0 * cols + x0] = 1;
+                }
+
+                if (x0 == x1 && y0 == y1) break;
+
+                int e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; x0 += sx; }
+                if (e2 < dx) { err += dx; y0 += sy; }
+            }
+        }
+
+        /// <summary>
+        /// Draws a 3D line between two voxel-space points using 3D Bresenham's algorithm.
+        /// Sets voxels to 1.
+        /// </summary>
+        private void RasterizeLine3D(
+            byte[] maskData,
+            double[] p0, double[] p1,
+            int rows, int cols, int slices)
+        {
+            int x0 = (int)Math.Round(p0[0]);
+            int y0 = (int)Math.Round(p0[1]);
+            int z0 = (int)Math.Round(p0[2]);
+            int x1 = (int)Math.Round(p1[0]);
+            int y1 = (int)Math.Round(p1[1]);
+            int z1 = (int)Math.Round(p1[2]);
+
+            int dx = Math.Abs(x1 - x0);
+            int dy = Math.Abs(y1 - y0);
+            int dz = Math.Abs(z1 - z0);
+            int sx = x0 < x1 ? 1 : -1;
+            int sy = y0 < y1 ? 1 : -1;
+            int sz = z0 < z1 ? 1 : -1;
+
+            // Determine the dominant axis for 3D Bresenham
+            int dm = Math.Max(dx, Math.Max(dy, dz));
+
+            if (dm == 0)
+            {
+                // Single point
+                if (x0 >= 0 && x0 < cols && y0 >= 0 && y0 < rows && z0 >= 0 && z0 < slices)
+                    maskData[z0 * rows * cols + y0 * cols + x0] = 1;
+                return;
+            }
+
+            // DDA stepping along the longest axis for accuracy
+            int steps = dm;
+            double stepX = (double)(x1 - x0) / steps;
+            double stepY = (double)(y1 - y0) / steps;
+            double stepZ = (double)(z1 - z0) / steps;
+
+            for (int i = 0; i <= steps; i++)
+            {
+                int x = (int)Math.Round(x0 + stepX * i);
+                int y = (int)Math.Round(y0 + stepY * i);
+                int z = (int)Math.Round(z0 + stepZ * i);
+
+                if (x >= 0 && x < cols && y >= 0 && y < rows && z >= 0 && z < slices)
+                {
+                    maskData[z * rows * cols + y * cols + x] = 1;
                 }
             }
         }
