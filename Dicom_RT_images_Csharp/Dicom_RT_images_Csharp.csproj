@@ -192,6 +192,14 @@
       <DependentUpon>AnonymizationKeyEditorWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="Views\RoiSelectionWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="Views\RoiSelectionWindow.xaml.cs">
+      <DependentUpon>RoiSelectionWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Models\AppSettings.cs" />
@@ -203,6 +211,7 @@
     <Compile Include="ViewModels\MainViewModel.cs" />
     <Compile Include="ViewModels\PatientGroupViewModel.cs" />
     <Compile Include="ViewModels\RoiAssociationViewModel.cs" />
+    <Compile Include="ViewModels\RoiSelectionViewModel.cs" />
     <Compile Include="Services\DicomScannerService.cs" />
     <Compile Include="Services\NiftiConversionService.cs" />
     <Compile Include="Services\RtStructMaskService.cs" />

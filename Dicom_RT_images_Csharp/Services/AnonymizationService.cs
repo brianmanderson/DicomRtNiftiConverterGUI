@@ -210,7 +210,6 @@ namespace Dicom_RT_images_Csharp.Services
         public string StudyUID { get; set; }
         public string SeriesUID { get; set; }
         public int ExportID { get; set; }
-        public string ExportedRois { get; set; }
         public double SpacingX { get; set; }
         public double SpacingY { get; set; }
         public double SpacingZ { get; set; }

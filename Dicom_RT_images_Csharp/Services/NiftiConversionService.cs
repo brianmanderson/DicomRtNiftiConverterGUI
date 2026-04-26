@@ -196,13 +196,73 @@ namespace Dicom_RT_images_Csharp.Services
                 var stats = new StatisticsImageFilter();
                 stats.Execute(kvp.Value);
                 double voxelCount = stats.GetSum(); // binary mask: sum == count of 1-voxels
-                roiVolumes[kvp.Key] = voxelCount * voxelVolume;
+                roiVolumes[kvp.Key] = voxelCount * voxelVolume / 1000; // convert to cc
 
                 string safeName = SanitizeFileName(kvp.Key);
                 string maskPath = Path.Combine(masksDir, safeName + ".nii.gz");
                 SimpleITK.WriteImage(kvp.Value, maskPath);
                 kvp.Value.Dispose();
                 progress?.Report($"  Wrote mask: {safeName}.nii.gz");
+            }
+
+            referenceImage.Dispose();
+            return roiVolumes;
+        }
+
+        /// <summary>
+        /// Computes ROI volumes without writing any mask files to disk.
+        /// Returns a dictionary mapping ROI output name -> volume in cc.
+        /// </summary>
+        public Dictionary<string, double> ComputeStructVolumes(
+            DicomSeriesGroup rtStructSeries,
+            DicomSeriesGroup imageSeries,
+            List<RoiAssociation> associations,
+            bool exportUnmatched,
+            IProgress<string> progress,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (rtStructSeries.FilePaths.Count == 0 || imageSeries.FilePaths.Count == 0) return null;
+
+            // Load reference image for geometry
+            var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths);
+            var fileNames = new VectorString();
+            foreach (var f in sortedFiles)
+            {
+                fileNames.Add(f);
+            }
+
+            var reader = new ImageSeriesReader();
+            reader.SetFileNames(fileNames);
+            reader.MetaDataDictionaryArrayUpdateOn();
+            reader.LoadPrivateTagsOn();
+            Image referenceImage = reader.Execute();
+
+            var spacing = referenceImage.GetSpacing();
+            double voxelVolume = spacing[0] * spacing[1] * spacing[2];
+
+            string rtStructFilePath = rtStructSeries.FilePaths[0];
+
+            // Determine which ROIs to process
+            var roiNamesToExport = ResolveRoiNames(rtStructSeries.RoiNames, associations, exportUnmatched);
+
+            // Rasterize
+            var masks = _maskService.RasterizeRois(
+                rtStructFilePath, referenceImage, roiNamesToExport, progress, ct);
+
+            // Compute volumes only (no file writing)
+            var roiVolumes = new Dictionary<string, double>();
+            foreach (var kvp in masks)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var stats = new StatisticsImageFilter();
+                stats.Execute(kvp.Value);
+                double voxelCount = stats.GetSum();
+                roiVolumes[kvp.Key] = voxelCount * voxelVolume / 1000; // convert to cc
+
+                kvp.Value.Dispose();
             }
 
             referenceImage.Dispose();

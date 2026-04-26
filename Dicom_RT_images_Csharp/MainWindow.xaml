@@ -245,15 +245,20 @@
 
                         <Button Content="Edit ROI Associations..."
                                 Command="{Binding ManageAssociationsCommand}"
-                                IsEnabled="{Binding OnlyExportSpecificRois}"
-                                Padding="12,8" Margin="4,4,4,12" FontSize="13" Cursor="Hand"
+                                Padding="12,8" Margin="4,4,4,4" FontSize="13" Cursor="Hand"
                                 Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
 
+                        <Button Content="Select ROIs for Export..."
+                                Command="{Binding SelectRoisCommand}"
+                                IsEnabled="{Binding OnlyExportSpecificRois}"
+                                Padding="12,8" Margin="4,4,4,12" FontSize="13" Cursor="Hand"
+                                Background="#FF9800" Foreground="White" FontWeight="SemiBold"/>
+
                         <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4">
-                            When unchecked, all ROIs found in RT Struct files are exported.
+                            ROI Associations always apply — matching ROIs are renamed to their canonical names during export.
                         </TextBlock>
                         <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0">
-                            When checked, only ROIs matching your defined associations will be exported.
+                            When checked, only ROIs matching associations are exported. Use "Select ROIs for Export" to choose which ROIs to include. Patients missing all selected ROIs are automatically de-selected.
                         </TextBlock>
 
                         <Separator Margin="0,12"/>
@@ -284,6 +289,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
@@ -292,7 +298,12 @@
                             Style="{StaticResource ActionButtonStyle}"
                             Background="#1976D2" Foreground="White" FontWeight="SemiBold"
                             MinWidth="140"/>
-                    <Button Grid.Column="1" Content="Settings..."
+                    <Button Grid.Column="1" Content="Export MetaData"
+                            Command="{Binding ExportMetaDataCommand}"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#4CAF50" Foreground="White" FontWeight="SemiBold"
+                            MinWidth="140"/>
+                    <Button Grid.Column="2" Content="Settings..."
                             Command="{Binding OpenSettingsCommand}"
                             Style="{StaticResource ActionButtonStyle}"/>
                 </Grid>

@@ -44,6 +44,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private bool _anonymizeExport = false;
         private bool _allPatientsSelected = true;
 
+        // Tracks the user's ROI selection from the RoiSelectionWindow (null = not yet chosen)
+        private HashSet<string> _selectedRoiNames;
+
         /// <summary>
         /// Creates a new MainViewModel with the required services.
         /// </summary>
@@ -67,9 +70,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
             ConvertSelectedCommand = new RelayCommand(_ => ExecuteConvert(), _ => !IsScanning && !IsConverting && Patients.Count > 0);
             CancelCommand = new RelayCommand(_ => Cancel(), _ => IsScanning || IsConverting);
             ManageAssociationsCommand = new RelayCommand(_ => OpenAssociationsWindow());
+            SelectRoisCommand = new RelayCommand(_ => OpenRoiSelectionWindow());
             OpenAnonymizationKeyEditorCommand = new RelayCommand(_ => OpenAnonymizationKeyEditor());
             OpenSettingsCommand = new RelayCommand(_ => OpenSettingsWindow());
             SelectAllPatientsCommand = new RelayCommand(_ => ToggleSelectAllPatients());
+            ExportMetaDataCommand = new RelayCommand(_ => ExecuteExportMetaData(), _ => !IsScanning && !IsConverting && Patients.Count > 0);
 
             // Load settings and associations
             _settings = _settingsService.LoadSettings();
@@ -234,9 +239,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public ICommand ConvertSelectedCommand { get; }
         public ICommand CancelCommand { get; }
         public ICommand ManageAssociationsCommand { get; }
+        public ICommand SelectRoisCommand { get; }
         public ICommand OpenAnonymizationKeyEditorCommand { get; }
         public ICommand OpenSettingsCommand { get; }
         public ICommand SelectAllPatientsCommand { get; }
+        public ICommand ExportMetaDataCommand { get; }
 
         private void BrowseInput()
         {
@@ -408,9 +415,39 @@ namespace Dicom_RT_images_Csharp.ViewModels
             // Reload associations in case they were edited
             _associations = _settingsService.LoadAssociations();
 
-            // Determine association behavior based on global toggle
-            var effectiveAssociations = OnlyExportSpecificRois ? _associations : null;
+            // Always apply associations for renaming; only filter ROIs when checkbox is checked
+            var effectiveAssociations = _associations;
             bool effectiveExportUnmatched = !OnlyExportSpecificRois;
+
+            if (OnlyExportSpecificRois && _selectedRoiNames != null && _selectedRoiNames.Count > 0)
+            {
+                var filtered = new List<RoiAssociation>();
+                var coveredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var assoc in _associations)
+                {
+                    if (_selectedRoiNames.Contains(assoc.CanonicalName))
+                    {
+                        filtered.Add(assoc);
+                        coveredNames.Add(assoc.CanonicalName);
+                    }
+                }
+
+                foreach (var name in _selectedRoiNames)
+                {
+                    if (!coveredNames.Contains(name))
+                    {
+                        filtered.Add(new RoiAssociation
+                        {
+                            CanonicalName = name,
+                            Aliases = new List<string> { name }
+                        });
+                    }
+                }
+
+                effectiveAssociations = filtered;
+                effectiveExportUnmatched = false;
+            }
 
             IProgress<string> progress = new Progress<string>(msg =>
             {
@@ -513,7 +550,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                         {
                             if (effectiveAssociations != null && effectiveAssociations.Count > 0)
                             {
-                                // When using specific ROI associations, track only matched names
+                                // Track matched association canonical names
                                 foreach (var assoc in effectiveAssociations)
                                 {
                                     foreach (var roiName in model.LinkedRtStruct.RoiNames)
@@ -526,10 +563,26 @@ namespace Dicom_RT_images_Csharp.ViewModels
                                         }
                                     }
                                 }
+                                // Also track unmatched ROIs when exporting all
+                                if (effectiveExportUnmatched)
+                                {
+                                    var matchedDicomNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                    foreach (var assoc in effectiveAssociations)
+                                    {
+                                        matchedDicomNames.Add(assoc.CanonicalName);
+                                        foreach (var alias in assoc.Aliases)
+                                            matchedDicomNames.Add(alias);
+                                    }
+                                    foreach (var roiName in model.LinkedRtStruct.RoiNames)
+                                    {
+                                        if (!matchedDicomNames.Contains(roiName))
+                                            exportedRoiNames.Add(roiName);
+                                    }
+                                }
                             }
                             else
                             {
-                                // Export all ROIs
+                                // No associations defined: export all ROIs with original names
                                 exportedRoiNames.AddRange(model.LinkedRtStruct.RoiNames);
                             }
                         }
@@ -591,8 +644,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                             MRN = pid,
                             StudyUID = suid,
                             SeriesUID = m.SeriesInstanceUID,
-                            ExportID = -1,
-                            ExportedRois = ""
+                            ExportID = -1
                         });
                     }
                 }
@@ -600,12 +652,6 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 // Attach exported ROI names, spacing, and volumes to manifest rows
                 foreach (var row in manifestRows)
                 {
-                    List<string> rois;
-                    if (exportedRoisPerSeries.TryGetValue(row.SeriesUID, out rois))
-                    {
-                        row.ExportedRois = string.Join("; ", rois);
-                    }
-
                     double[] spacing;
                     if (spacingPerSeries.TryGetValue(row.SeriesUID, out spacing))
                     {
@@ -664,6 +710,221 @@ namespace Dicom_RT_images_Csharp.ViewModels
             }
         }
 
+        private async void ExecuteExportMetaData()
+        {
+            if (string.IsNullOrEmpty(OutputFolder))
+            {
+                StatusText = "Please select an output folder.";
+                return;
+            }
+
+            Directory.CreateDirectory(OutputFolder);
+
+            // Collect selected series
+            var selectedSeries = new List<SeriesGroupViewModel>();
+            foreach (var patient in Patients)
+            {
+                if (!patient.IsSelected) continue;
+                foreach (var study in patient.Studies)
+                {
+                    foreach (var series in study.ImageSeries)
+                    {
+                        if (series.IsSelected) selectedSeries.Add(series);
+                    }
+                }
+            }
+
+            if (selectedSeries.Count == 0)
+            {
+                StatusText = "No series selected.";
+                return;
+            }
+
+            IsConverting = true;
+            _cts = new CancellationTokenSource();
+
+            // Reload associations
+            _associations = _settingsService.LoadAssociations();
+            var effectiveAssociations = _associations;
+            bool effectiveExportUnmatched = !OnlyExportSpecificRois;
+
+            if (OnlyExportSpecificRois && _selectedRoiNames != null && _selectedRoiNames.Count > 0)
+            {
+                var filtered = new List<RoiAssociation>();
+                var coveredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var assoc in _associations)
+                {
+                    if (_selectedRoiNames.Contains(assoc.CanonicalName))
+                    {
+                        filtered.Add(assoc);
+                        coveredNames.Add(assoc.CanonicalName);
+                    }
+                }
+
+                foreach (var name in _selectedRoiNames)
+                {
+                    if (!coveredNames.Contains(name))
+                    {
+                        filtered.Add(new RoiAssociation
+                        {
+                            CanonicalName = name,
+                            Aliases = new List<string> { name }
+                        });
+                    }
+                }
+
+                effectiveAssociations = filtered;
+                effectiveExportUnmatched = false;
+            }
+
+            IProgress<string> progress = new Progress<string>(msg =>
+            {
+                StatusText = msg;
+                AppendLog(msg);
+            });
+
+            try
+            {
+                int total = selectedSeries.Count;
+                int completed = 0;
+
+                var spacingPerSeries = new Dictionary<string, double[]>();
+                var roiVolumesPerSeries = new Dictionary<string, Dictionary<string, double>>();
+
+                foreach (var seriesVm in selectedSeries)
+                {
+                    _cts.Token.ThrowIfCancellationRequested();
+                    var model = seriesVm.Model;
+
+                    string patientId = "Unknown";
+                    string studyUid = "";
+                    string seriesUid = model.SeriesInstanceUID;
+
+                    foreach (var p in Patients)
+                    {
+                        foreach (var s in p.Studies)
+                        {
+                            if (s.ImageSeries.Contains(seriesVm))
+                            {
+                                patientId = p.Model.PatientID;
+                                studyUid = s.Model.StudyInstanceUID;
+                                break;
+                            }
+                        }
+                    }
+
+                    string displayLabel = $"{patientId}/{seriesUid.Substring(0, Math.Min(8, seriesUid.Length))}";
+
+                    // Get spacing without writing images
+                    progress.Report($"Reading spacing: {displayLabel}");
+                    double[] seriesSpacing = await Task.Run(() =>
+                        _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
+                    spacingPerSeries[seriesUid] = seriesSpacing;
+
+                    // Compute ROI volumes without writing masks
+                    if (IncludeStructures && model.LinkedRtStruct != null)
+                    {
+                        progress.Report($"Computing volumes: {displayLabel}");
+
+                        var roiVolumes = await Task.Run(() =>
+                            _conversionService.ComputeStructVolumes(
+                                model.LinkedRtStruct, model,
+                                effectiveAssociations, effectiveExportUnmatched,
+                                progress, _cts.Token)).ConfigureAwait(true);
+
+                        if (roiVolumes != null && roiVolumes.Count > 0)
+                        {
+                            roiVolumesPerSeries[seriesUid] = roiVolumes;
+                            AppendLog($"  Found {roiVolumes.Count} ROI(s) for {displayLabel}: {string.Join(", ", roiVolumes.Keys)}");
+                        }
+                    }
+
+                    completed++;
+                    ProgressValue = (int)(100.0 * completed / total);
+                }
+
+                // Build manifest rows
+                var manifestRows = new List<ManifestRow>();
+                foreach (var seriesVm in selectedSeries)
+                {
+                    var m = seriesVm.Model;
+                    string pid = "Unknown";
+                    string suid = "";
+                    foreach (var p in Patients)
+                    {
+                        foreach (var st in p.Studies)
+                        {
+                            if (st.ImageSeries.Contains(seriesVm))
+                            {
+                                pid = p.Model.PatientID;
+                                suid = st.Model.StudyInstanceUID;
+                                break;
+                            }
+                        }
+                    }
+
+                    var row = new ManifestRow
+                    {
+                        MRN = pid,
+                        StudyUID = suid,
+                        SeriesUID = m.SeriesInstanceUID,
+                        ExportID = -1
+                    };
+
+                    double[] spacing;
+                    if (spacingPerSeries.TryGetValue(row.SeriesUID, out spacing))
+                    {
+                        row.SpacingX = spacing[0];
+                        row.SpacingY = spacing[1];
+                        row.SpacingZ = spacing[2];
+                    }
+
+                    Dictionary<string, double> volumes;
+                    if (roiVolumesPerSeries.TryGetValue(row.SeriesUID, out volumes))
+                    {
+                        row.RoiVolumes = volumes;
+                    }
+
+                    manifestRows.Add(row);
+                }
+
+                // Derive ROI column names directly from the computed volumes
+                // This guarantees column names exactly match the volume dictionary keys
+                var allExportedRoiNames = new List<string>();
+                var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var volDict in roiVolumesPerSeries.Values)
+                {
+                    foreach (var roiName in volDict.Keys)
+                    {
+                        if (roiNameSet.Add(roiName))
+                            allExportedRoiNames.Add(roiName);
+                    }
+                }
+
+                WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames, "export_manifest_meta.csv");
+
+                AppendLog($"Metadata export complete. {completed} series processed.");
+                StatusText = "Metadata export complete.";
+            }
+            catch (OperationCanceledException)
+            {
+                AppendLog("Metadata export cancelled.");
+                StatusText = "Cancelled.";
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"Metadata export error: {ex.Message}");
+                StatusText = "Metadata export failed.";
+            }
+            finally
+            {
+                IsConverting = false;
+                _cts?.Dispose();
+                _cts = null;
+            }
+        }
+
         private void ToggleSelectAllPatients()
         {
             AllPatientsSelected = !AllPatientsSelected;
@@ -684,6 +945,108 @@ namespace Dicom_RT_images_Csharp.ViewModels
             window.ShowDialog();
             // Reload associations after window closes
             _associations = _settingsService.LoadAssociations();
+        }
+
+        private void OpenRoiSelectionWindow()
+        {
+            // Reload associations to pick up any recent edits
+            _associations = _settingsService.LoadAssociations();
+
+            var discoveredNames = AllDiscoveredRoiNames.ToList();
+
+            // Build per-patient ROI name map for patient counts
+            var perPatientRoiNames = new Dictionary<string, List<string>>();
+            foreach (var patient in Patients)
+            {
+                var rois = new List<string>();
+                foreach (var study in patient.Studies)
+                {
+                    foreach (var series in study.ImageSeries)
+                    {
+                        if (series.RoiNames != null)
+                        {
+                            rois.AddRange(series.RoiNames);
+                        }
+                    }
+                }
+                if (rois.Count > 0)
+                {
+                    perPatientRoiNames[patient.Model.PatientID] = rois;
+                }
+            }
+
+            var vm = new RoiSelectionViewModel(discoveredNames, _associations, _selectedRoiNames, perPatientRoiNames);
+            var window = new Views.RoiSelectionWindow();
+            window.DataContext = vm;
+            window.Owner = Application.Current.MainWindow;
+
+            if (window.ShowDialog() == true)
+            {
+                _selectedRoiNames = vm.GetSelectedRoiNames();
+
+                int deselectedCount = 0;
+                // De-select patients whose series have no ROIs matching the selection
+                foreach (var patient in Patients)
+                {
+                    bool patientHasSelectedRoi = false;
+
+                    foreach (var study in patient.Studies)
+                    {
+                        foreach (var series in study.ImageSeries)
+                        {
+                            if (series.RoiNames == null || series.RoiNames.Count == 0)
+                                continue;
+
+                            // Check if any of this series' ROI names resolve to a selected canonical name
+                            foreach (var rawRoi in series.RoiNames)
+                            {
+                                string canonical = ResolveToCanonical(rawRoi, _associations);
+                                if (_selectedRoiNames.Contains(canonical))
+                                {
+                                    patientHasSelectedRoi = true;
+                                    break;
+                                }
+                            }
+
+                            if (patientHasSelectedRoi) break;
+                        }
+
+                        if (patientHasSelectedRoi) break;
+                    }
+
+                    if (!patientHasSelectedRoi)
+                    {
+                        patient.IsSelected = false;
+                        deselectedCount++;
+                    }
+                }
+
+                AppendLog($"ROI selection confirmed: {_selectedRoiNames.Count} ROI(s) selected. {deselectedCount} patient(s) de-selected (missing all selected ROIs).");
+            }
+        }
+
+        /// <summary>
+        /// Resolves a raw DICOM ROI name to its canonical name using associations.
+        /// If no association matches, the raw name is returned as-is.
+        /// </summary>
+        private string ResolveToCanonical(string rawName, List<RoiAssociation> associations)
+        {
+            if (associations == null || associations.Count == 0)
+                return rawName;
+
+            foreach (var assoc in associations)
+            {
+                if (string.Equals(assoc.CanonicalName, rawName, StringComparison.OrdinalIgnoreCase))
+                    return assoc.CanonicalName;
+
+                foreach (var alias in assoc.Aliases)
+                {
+                    if (string.Equals(alias, rawName, StringComparison.OrdinalIgnoreCase))
+                        return assoc.CanonicalName;
+                }
+            }
+
+            return rawName;
         }
 
         private void OpenAnonymizationKeyEditor()
@@ -721,13 +1084,13 @@ namespace Dicom_RT_images_Csharp.ViewModels
         /// <summary>
         /// Writes the export manifest CSV to the output folder.
         /// </summary>
-        private void WriteCsvManifest(List<ManifestRow> rows, string outputFolder, List<string> roiColumnNames = null)
+        private void WriteCsvManifest(List<ManifestRow> rows, string outputFolder, List<string> roiColumnNames = null, string fileName = "export_manifest.csv")
         {
-            string csvPath = Path.Combine(outputFolder, "export_manifest.csv");
+            string csvPath = Path.Combine(outputFolder, fileName);
             using (var writer = new StreamWriter(csvPath))
             {
                 // Build header
-                var header = "MRN,StudyUID,SeriesUID,ExportID,ExportedROIs,SpacingX,SpacingY,SpacingZ";
+                var header = "MRN,StudyUID,SeriesUID,ExportID,SpacingX,SpacingY,SpacingZ";
                 if (roiColumnNames != null && roiColumnNames.Count > 0)
                 {
                     foreach (var roiName in roiColumnNames)
@@ -740,9 +1103,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 foreach (var row in rows)
                 {
                     // Quote fields defensively in case any contain commas or semicolons
-                    var line = string.Format("\"{0}\",\"{1}\",\"{2}\",{3},\"{4}\",{5},{6},{7}",
+                    var line = string.Format("\"{0}\",\"{1}\",\"{2}\",{3},{4},{5},{6}",
                         row.MRN, row.StudyUID, row.SeriesUID, row.ExportID,
-                        row.ExportedRois ?? "",
                         row.SpacingX, row.SpacingY, row.SpacingZ);
 
                     // Append ROI volume columns
