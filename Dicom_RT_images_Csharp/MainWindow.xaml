@@ -263,6 +263,22 @@
 
                         <Separator Margin="0,12"/>
 
+                        <CheckBox Content="Specify Output Spacing"
+                                  IsChecked="{Binding SpecifyOutputSpacing}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="4,8"/>
+
+                        <Button Content="Specify Output..."
+                                Command="{Binding OpenOutputSpacingCommand}"
+                                IsEnabled="{Binding SpecifyOutputSpacing}"
+                                Padding="12,8" Margin="4,4,4,4" FontSize="13" Cursor="Hand"
+                                Background="#9C27B0" Foreground="White" FontWeight="SemiBold"/>
+
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,4,4,0">
+                            When enabled, all exports (image, dose, masks) are resampled to the specified X/Y/Z voxel size. Image and dose use linear interpolation; structure masks use nearest-neighbor.
+                        </TextBlock>
+
+                        <Separator Margin="0,12"/>
+
                         <CheckBox Content="Anonymize export?"
                                   IsChecked="{Binding AnonymizeExport}"
                                   Style="{StaticResource CheckBoxStyle}" Margin="4,8"/>

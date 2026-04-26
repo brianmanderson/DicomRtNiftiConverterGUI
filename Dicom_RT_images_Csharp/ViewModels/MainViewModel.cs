@@ -43,6 +43,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private bool _onlyExportSpecificRois = false;
         private bool _anonymizeExport = false;
         private bool _allPatientsSelected = true;
+        private bool _specifyOutputSpacing = false;
+        private double _outputSpacingX = 1.0;
+        private double _outputSpacingY = 1.0;
+        private double _outputSpacingZ = 1.0;
 
         // Tracks the user's ROI selection from the RoiSelectionWindow (null = not yet chosen)
         private HashSet<string> _selectedRoiNames;
@@ -75,6 +79,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             OpenSettingsCommand = new RelayCommand(_ => OpenSettingsWindow());
             SelectAllPatientsCommand = new RelayCommand(_ => ToggleSelectAllPatients());
             ExportMetaDataCommand = new RelayCommand(_ => ExecuteExportMetaData(), _ => !IsScanning && !IsConverting && Patients.Count > 0);
+            OpenOutputSpacingCommand = new RelayCommand(_ => OpenOutputSpacingWindow());
 
             // Load settings and associations
             _settings = _settingsService.LoadSettings();
@@ -91,6 +96,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _includeDose = _settings.IncludeDose;
             _onlyExportSpecificRois = _settings.OnlyExportSpecificRois;
             _anonymizeExport = _settings.AnonymizeExport;
+            _specifyOutputSpacing = _settings.SpecifyOutputSpacing;
+            _outputSpacingX = _settings.OutputSpacingX;
+            _outputSpacingY = _settings.OutputSpacingY;
+            _outputSpacingZ = _settings.OutputSpacingZ;
         }
 
         /// <summary>
@@ -194,6 +203,42 @@ namespace Dicom_RT_images_Csharp.ViewModels
         }
 
         /// <summary>
+        /// When true, all exports are resampled to the user-specified output voxel spacing.
+        /// </summary>
+        public bool SpecifyOutputSpacing
+        {
+            get { return _specifyOutputSpacing; }
+            set { _specifyOutputSpacing = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// Output voxel spacing in mm along the X axis.
+        /// </summary>
+        public double OutputSpacingX
+        {
+            get { return _outputSpacingX; }
+            set { _outputSpacingX = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// Output voxel spacing in mm along the Y axis.
+        /// </summary>
+        public double OutputSpacingY
+        {
+            get { return _outputSpacingY; }
+            set { _outputSpacingY = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// Output voxel spacing in mm along the Z axis.
+        /// </summary>
+        public double OutputSpacingZ
+        {
+            get { return _outputSpacingZ; }
+            set { _outputSpacingZ = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
         /// When true, exports use anonymized integer folder IDs and generate a CSV manifest.
         /// </summary>
         public bool AnonymizeExport
@@ -244,6 +289,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public ICommand OpenSettingsCommand { get; }
         public ICommand SelectAllPatientsCommand { get; }
         public ICommand ExportMetaDataCommand { get; }
+        public ICommand OpenOutputSpacingCommand { get; }
 
         private void BrowseInput()
         {
@@ -410,10 +456,19 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _settings.IncludeDose = IncludeDose;
             _settings.OnlyExportSpecificRois = OnlyExportSpecificRois;
             _settings.AnonymizeExport = AnonymizeExport;
+            _settings.SpecifyOutputSpacing = SpecifyOutputSpacing;
+            _settings.OutputSpacingX = OutputSpacingX;
+            _settings.OutputSpacingY = OutputSpacingY;
+            _settings.OutputSpacingZ = OutputSpacingZ;
             _settingsService.SaveSettings(_settings);
 
             // Reload associations in case they were edited
             _associations = _settingsService.LoadAssociations();
+
+            // Build target output spacing (null = no resampling)
+            double[] targetSpacing = SpecifyOutputSpacing
+                ? new[] { OutputSpacingX, OutputSpacingY, OutputSpacingZ }
+                : null;
 
             // Always apply associations for renaming; only filter ROIs when checkbox is checked
             var effectiveAssociations = _associations;
@@ -524,7 +579,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     {
                         progress.Report($"Converting images: {displayLabel}");
                         seriesSpacing = await Task.Run(() =>
-                            _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token)).ConfigureAwait(true);
+                            _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
                     }
 
                     // If images were not exported, still read spacing for the manifest
@@ -532,6 +587,12 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     {
                         seriesSpacing = await Task.Run(() =>
                             _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
+                    }
+
+                    // When resampling is enabled, manifest should reflect the target spacing
+                    if (targetSpacing != null)
+                    {
+                        seriesSpacing = (double[])targetSpacing.Clone();
                     }
 
                     spacingPerSeries[seriesUid] = seriesSpacing;
@@ -592,7 +653,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                                 model.LinkedRtStruct, model, outputDir,
                                 effectiveAssociations, effectiveExportUnmatched,
                                 false,
-                                progress, _cts.Token)).ConfigureAwait(true);
+                                progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
                     }
 
                     exportedRoisPerSeries[seriesUid] = exportedRoiNames;
@@ -604,7 +665,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     {
                         progress.Report($"Converting dose: {displayLabel}");
                         await Task.Run(() =>
-                            _conversionService.ConvertDoseToNifti(model.LinkedRtDose, outputDir, progress, _cts.Token)).ConfigureAwait(true);
+                            _conversionService.ConvertDoseToNifti(model.LinkedRtDose, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
                     }
 
                     completed++;
@@ -745,6 +806,12 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
             // Reload associations
             _associations = _settingsService.LoadAssociations();
+
+            // Build target output spacing (null = no resampling)
+            double[] targetSpacing = SpecifyOutputSpacing
+                ? new[] { OutputSpacingX, OutputSpacingY, OutputSpacingZ }
+                : null;
+
             var effectiveAssociations = _associations;
             bool effectiveExportUnmatched = !OnlyExportSpecificRois;
 
@@ -820,6 +887,13 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     progress.Report($"Reading spacing: {displayLabel}");
                     double[] seriesSpacing = await Task.Run(() =>
                         _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
+
+                    // When resampling is enabled, manifest should reflect the target spacing
+                    if (targetSpacing != null)
+                    {
+                        seriesSpacing = (double[])targetSpacing.Clone();
+                    }
+
                     spacingPerSeries[seriesUid] = seriesSpacing;
 
                     // Compute ROI volumes without writing masks
@@ -831,7 +905,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                             _conversionService.ComputeStructVolumes(
                                 model.LinkedRtStruct, model,
                                 effectiveAssociations, effectiveExportUnmatched,
-                                progress, _cts.Token)).ConfigureAwait(true);
+                                progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
 
                         if (roiVolumes != null && roiVolumes.Count > 0)
                         {
@@ -945,6 +1019,26 @@ namespace Dicom_RT_images_Csharp.ViewModels
             window.ShowDialog();
             // Reload associations after window closes
             _associations = _settingsService.LoadAssociations();
+        }
+
+        private void OpenOutputSpacingWindow()
+        {
+            var window = new Views.OutputSpacingWindow(OutputSpacingX, OutputSpacingY, OutputSpacingZ);
+            window.Owner = Application.Current.MainWindow;
+            if (window.ShowDialog() == true)
+            {
+                OutputSpacingX = window.SpacingX;
+                OutputSpacingY = window.SpacingY;
+                OutputSpacingZ = window.SpacingZ;
+
+                // Persist immediately so the values survive even without a Convert
+                _settings.OutputSpacingX = OutputSpacingX;
+                _settings.OutputSpacingY = OutputSpacingY;
+                _settings.OutputSpacingZ = OutputSpacingZ;
+                _settingsService.SaveSettings(_settings);
+
+                AppendLog($"Output spacing set to {OutputSpacingX} x {OutputSpacingY} x {OutputSpacingZ} mm");
+            }
         }
 
         private void OpenRoiSelectionWindow()

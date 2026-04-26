@@ -27,12 +27,14 @@ namespace Dicom_RT_images_Csharp.Services
         /// <summary>
         /// Converts a CT/MR/PT image series to image.nii.gz.
         /// </summary>
-        /// <returns>Array of [spacingX, spacingY, spacingZ] from the loaded image.</returns>
+        /// <param name="targetSpacing">Optional output voxel spacing in mm. If non-null, image is resampled with linear interpolation.</param>
+        /// <returns>Array of [spacingX, spacingY, spacingZ] from the written image (resampled or original).</returns>
         public double[] ConvertImageSeriesToNifti(
             DicomSeriesGroup series,
             string outputDir,
             IProgress<string> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            double[] targetSpacing = null)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -51,6 +53,14 @@ namespace Dicom_RT_images_Csharp.Services
             reader.LoadPrivateTagsOn();
 
             Image image = reader.Execute();
+
+            if (targetSpacing != null)
+            {
+                var resampled = ResampleToSpacing(image, targetSpacing, InterpolatorEnum.sitkLinear);
+                image.Dispose();
+                image = resampled;
+                progress?.Report($"  Resampled image to {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
+            }
 
             var spacing = image.GetSpacing();
             double[] result = new double[] { spacing[0], spacing[1], spacing[2] };
@@ -92,7 +102,8 @@ namespace Dicom_RT_images_Csharp.Services
             DicomSeriesGroup doseSeries,
             string outputDir,
             IProgress<string> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            double[] targetSpacing = null)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -121,6 +132,14 @@ namespace Dicom_RT_images_Csharp.Services
                 // Proceed without scaling if tag read fails
             }
 
+            if (targetSpacing != null)
+            {
+                var resampled = ResampleToSpacing(doseImage, targetSpacing, InterpolatorEnum.sitkLinear);
+                doseImage.Dispose();
+                doseImage = resampled;
+                progress?.Report($"  Resampled dose to {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
+            }
+
             string outputPath = Path.Combine(outputDir, "dose.nii.gz");
             SimpleITK.WriteImage(doseImage, outputPath);
             doseImage.Dispose();
@@ -143,7 +162,8 @@ namespace Dicom_RT_images_Csharp.Services
             bool exportUnmatched,
             bool flatOutput,
             IProgress<string> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            double[] targetSpacing = null)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -166,12 +186,17 @@ namespace Dicom_RT_images_Csharp.Services
             var spacing = referenceImage.GetSpacing();
             double voxelVolume = spacing[0] * spacing[1] * spacing[2];
 
+            // If resampling, the per-mask voxel volume is computed from the target grid
+            double resampledVoxelVolume = targetSpacing != null
+                ? targetSpacing[0] * targetSpacing[1] * targetSpacing[2]
+                : voxelVolume;
+
             string rtStructFilePath = rtStructSeries.FilePaths[0];
 
             // Determine which ROIs to export
             var roiNamesToExport = ResolveRoiNames(rtStructSeries.RoiNames, associations, exportUnmatched);
 
-            // Rasterize
+            // Rasterize on the original reference grid (preserves contour fidelity)
             var masks = _maskService.RasterizeRois(
                 rtStructFilePath, referenceImage, roiNamesToExport, progress, ct);
 
@@ -192,16 +217,27 @@ namespace Dicom_RT_images_Csharp.Services
             {
                 ct.ThrowIfCancellationRequested();
 
+                Image maskToWrite = kvp.Value;
+                double effectiveVoxelVolume = voxelVolume;
+
+                if (targetSpacing != null)
+                {
+                    var resampledMask = ResampleToSpacing(kvp.Value, targetSpacing, InterpolatorEnum.sitkNearestNeighbor);
+                    kvp.Value.Dispose();
+                    maskToWrite = resampledMask;
+                    effectiveVoxelVolume = resampledVoxelVolume;
+                }
+
                 // Count non-zero voxels in the binary mask
                 var stats = new StatisticsImageFilter();
-                stats.Execute(kvp.Value);
+                stats.Execute(maskToWrite);
                 double voxelCount = stats.GetSum(); // binary mask: sum == count of 1-voxels
-                roiVolumes[kvp.Key] = voxelCount * voxelVolume / 1000; // convert to cc
+                roiVolumes[kvp.Key] = voxelCount * effectiveVoxelVolume / 1000; // convert to cc
 
                 string safeName = SanitizeFileName(kvp.Key);
                 string maskPath = Path.Combine(masksDir, safeName + ".nii.gz");
-                SimpleITK.WriteImage(kvp.Value, maskPath);
-                kvp.Value.Dispose();
+                SimpleITK.WriteImage(maskToWrite, maskPath);
+                maskToWrite.Dispose();
                 progress?.Report($"  Wrote mask: {safeName}.nii.gz");
             }
 
@@ -219,7 +255,8 @@ namespace Dicom_RT_images_Csharp.Services
             List<RoiAssociation> associations,
             bool exportUnmatched,
             IProgress<string> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            double[] targetSpacing = null)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -242,12 +279,17 @@ namespace Dicom_RT_images_Csharp.Services
             var spacing = referenceImage.GetSpacing();
             double voxelVolume = spacing[0] * spacing[1] * spacing[2];
 
+            // If resampling, the per-mask voxel volume is computed from the target grid
+            double resampledVoxelVolume = targetSpacing != null
+                ? targetSpacing[0] * targetSpacing[1] * targetSpacing[2]
+                : voxelVolume;
+
             string rtStructFilePath = rtStructSeries.FilePaths[0];
 
             // Determine which ROIs to process
             var roiNamesToExport = ResolveRoiNames(rtStructSeries.RoiNames, associations, exportUnmatched);
 
-            // Rasterize
+            // Rasterize on the original reference grid (preserves contour fidelity)
             var masks = _maskService.RasterizeRois(
                 rtStructFilePath, referenceImage, roiNamesToExport, progress, ct);
 
@@ -257,12 +299,23 @@ namespace Dicom_RT_images_Csharp.Services
             {
                 ct.ThrowIfCancellationRequested();
 
-                var stats = new StatisticsImageFilter();
-                stats.Execute(kvp.Value);
-                double voxelCount = stats.GetSum();
-                roiVolumes[kvp.Key] = voxelCount * voxelVolume / 1000; // convert to cc
+                Image maskForStats = kvp.Value;
+                double effectiveVoxelVolume = voxelVolume;
 
-                kvp.Value.Dispose();
+                if (targetSpacing != null)
+                {
+                    var resampledMask = ResampleToSpacing(kvp.Value, targetSpacing, InterpolatorEnum.sitkNearestNeighbor);
+                    kvp.Value.Dispose();
+                    maskForStats = resampledMask;
+                    effectiveVoxelVolume = resampledVoxelVolume;
+                }
+
+                var stats = new StatisticsImageFilter();
+                stats.Execute(maskForStats);
+                double voxelCount = stats.GetSum();
+                roiVolumes[kvp.Key] = voxelCount * effectiveVoxelVolume / 1000; // convert to cc
+
+                maskForStats.Dispose();
             }
 
             referenceImage.Dispose();
@@ -326,6 +379,36 @@ namespace Dicom_RT_images_Csharp.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Resamples a SimpleITK image to a uniform output voxel spacing while preserving origin and direction.
+        /// Output size is computed so the image covers the same physical extent as the input.
+        /// </summary>
+        private static Image ResampleToSpacing(Image input, double[] targetSpacing, InterpolatorEnum interpolator)
+        {
+            var inputSpacing = input.GetSpacing();
+            var inputSize = input.GetSize();
+
+            var newSize = new VectorUInt32();
+            for (int i = 0; i < 3; i++)
+            {
+                uint sz = (uint)Math.Max(1, Math.Ceiling(inputSize[i] * inputSpacing[i] / targetSpacing[i]));
+                newSize.Add(sz);
+            }
+
+            var spacingVec = new VectorDouble();
+            foreach (var s in targetSpacing)
+                spacingVec.Add(s);
+
+            var resample = new ResampleImageFilter();
+            resample.SetOutputSpacing(spacingVec);
+            resample.SetSize(newSize);
+            resample.SetOutputOrigin(input.GetOrigin());
+            resample.SetOutputDirection(input.GetDirection());
+            resample.SetInterpolator(interpolator);
+            resample.SetDefaultPixelValue(0);
+            return resample.Execute(input);
         }
 
         /// <summary>

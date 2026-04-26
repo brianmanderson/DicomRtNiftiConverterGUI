@@ -48,5 +48,25 @@ namespace Dicom_RT_images_Csharp.Models
         /// Same salt + same input always produces the same hash.
         /// </summary>
         public string HashSalt { get; set; } = "DicomToNifti";
+
+        /// <summary>
+        /// When true, all exports (image, dose, masks) are resampled to the user-specified output spacing.
+        /// </summary>
+        public bool SpecifyOutputSpacing { get; set; } = false;
+
+        /// <summary>
+        /// Output voxel spacing in mm along the X axis (only used when SpecifyOutputSpacing=true).
+        /// </summary>
+        public double OutputSpacingX { get; set; } = 1.0;
+
+        /// <summary>
+        /// Output voxel spacing in mm along the Y axis (only used when SpecifyOutputSpacing=true).
+        /// </summary>
+        public double OutputSpacingY { get; set; } = 1.0;
+
+        /// <summary>
+        /// Output voxel spacing in mm along the Z axis (only used when SpecifyOutputSpacing=true).
+        /// </summary>
+        public double OutputSpacingZ { get; set; } = 1.0;
     }
 }
