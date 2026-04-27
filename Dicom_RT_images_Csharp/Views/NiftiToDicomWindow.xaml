@@ -1,0 +1,107 @@
+<Window x:Class="Dicom_RT_images_Csharp.Views.NiftiToDicomWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="NIfTI to DICOM RT-STRUCT" Height="620" Width="640"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        MinHeight="500" MinWidth="540"
+        Background="#F5F5F5">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header Bar -->
+        <Border Grid.Row="0" Background="#3F51B5" Padding="16,10">
+            <StackPanel>
+                <TextBlock Text="NIfTI to DICOM RT-STRUCT" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+                <TextBlock Text="Convert NIfTI binary masks back into a single DICOM RT-Structure Set referencing existing CT/MR/PT images."
+                           Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Content Panel -->
+        <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD"
+                BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="16">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <!-- DICOM folder -->
+                    <TextBlock Text="DICOM Folder:" Margin="0,0,0,4"
+                               FontWeight="Medium" Foreground="#555555"/>
+                    <DockPanel Margin="0,0,0,4">
+                        <Button DockPanel.Dock="Right" Content="Browse..."
+                                Command="{Binding BrowseDicomFolderCommand}"
+                                Width="80" Margin="8,0,0,0" Padding="8,4" Cursor="Hand"/>
+                        <TextBox Text="{Binding DicomFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalContentAlignment="Center" Padding="6,4" BorderBrush="#CCCCCC"/>
+                    </DockPanel>
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="0,0,0,12">
+                        Place your <Run FontWeight="SemiBold">.nii.gz</Run> mask files in a subfolder named
+                        <Run FontWeight="SemiBold">masks/</Run> inside the DICOM folder. Each filename will become an ROI name
+                        (e.g. <Run FontFamily="Consolas">masks/Brain.nii.gz</Run> → ROI "Brain").
+                    </TextBlock>
+
+                    <!-- Image series selector -->
+                    <TextBlock Text="Reference Image Series:" Margin="0,0,0,4"
+                               FontWeight="Medium" Foreground="#555555"/>
+                    <ComboBox ItemsSource="{Binding AvailableImageSeries}"
+                              SelectedItem="{Binding SelectedImageSeries}"
+                              DisplayMemberPath="DisplayName"
+                              Padding="6,4" Margin="0,0,0,12" BorderBrush="#CCCCCC"/>
+
+                    <!-- Discovered ROIs -->
+                    <TextBlock Text="Discovered ROIs (from masks/):" Margin="0,0,0,4"
+                               FontWeight="Medium" Foreground="#555555"/>
+                    <Border BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="2"
+                            Background="#FAFAFA" Margin="0,0,0,12" MinHeight="80" MaxHeight="160">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,4">
+                            <ItemsControl ItemsSource="{Binding DiscoveredRoiNames}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="12" Margin="0,1"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- Output -->
+                    <TextBlock Text="Output File:" Margin="0,0,0,4"
+                               FontWeight="Medium" Foreground="#555555"/>
+                    <DockPanel Margin="0,0,0,12">
+                        <Button DockPanel.Dock="Right" Content="Browse..."
+                                Command="{Binding BrowseOutputCommand}"
+                                Width="80" Margin="8,0,0,0" Padding="8,4" Cursor="Hand"/>
+                        <TextBox Text="{Binding OutputRtStructPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalContentAlignment="Center" Padding="6,4" BorderBrush="#CCCCCC"/>
+                    </DockPanel>
+
+                    <!-- Status -->
+                    <Border Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="1"
+                            CornerRadius="2" Padding="10,8" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding StatusText}" Foreground="#444444"
+                                   FontSize="12" TextWrapping="Wrap"/>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Buttons -->
+        <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+                BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Convert" Command="{Binding ConvertCommand}"
+                        Width="120" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                        Background="#3F51B5" Foreground="White" FontWeight="SemiBold"/>
+                <Button Content="Close" Click="CloseButton_Click"
+                        Width="90" Padding="12,6" IsCancel="True" Cursor="Hand"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

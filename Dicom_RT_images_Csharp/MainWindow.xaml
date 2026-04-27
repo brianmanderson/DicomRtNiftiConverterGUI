@@ -335,7 +335,14 @@
         <!-- Status Bar -->
         <Border Grid.Row="4" Background="#E8E8E8" BorderBrush="#CCCCCC"
                 BorderThickness="0,1,0,0" Padding="12,6">
-            <TextBlock Text="{Binding StatusText}" Foreground="#555555" FontSize="11"/>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="NIfTI to DICOM"
+                        Command="{Binding OpenNiftiToDicomCommand}"
+                        Padding="10,2" Margin="8,0,0,0" FontSize="11" Cursor="Hand"
+                        Background="#3F51B5" Foreground="White" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding StatusText}" Foreground="#555555" FontSize="11"
+                           VerticalAlignment="Center"/>
+            </DockPanel>
         </Border>
     </Grid>
 </Window>

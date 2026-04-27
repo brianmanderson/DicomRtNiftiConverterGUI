@@ -18,13 +18,15 @@ namespace Dicom_RT_images_Csharp
             var scannerService = new DicomScannerService();
             var maskService = new RtStructMaskService();
             var conversionService = new NiftiConversionService(maskService);
+            var rtStructWriter = new RtStructWriterService();
 
             var mainWindow = new MainWindow();
             mainWindow.DataContext = new MainViewModel(
                 scannerService,
                 conversionService,
                 maskService,
-                settingsService);
+                settingsService,
+                rtStructWriter);
             mainWindow.Show();
         }
     }

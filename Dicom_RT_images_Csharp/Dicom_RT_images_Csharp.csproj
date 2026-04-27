@@ -208,6 +208,14 @@
       <DependentUpon>RoiSelectionWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="Views\NiftiToDicomWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="Views\NiftiToDicomWindow.xaml.cs">
+      <DependentUpon>NiftiToDicomWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Models\AppSettings.cs" />
@@ -220,9 +228,11 @@
     <Compile Include="ViewModels\PatientGroupViewModel.cs" />
     <Compile Include="ViewModels\RoiAssociationViewModel.cs" />
     <Compile Include="ViewModels\RoiSelectionViewModel.cs" />
+    <Compile Include="ViewModels\NiftiToDicomViewModel.cs" />
     <Compile Include="Services\DicomScannerService.cs" />
     <Compile Include="Services\NiftiConversionService.cs" />
     <Compile Include="Services\RtStructMaskService.cs" />
+    <Compile Include="Services\RtStructWriterService.cs" />
     <Compile Include="Services\SettingsService.cs" />
     <Compile Include="Services\AnonymizationService.cs" />
     <Compile Include="Converters\BoolToVisibilityConverter.cs" />
