@@ -14,19 +14,20 @@ using Dicom_RT_images_Csharp.Services;
 namespace Dicom_RT_images_Csharp.ViewModels
 {
     /// <summary>
-    /// ViewModel for the "NIfTI to DICOM" window. Scans a DICOM folder, discovers .nii.gz
-    /// masks under <DicomFolder>/masks/, and converts them to a single RT-STRUCT.
+    /// ViewModel for the "NIfTI to DICOM" window.
+    /// Pointing the user at a single folder, this scans for DICOM folders containing a
+    /// "masks/" subdirectory (either the folder itself, or any first-level subfolder)
+    /// and converts each to its own RT-STRUCT, written into the same DICOM folder.
+    /// The reference image series is auto-detected (first CT/MR/PT series found).
     /// </summary>
     public class NiftiToDicomViewModel : INotifyPropertyChanged
     {
         private readonly DicomScannerService _scannerService;
         private readonly RtStructWriterService _rtStructWriter;
 
-        private string _dicomFolder = "";
-        private string _outputRtStructPath = "";
-        private string _statusText = "Browse to a DICOM folder containing a 'masks/' subdirectory.";
+        private string _rootFolder = "";
+        private string _statusText = "Browse to a folder. Each DICOM folder containing a 'masks/' subdirectory will be converted in batch.";
         private bool _isBusy;
-        private SeriesGroupViewModel _selectedImageSeries;
         private CancellationTokenSource _cts;
 
         public NiftiToDicomViewModel(DicomScannerService scannerService, RtStructWriterService rtStructWriter)
@@ -34,29 +35,18 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _scannerService = scannerService;
             _rtStructWriter = rtStructWriter;
 
-            AvailableImageSeries = new ObservableCollection<SeriesGroupViewModel>();
-            DiscoveredRoiNames = new ObservableCollection<string>();
+            DiscoveredJobs = new ObservableCollection<NiftiToDicomJob>();
 
-            BrowseDicomFolderCommand = new RelayCommand(_ => BrowseDicomFolder(), _ => !IsBusy);
-            BrowseOutputCommand = new RelayCommand(_ => BrowseOutput(), _ => !IsBusy);
-            ConvertCommand = new RelayCommand(async _ => await ConvertAsync(),
-                _ => !IsBusy
-                     && !string.IsNullOrEmpty(DicomFolder)
-                     && SelectedImageSeries != null
-                     && DiscoveredRoiNames.Count > 0
-                     && !string.IsNullOrEmpty(OutputRtStructPath));
+            BrowseRootFolderCommand = new RelayCommand(_ => BrowseRootFolder(), _ => !IsBusy);
+            ConvertCommand = new RelayCommand(async _ => await ConvertAllAsync(),
+                _ => !IsBusy && DiscoveredJobs.Count > 0);
+            CancelCommand = new RelayCommand(_ => Cancel(), _ => IsBusy);
         }
 
-        public string DicomFolder
+        public string RootFolder
         {
-            get { return _dicomFolder; }
-            set { _dicomFolder = value; OnPropertyChanged(); }
-        }
-
-        public string OutputRtStructPath
-        {
-            get { return _outputRtStructPath; }
-            set { _outputRtStructPath = value; OnPropertyChanged(); }
+            get { return _rootFolder; }
+            set { _rootFolder = value; OnPropertyChanged(); }
         }
 
         public string StatusText
@@ -71,186 +61,179 @@ namespace Dicom_RT_images_Csharp.ViewModels
             set { _isBusy = value; OnPropertyChanged(); }
         }
 
-        public ObservableCollection<SeriesGroupViewModel> AvailableImageSeries { get; }
-        public ObservableCollection<string> DiscoveredRoiNames { get; }
+        /// <summary>One row per DICOM folder eligible for conversion.</summary>
+        public ObservableCollection<NiftiToDicomJob> DiscoveredJobs { get; }
 
-        public SeriesGroupViewModel SelectedImageSeries
-        {
-            get { return _selectedImageSeries; }
-            set { _selectedImageSeries = value; OnPropertyChanged(); }
-        }
-
-        public ICommand BrowseDicomFolderCommand { get; }
-        public ICommand BrowseOutputCommand { get; }
+        public ICommand BrowseRootFolderCommand { get; }
         public ICommand ConvertCommand { get; }
+        public ICommand CancelCommand { get; }
 
         // ------- private helpers -------
 
-        private void BrowseDicomFolder()
+        private void BrowseRootFolder()
         {
-            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+            // Match the MainWindow folder-picker convention: use OpenFileDialog with "Select Folder" trick.
+            var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                dialog.Description = "Select the DICOM folder (must contain a 'masks/' subdirectory)";
-                if (!string.IsNullOrEmpty(DicomFolder) && Directory.Exists(DicomFolder))
-                    dialog.SelectedPath = DicomFolder;
-                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-                DicomFolder = dialog.SelectedPath;
-            }
+                Title = "Select a DICOM folder (or parent folder containing several DICOM folders)",
+                ValidateNames = false,
+                CheckFileExists = false,
+                CheckPathExists = true,
+                FileName = "Select Folder"
+            };
+            if (!string.IsNullOrEmpty(RootFolder) && Directory.Exists(RootFolder))
+                dialog.InitialDirectory = RootFolder;
 
-            // Suggest a default output path inside the chosen folder
-            string defaultName = $"RTSTRUCT_{DateTime.Now:yyyyMMdd_HHmmss}.dcm";
-            OutputRtStructPath = Path.Combine(DicomFolder, defaultName);
+            if (dialog.ShowDialog() != true) return;
 
-            RefreshDiscoveredMasks();
-            _ = ScanDicomFolderAsync();
+            RootFolder = Path.GetDirectoryName(dialog.FileName) ?? "";
+            DiscoverJobs();
         }
 
-        private void RefreshDiscoveredMasks()
+        /// <summary>
+        /// Populates DiscoveredJobs by checking the root folder and its first-level subfolders
+        /// for the presence of a "masks/" subdirectory. Each match becomes a job.
+        /// </summary>
+        private void DiscoverJobs()
         {
-            DiscoveredRoiNames.Clear();
-            if (string.IsNullOrEmpty(DicomFolder)) return;
-
-            string masksDir = Path.Combine(DicomFolder, "masks");
-            if (!Directory.Exists(masksDir))
+            DiscoveredJobs.Clear();
+            if (string.IsNullOrEmpty(RootFolder) || !Directory.Exists(RootFolder))
             {
-                StatusText = "No 'masks/' subdirectory found in the selected folder.";
+                StatusText = "Folder does not exist.";
                 return;
             }
 
-            var files = Directory.EnumerateFiles(masksDir, "*.nii.gz", SearchOption.TopDirectoryOnly)
-                                 .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
-                                 .ToList();
-
-            if (files.Count == 0)
+            // 1. Is the root itself a DICOM folder with masks/?
+            if (HasMasksSubdir(RootFolder))
             {
-                StatusText = "'masks/' subfolder is empty (no .nii.gz files found).";
-                return;
+                AddJobIfValid(RootFolder);
             }
 
-            foreach (var f in files)
-            {
-                string name = Path.GetFileName(f);
-                if (name.EndsWith(".nii.gz", StringComparison.OrdinalIgnoreCase))
-                    name = name.Substring(0, name.Length - ".nii.gz".Length);
-                else
-                    name = Path.GetFileNameWithoutExtension(name);
-                DiscoveredRoiNames.Add(name);
-            }
-
-            StatusText = $"Found {DiscoveredRoiNames.Count} mask file(s).";
-        }
-
-        private async Task ScanDicomFolderAsync()
-        {
-            if (string.IsNullOrEmpty(DicomFolder)) return;
-
-            IsBusy = true;
-            AvailableImageSeries.Clear();
-            SelectedImageSeries = null;
-            StatusText = "Scanning DICOM folder...";
-
-            _cts = new CancellationTokenSource();
-            var progress = new Progress<string>(msg => StatusText = msg);
-
+            // 2. Otherwise (or additionally), scan first-level subfolders.
             try
             {
-                var patients = await Task.Run(() =>
-                    _scannerService.ScanFolderAsync(DicomFolder, progress, _cts.Token)).ConfigureAwait(true);
-
-                int seriesCount = 0;
-                foreach (var patient in patients)
+                foreach (var sub in Directory.EnumerateDirectories(RootFolder))
                 {
-                    foreach (var study in patient.Studies)
-                    {
-                        foreach (var series in study.Series)
-                        {
-                            if (series.Modality == "CT" || series.Modality == "MR" || series.Modality == "PT")
-                            {
-                                AvailableImageSeries.Add(new SeriesGroupViewModel(series));
-                                seriesCount++;
-                            }
-                        }
-                    }
+                    if (string.Equals(Path.GetFileName(sub), "masks", StringComparison.OrdinalIgnoreCase))
+                        continue; // skip the masks/ folder itself
+                    if (HasMasksSubdir(sub))
+                        AddJobIfValid(sub);
                 }
-
-                if (seriesCount == 0)
-                {
-                    StatusText = "No CT/MR/PT image series found in folder.";
-                }
-                else
-                {
-                    SelectedImageSeries = AvailableImageSeries[0];
-                    string suffix = DiscoveredRoiNames.Count > 0
-                        ? $", {DiscoveredRoiNames.Count} mask(s) ready"
-                        : "";
-                    StatusText = $"Scan complete: {seriesCount} image series found{suffix}.";
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                StatusText = "Scan cancelled.";
             }
             catch (Exception ex)
             {
-                StatusText = $"Scan failed: {ex.Message}";
-            }
-            finally
-            {
-                _cts?.Dispose();
-                _cts = null;
-                IsBusy = false;
-            }
-        }
-
-        private void BrowseOutput()
-        {
-            var dialog = new Microsoft.Win32.SaveFileDialog
-            {
-                Title = "Save RT-Structure Set As...",
-                Filter = "DICOM RT-STRUCT (*.dcm)|*.dcm|All files (*.*)|*.*",
-                DefaultExt = ".dcm",
-                FileName = string.IsNullOrEmpty(OutputRtStructPath)
-                    ? $"RTSTRUCT_{DateTime.Now:yyyyMMdd_HHmmss}.dcm"
-                    : Path.GetFileName(OutputRtStructPath),
-                InitialDirectory = string.IsNullOrEmpty(OutputRtStructPath)
-                    ? DicomFolder
-                    : Path.GetDirectoryName(OutputRtStructPath)
-            };
-            if (dialog.ShowDialog() == true)
-            {
-                OutputRtStructPath = dialog.FileName;
-            }
-        }
-
-        private async Task ConvertAsync()
-        {
-            if (SelectedImageSeries == null || string.IsNullOrEmpty(OutputRtStructPath))
+                StatusText = $"Error scanning subfolders: {ex.Message}";
                 return;
+            }
+
+            if (DiscoveredJobs.Count == 0)
+            {
+                StatusText = "No DICOM folders with a 'masks/' subdirectory were found.";
+            }
+            else
+            {
+                int totalRois = DiscoveredJobs.Sum(j => j.MaskCount);
+                StatusText = $"Found {DiscoveredJobs.Count} DICOM folder(s), {totalRois} mask(s) total. Click Convert to write RT-STRUCTs.";
+            }
+        }
+
+        private static bool HasMasksSubdir(string folder)
+        {
+            string masksDir = Path.Combine(folder, "masks");
+            if (!Directory.Exists(masksDir)) return false;
+            return Directory.EnumerateFiles(masksDir, "*.nii.gz", SearchOption.TopDirectoryOnly).Any();
+        }
+
+        private void AddJobIfValid(string dicomFolder)
+        {
+            string masksDir = Path.Combine(dicomFolder, "masks");
+            var maskNames = Directory.EnumerateFiles(masksDir, "*.nii.gz", SearchOption.TopDirectoryOnly)
+                                     .Select(f =>
+                                     {
+                                         string name = Path.GetFileName(f);
+                                         if (name.EndsWith(".nii.gz", StringComparison.OrdinalIgnoreCase))
+                                             return name.Substring(0, name.Length - ".nii.gz".Length);
+                                         return Path.GetFileNameWithoutExtension(name);
+                                     })
+                                     .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                                     .ToList();
+
+            string outputName = $"RTSTRUCT_{DateTime.Now:yyyyMMdd_HHmmss}.dcm";
+
+            DiscoveredJobs.Add(new NiftiToDicomJob
+            {
+                DicomFolder = dicomFolder,
+                FolderDisplayName = Path.GetFileName(dicomFolder),
+                MaskNames = string.Join(", ", maskNames),
+                MaskCount = maskNames.Count,
+                OutputPath = Path.Combine(dicomFolder, outputName),
+                Status = "Pending"
+            });
+        }
+
+        private async Task ConvertAllAsync()
+        {
+            if (DiscoveredJobs.Count == 0) return;
 
             IsBusy = true;
             _cts = new CancellationTokenSource();
-            var progress = new Progress<string>(msg => StatusText = msg);
-
-            string outPath = OutputRtStructPath;
-            var refSeries = SelectedImageSeries.Model;
-            string folder = DicomFolder;
+            int success = 0, fail = 0;
 
             try
             {
-                string written = await Task.Run(() =>
-                    _rtStructWriter.ConvertMasksFolderToRtStruct(
-                        folder, refSeries, outPath, progress, _cts.Token)).ConfigureAwait(true);
+                foreach (var job in DiscoveredJobs)
+                {
+                    if (_cts.Token.IsCancellationRequested) break;
 
-                StatusText = $"Done. Wrote {Path.GetFileName(written)}.";
+                    job.Status = "Scanning DICOM...";
+                    StatusText = $"Processing {job.FolderDisplayName}: scanning DICOM...";
+
+                    try
+                    {
+                        // Auto-detect the reference image series by scanning the DICOM folder.
+                        DicomSeriesGroup refSeries = await Task.Run(async () =>
+                            await PickReferenceSeriesAsync(job.DicomFolder, _cts.Token).ConfigureAwait(false))
+                            .ConfigureAwait(true);
+
+                        if (refSeries == null)
+                        {
+                            job.Status = "FAILED — no CT/MR/PT image series found.";
+                            fail++;
+                            continue;
+                        }
+
+                        job.Status = "Converting...";
+                        StatusText = $"Processing {job.FolderDisplayName}: building RT-STRUCT...";
+
+                        var progress = new Progress<string>(msg => StatusText = $"{job.FolderDisplayName}: {msg}");
+
+                        string folder = job.DicomFolder;
+                        string outPath = job.OutputPath;
+                        string written = await Task.Run(() =>
+                            _rtStructWriter.ConvertMasksFolderToRtStruct(
+                                folder, refSeries, outPath, progress, _cts.Token)).ConfigureAwait(true);
+
+                        job.Status = $"OK ({Path.GetFileName(written)})";
+                        success++;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        job.Status = "Cancelled";
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        job.Status = $"FAILED — {ex.Message}";
+                        fail++;
+                    }
+                }
+
+                StatusText = $"Done. {success} succeeded, {fail} failed.";
             }
             catch (OperationCanceledException)
             {
                 StatusText = "Conversion cancelled.";
             }
-            catch (Exception ex)
-            {
-                StatusText = $"Conversion failed: {ex.Message}";
-            }
             finally
             {
                 _cts?.Dispose();
@@ -259,8 +242,59 @@ namespace Dicom_RT_images_Csharp.ViewModels
             }
         }
 
+        /// <summary>
+        /// Scans a single DICOM folder and returns the first CT/MR/PT image series found, or null.
+        /// </summary>
+        private async Task<DicomSeriesGroup> PickReferenceSeriesAsync(string dicomFolder, CancellationToken ct)
+        {
+            var patients = await _scannerService.ScanFolderAsync(dicomFolder, null, ct).ConfigureAwait(false);
+            foreach (var patient in patients)
+            {
+                foreach (var study in patient.Studies)
+                {
+                    foreach (var series in study.Series)
+                    {
+                        if (series.Modality == "CT" || series.Modality == "MR" || series.Modality == "PT")
+                            return series;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private void Cancel()
+        {
+            _cts?.Cancel();
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
+        protected void OnPropertyChanged([CallerMemberName] string name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+    }
+
+    /// <summary>
+    /// One row in the NiftiToDicom batch list: a DICOM folder + its discovered masks + its target output path.
+    /// </summary>
+    public class NiftiToDicomJob : INotifyPropertyChanged
+    {
+        private string _status = "Pending";
+
+        public string DicomFolder { get; set; } = "";
+        public string FolderDisplayName { get; set; } = "";
+        public string MaskNames { get; set; } = "";
+        public int MaskCount { get; set; }
+        public string OutputPath { get; set; } = "";
+
+        public string Status
+        {
+            get { return _status; }
+            set { _status = value; OnPropertyChanged(); }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

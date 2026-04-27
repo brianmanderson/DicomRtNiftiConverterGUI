@@ -47,11 +47,18 @@
 
         <!-- Header Bar -->
         <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
-            <StackPanel>
-                <TextBlock Text="DICOM RT to NIfTI Converter" FontSize="20" FontWeight="Bold" Foreground="White"/>
-                <TextBlock Text="Scan DICOM directories, select patients and series, convert to NIfTI format"
-                           FontSize="12" Foreground="#BBDEFB" Margin="0,4,0,0"/>
-            </StackPanel>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="NIfTI to DICOM"
+                        Command="{Binding OpenNiftiToDicomCommand}"
+                        VerticalAlignment="Center" Padding="12,6" Cursor="Hand"
+                        Background="#3F51B5" Foreground="White" FontWeight="SemiBold"
+                        FontSize="13" MinWidth="140"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="DICOM to NIfTI Converter" FontSize="20" FontWeight="Bold" Foreground="White"/>
+                    <TextBlock Text="Scan DICOM directories, select patients and series, convert to NIfTI format"
+                               FontSize="12" Foreground="#BBDEFB" Margin="0,4,0,0"/>
+                </StackPanel>
+            </DockPanel>
         </Border>
 
         <!-- Input/Output/Scan Toolbar -->
@@ -335,14 +342,7 @@
         <!-- Status Bar -->
         <Border Grid.Row="4" Background="#E8E8E8" BorderBrush="#CCCCCC"
                 BorderThickness="0,1,0,0" Padding="12,6">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" Content="NIfTI to DICOM"
-                        Command="{Binding OpenNiftiToDicomCommand}"
-                        Padding="10,2" Margin="8,0,0,0" FontSize="11" Cursor="Hand"
-                        Background="#3F51B5" Foreground="White" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding StatusText}" Foreground="#555555" FontSize="11"
-                           VerticalAlignment="Center"/>
-            </DockPanel>
+            <TextBlock Text="{Binding StatusText}" Foreground="#555555" FontSize="11"/>
         </Border>
     </Grid>
 </Window>
