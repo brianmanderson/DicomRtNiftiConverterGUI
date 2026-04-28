@@ -48,11 +48,12 @@
         <!-- Header Bar -->
         <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
             <DockPanel>
-                <Button DockPanel.Dock="Right" Content="NIfTI to DICOM"
-                        Command="{Binding OpenNiftiToDicomCommand}"
-                        VerticalAlignment="Center" Padding="12,6" Cursor="Hand"
-                        Background="#3F51B5" Foreground="White" FontWeight="SemiBold"
-                        FontSize="13" MinWidth="140"/>
+                <Button DockPanel.Dock="Right" Content="Help"
+                        Command="{Binding OpenHelpCommand}"
+                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+                        VerticalAlignment="Center" Padding="14,6" Cursor="Hand"
+                        Background="White" Foreground="#1976D2" FontWeight="SemiBold"
+                        FontSize="13" MinWidth="80" BorderThickness="0"/>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="DICOM to NIfTI Converter" FontSize="20" FontWeight="Bold" Foreground="White"/>
                     <TextBlock Text="Scan DICOM directories, select patients and series, convert to NIfTI format"

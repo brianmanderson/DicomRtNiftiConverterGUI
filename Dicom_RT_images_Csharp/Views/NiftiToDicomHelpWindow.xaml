@@ -1,0 +1,238 @@
+<Window x:Class="Dicom_RT_images_Csharp.Views.NiftiToDicomHelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Help: NIfTI to DICOM" Height="700" Width="780"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        MinHeight="400" MinWidth="540"
+        Background="#F5F5F5">
+    <Window.Resources>
+        <Style x:Key="H1" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#3F51B5"/>
+            <Setter Property="Margin" Value="0,18,0,8"/>
+        </Style>
+        <Style x:Key="H2" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="Margin" Value="0,8,0,4"/>
+        </Style>
+        <Style x:Key="Body" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#444444"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,2"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#3F51B5" Padding="16,10">
+            <StackPanel>
+                <TextBlock Text="Help: NIfTI → DICOM" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+                <TextBlock Text="How to convert NIfTI binary masks and dose volumes back into DICOM RT-STRUCT and RT-DOSE files."
+                           Foreground="#C5CAE9" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD"
+                BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="20,12">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource H1}" Text="Workflow overview"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Reverse of the DICOM → NIfTI workflow. You point at a folder containing existing DICOM
+                        image files (CT/MR/PT) plus optional <Run FontFamily="Consolas">masks/</Run> and
+                        <Run FontFamily="Consolas">doses/</Run> subdirectories with .nii.gz inputs. The window
+                        produces:
+                        <LineBreak/>
+                        <LineBreak/>
+                        • One <Run FontWeight="SemiBold">RT-STRUCT</Run> per DICOM folder, containing all ROIs
+                          from <Run FontFamily="Consolas">masks/*.nii.gz</Run>.
+                        <LineBreak/>
+                        • One <Run FontWeight="SemiBold">RT-DOSE</Run> per dose file in
+                          <Run FontFamily="Consolas">doses/*.nii.gz</Run>.
+                        <LineBreak/>
+                        <LineBreak/>
+                        Outputs are written into the same DICOM folder as the source CT, with new SOPInstanceUIDs
+                        and a FrameOfReferenceUID matching the CT for spatial alignment.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H1}" Text="Folder layout"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Each "DICOM folder" looks like:
+                    </TextBlock>
+                    <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+                            CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
+                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
+PatientFolder/<LineBreak/>
+&#x9;CT.1.dcm, CT.2.dcm, ...&#x9;&#x9;&#x9;<Run Foreground="#888888"># reference image series</Run><LineBreak/>
+&#x9;masks/<LineBreak/>
+&#x9;&#x9;Brain.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># → ROI "Brain"</Run><LineBreak/>
+&#x9;&#x9;CTV.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># → ROI "CTV"</Run><LineBreak/>
+&#x9;doses/<LineBreak/>
+&#x9;&#x9;dose.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># → its own RT-DOSE</Run>
+                        </TextBlock>
+                    </Border>
+                    <TextBlock Style="{StaticResource Body}">
+                        You can also point at a <Run FontStyle="Italic">parent</Run> folder containing many such
+                        DICOM folders side-by-side; each one becomes its own batch job.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H1}" Text="Step-by-step"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">1.</Run> Click <Run FontWeight="SemiBold">Browse...</Run>
+                        and select either a single DICOM folder or a parent containing several DICOM folders.
+                        (You can also paste a path directly into the textbox.)
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">2.</Run> Click <Run FontWeight="SemiBold">Scan</Run>. The list
+                        populates with each discovered folder, the ROI names found in
+                        <Run FontFamily="Consolas">masks/</Run>, and the dose files found in
+                        <Run FontFamily="Consolas">doses/</Run>.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">3.</Run> Choose
+                        <Run FontWeight="SemiBold">Convert Structures?</Run> and/or
+                        <Run FontWeight="SemiBold">Convert Doses?</Run> as needed.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert All</Run>
+                        for a one-shot run, or <Run FontWeight="SemiBold">Run Server</Run> to start a watcher
+                        that auto-converts as new files appear.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H1}" Text="Buttons and controls"/>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Browse..."/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Opens a folder picker so you can choose the root folder. Selecting a folder only sets
+                        the path — it does <Run FontWeight="SemiBold">not</Run> auto-scan. You can also type or
+                        paste a path directly into the textbox.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Scan"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Walks the chosen root folder and its first-level subdirectories, looking for valid DICOM
+                        folders containing <Run FontFamily="Consolas">masks/</Run> and/or
+                        <Run FontFamily="Consolas">doses/</Run> with .nii.gz files. Each match becomes a row in
+                        the discovered-jobs grid. Click Scan again any time after editing the folder path or
+                        adding/removing files to refresh the list.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Convert Structures? / Convert Doses?"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Toggle which artifact types to produce. Files in
+                        <Run FontFamily="Consolas">masks/</Run> require Convert Structures = ON;
+                        <Run FontFamily="Consolas">doses/</Run> require Convert Doses = ON. With both off, the
+                        Convert button is disabled.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Discovered jobs grid"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        One row per discovered DICOM folder. Columns:
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">DICOM Folder</Run>: the folder leaf name.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Masks / ROI Names</Run>: count and the comma-separated ROI
+                          names found in <Run FontFamily="Consolas">masks/</Run>.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Doses / Dose Files</Run>: count and dose filenames found in
+                          <Run FontFamily="Consolas">doses/</Run>.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Status</Run>: live progress per folder
+                          (Pending → Converting → OK / FAILED / Up-to-date).
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Run Server / Stop Server"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Toggles a periodic watcher (every 10 seconds). Each tick:
+                        <LineBreak/>
+                        • Re-scan all discovered folders and compute a "fingerprint" (file count + sizes +
+                          last-write-times) of the DICOM folder, <Run FontFamily="Consolas">masks/</Run>, and
+                          <Run FontFamily="Consolas">doses/</Run>.
+                        <LineBreak/>
+                        • If the fingerprint matches the previous tick → folder is <Run FontStyle="Italic">settled</Run>
+                          → run conversion.
+                        <LineBreak/>
+                        • Otherwise wait another 10 s. This prevents triggering mid-upload while files are still being added.
+                        <LineBreak/>
+                        <LineBreak/>
+                        Server-mode outputs use a stable hash filename derived from the input basenames:
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">RTSTRUCT_&lt;hash(maskNames)&gt;.dcm</Run>
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">RTDOSE_&lt;hash(doseName)&gt;.dcm</Run>
+                        <LineBreak/>
+                        <LineBreak/>
+                        If the file already exists, conversion is skipped — server mode is idempotent and
+                        won't re-run on the same inputs. Adding a new mask or dose changes the hash, so a
+                        new output file is created and prior ones stay untouched.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Convert All"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Manual one-shot mode: walks every discovered folder and runs both writers (per the
+                        Convert Structures / Convert Doses toggles). Outputs use a timestamp suffix
+                        (e.g. <Run FontFamily="Consolas">RTSTRUCT_20260428_103527.dcm</Run>) — every click
+                        produces a new file. Use this when you want to force a fresh conversion regardless
+                        of what's already there.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Cancel / Close"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">Cancel</Run>: aborts an in-progress Convert All.
+                        <Run FontWeight="SemiBold">Close</Run>: closes the window. The window's state (folder,
+                        toggles, server status) is retained when reopened from the launcher.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H1}" Text="Output details"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        • Reference series is auto-detected (first CT/MR/PT series in the DICOM folder).
+                        <LineBreak/>
+                        • RT-STRUCT contour traces support holes (interior cavities are emitted as additional
+                          CLOSED_PLANAR contours; viewers render via even-odd fill rule).
+                        <LineBreak/>
+                        • RT-DOSE is encoded as 32-bit unsigned with a per-volume
+                          <Run FontFamily="Consolas">DoseGridScaling</Run> chosen so the max value uses the
+                          full dynamic range — preserves ~10 digits of precision relative to max.
+                        <LineBreak/>
+                        • Masks must align to the reference image grid; if geometry differs, the writer
+                          NN-resamples the mask to the CT grid before tracing.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H1}" Text="Tips"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        • Server mode is great for "drop-folder" workflows: copy CT + masks/ + doses/ into a
+                          watch directory and walk away.
+                        <LineBreak/>
+                        • To force a re-run in server mode, delete the existing
+                          <Run FontFamily="Consolas">RTSTRUCT_*.dcm</Run> /
+                          <Run FontFamily="Consolas">RTDOSE_*.dcm</Run> file — the hash will be missing on the
+                          next tick and conversion fires again.
+                        <LineBreak/>
+                        • Empty masks (all-zero) are skipped silently; warnings appear in the bottom status bar.
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+                BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Close" Click="CloseButton_Click"
+                        Width="90" Padding="12,6" IsCancel="True" Cursor="Hand"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

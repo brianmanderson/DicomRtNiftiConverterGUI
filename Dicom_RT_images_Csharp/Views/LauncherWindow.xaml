@@ -1,0 +1,71 @@
+<Window x:Class="Dicom_RT_images_Csharp.Views.LauncherWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="DICOM RT Toolkit" Height="320" Width="480"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#F5F5F5">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header Bar -->
+        <Border Grid.Row="0" Background="#3F51B5" Padding="16,12">
+            <StackPanel>
+                <TextBlock Text="DICOM RT Toolkit" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="Pick a workflow to begin"
+                           FontSize="12" Foreground="#C5CAE9" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Workflow buttons -->
+        <Grid Grid.Row="1" Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- DICOM → NIfTI -->
+            <Button Grid.Row="0" Command="{Binding OpenDicomToNiftiCommand}"
+                    Margin="0,0,0,10" Cursor="Hand"
+                    Background="#1976D2" Foreground="White" BorderThickness="0">
+                <Grid Margin="14,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="DICOM → NIfTI" FontSize="16" FontWeight="SemiBold"
+                               HorizontalAlignment="Left"/>
+                    <TextBlock Grid.Row="1" FontSize="11" HorizontalAlignment="Left"
+                               Foreground="#E3F2FD" TextWrapping="Wrap" Margin="0,4,0,0">
+                        Convert DICOM RT-STRUCT, CT/MR/PT image series, and RT-DOSE into NIfTI files.
+                    </TextBlock>
+                </Grid>
+            </Button>
+
+            <!-- NIfTI → DICOM -->
+            <Button Grid.Row="1" Command="{Binding OpenNiftiToDicomCommand}"
+                    Margin="0,10,0,0" Cursor="Hand"
+                    Background="#3F51B5" Foreground="White" BorderThickness="0">
+                <Grid Margin="14,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="NIfTI → DICOM" FontSize="16" FontWeight="SemiBold"
+                               HorizontalAlignment="Left"/>
+                    <TextBlock Grid.Row="1" FontSize="11" HorizontalAlignment="Left"
+                               Foreground="#E8EAF6" TextWrapping="Wrap" Margin="0,4,0,0">
+                        Convert NIfTI binary masks back into DICOM RT-Structure Set files (batch).
+                    </TextBlock>
+                </Grid>
+            </Button>
+        </Grid>
+    </Grid>
+</Window>

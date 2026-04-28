@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="NIfTI to DICOM RT-STRUCT" Height="640" Width="780"
+        Title="NIfTI to DICOM" Height="640" Width="780"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
         MinHeight="500" MinWidth="640"
@@ -19,16 +19,26 @@
 
         <!-- Header Bar -->
         <Border Grid.Row="0" Background="#3F51B5" Padding="16,10">
-            <StackPanel>
-                <TextBlock Text="NIfTI to DICOM RT-STRUCT (Batch)"
-                           FontSize="16" FontWeight="SemiBold" Foreground="White"/>
-                <TextBlock Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0">
-                    Select a folder. Each DICOM folder containing a <Run FontFamily="Consolas">masks/</Run>
-                    subdirectory (the folder itself OR any first-level subfolder) will be converted to its own
-                    RT-STRUCT, written into that DICOM folder. The reference CT/MR/PT image series is
-                    auto-detected — you don't need to pick one.
-                </TextBlock>
-            </StackPanel>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Help"
+                        Command="{Binding OpenHelpCommand}"
+                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+                        VerticalAlignment="Top" Padding="14,6" Cursor="Hand"
+                        Background="White" Foreground="#3F51B5" FontWeight="SemiBold"
+                        FontSize="13" MinWidth="80" BorderThickness="0"/>
+                <StackPanel>
+                    <TextBlock Text="NIfTI to DICOM (Batch)"
+                               FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+                    <TextBlock Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0">
+                        Select a folder. Each DICOM folder containing a <Run FontFamily="Consolas">masks/</Run>
+                        and/or <Run FontFamily="Consolas">doses/</Run> subdirectory (the folder itself OR any
+                        first-level subfolder) will be converted: <Run FontWeight="SemiBold">masks/</Run> →
+                        one RT-STRUCT, <Run FontWeight="SemiBold">doses/</Run> → one RT-DOSE per file. Outputs
+                        are written into the DICOM folder. The reference CT/MR/PT image series is
+                        auto-detected — you don't need to pick one.
+                    </TextBlock>
+                </StackPanel>
+            </DockPanel>
         </Border>
 
         <!-- Content Panel -->
@@ -38,6 +48,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
@@ -45,7 +56,11 @@
                 <!-- Root folder picker -->
                 <TextBlock Grid.Row="0" Text="Folder:" Margin="0,0,0,4"
                            FontWeight="Medium" Foreground="#555555"/>
-                <DockPanel Grid.Row="1" Margin="0,0,0,12">
+                <DockPanel Grid.Row="1" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="Scan"
+                            Command="{Binding ScanRootFolderCommand}"
+                            Width="80" Margin="8,0,0,0" Padding="8,4" Cursor="Hand"
+                            Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
                     <Button DockPanel.Dock="Right" Content="Browse..."
                             Command="{Binding BrowseRootFolderCommand}"
                             Width="80" Margin="8,0,0,0" Padding="8,4" Cursor="Hand"/>
@@ -53,8 +68,18 @@
                              VerticalContentAlignment="Center" Padding="6,4" BorderBrush="#CCCCCC"/>
                 </DockPanel>
 
+                <!-- Conversion options -->
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
+                    <CheckBox Content="Convert Structures?"
+                              IsChecked="{Binding ConvertStructures}"
+                              VerticalContentAlignment="Center" FontSize="13" Margin="0,0,20,0"/>
+                    <CheckBox Content="Convert Doses?"
+                              IsChecked="{Binding ConvertDoses}"
+                              VerticalContentAlignment="Center" FontSize="13"/>
+                </StackPanel>
+
                 <!-- Discovered jobs grid -->
-                <Border Grid.Row="2" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="2"
+                <Border Grid.Row="3" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="2"
                         Background="#FAFAFA">
                     <DataGrid ItemsSource="{Binding DiscoveredJobs}" AutoGenerateColumns="False"
                               CanUserAddRows="False" CanUserDeleteRows="False"
@@ -64,16 +89,18 @@
                               BorderThickness="0" Background="Transparent"
                               FontSize="12">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="DICOM Folder" Binding="{Binding FolderDisplayName}" Width="180"/>
-                            <DataGridTextColumn Header="Masks" Binding="{Binding MaskCount}" Width="60"/>
+                            <DataGridTextColumn Header="DICOM Folder" Binding="{Binding FolderDisplayName}" Width="160"/>
+                            <DataGridTextColumn Header="Masks" Binding="{Binding MaskCount}" Width="55"/>
                             <DataGridTextColumn Header="ROI Names" Binding="{Binding MaskNames}" Width="*"/>
+                            <DataGridTextColumn Header="Doses" Binding="{Binding DoseCount}" Width="55"/>
+                            <DataGridTextColumn Header="Dose Files" Binding="{Binding DoseNames}" Width="*"/>
                             <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="220"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Border>
 
                 <!-- Status bar -->
-                <Border Grid.Row="3" Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="1"
+                <Border Grid.Row="4" Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="1"
                         CornerRadius="2" Padding="10,8" Margin="0,12,0,0">
                     <TextBlock Text="{Binding StatusText}" Foreground="#444444"
                                FontSize="12" TextWrapping="Wrap"/>
@@ -85,6 +112,9 @@
         <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
                 BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="{Binding ServerButtonText}" Command="{Binding RunServerCommand}"
+                        Width="120" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                        Background="#E91E63" Foreground="White" FontWeight="SemiBold"/>
                 <Button Content="Convert All" Command="{Binding ConvertCommand}"
                         Width="120" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
                         Background="#3F51B5" Foreground="White" FontWeight="SemiBold"/>

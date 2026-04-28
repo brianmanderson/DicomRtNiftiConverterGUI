@@ -24,7 +24,6 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private readonly NiftiConversionService _conversionService;
         private readonly RtStructMaskService _maskService;
         private readonly SettingsService _settingsService;
-        private readonly RtStructWriterService _rtStructWriter;
 
         private string _inputFolder = "";
         private string _outputFolder = "";
@@ -59,14 +58,12 @@ namespace Dicom_RT_images_Csharp.ViewModels
             DicomScannerService scannerService,
             NiftiConversionService conversionService,
             RtStructMaskService maskService,
-            SettingsService settingsService,
-            RtStructWriterService rtStructWriter)
+            SettingsService settingsService)
         {
             _scannerService = scannerService;
             _conversionService = conversionService;
             _maskService = maskService;
             _settingsService = settingsService;
-            _rtStructWriter = rtStructWriter;
 
             Patients = new ObservableCollection<PatientGroupViewModel>();
             AllDiscoveredRoiNames = new ObservableCollection<string>();
@@ -83,7 +80,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             SelectAllPatientsCommand = new RelayCommand(_ => ToggleSelectAllPatients());
             ExportMetaDataCommand = new RelayCommand(_ => ExecuteExportMetaData(), _ => !IsScanning && !IsConverting && Patients.Count > 0);
             OpenOutputSpacingCommand = new RelayCommand(_ => OpenOutputSpacingWindow());
-            OpenNiftiToDicomCommand = new RelayCommand(_ => OpenNiftiToDicomWindow());
+            OpenHelpCommand = new RelayCommand(p => OpenHelpWindow(p as Window));
 
             // Load settings and associations
             _settings = _settingsService.LoadSettings();
@@ -294,7 +291,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public ICommand SelectAllPatientsCommand { get; }
         public ICommand ExportMetaDataCommand { get; }
         public ICommand OpenOutputSpacingCommand { get; }
-        public ICommand OpenNiftiToDicomCommand { get; }
+        public ICommand OpenHelpCommand { get; }
 
         private void BrowseInput()
         {
@@ -1026,12 +1023,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _associations = _settingsService.LoadAssociations();
         }
 
-        private void OpenNiftiToDicomWindow()
+        private void OpenHelpWindow(Window owner)
         {
-            var vm = new NiftiToDicomViewModel(_scannerService, _rtStructWriter);
-            var window = new Views.NiftiToDicomWindow();
-            window.DataContext = vm;
-            window.Owner = Application.Current.MainWindow;
+            var window = new Views.DicomToNiftiHelpWindow();
+            if (owner != null) window.Owner = owner;
             window.ShowDialog();
         }
 
