@@ -1,4 +1,6 @@
+using System.Linq;
 using System.Windows;
+using Dicom_RT_images_Csharp.Cli;
 using Dicom_RT_images_Csharp.Services;
 using Dicom_RT_images_Csharp.ViewModels;
 using Dicom_RT_images_Csharp.Views;
@@ -14,6 +16,17 @@ namespace Dicom_RT_images_Csharp
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+
+            // Headless / batch mode: detect the --headless flag and run the CLI
+            // path instead of starting WPF. Used by the benchmark harness in the
+            // PythonCode/ project to drive forward / reverse conversions on the
+            // analytical validation dataset.
+            if (e.Args.Any(a => string.Equals(a, "--headless", System.StringComparison.OrdinalIgnoreCase)))
+            {
+                int exitCode = HeadlessRunner.Run(e.Args);
+                Shutdown(exitCode);
+                return;
+            }
 
             // Build all services once and share across both workflows.
             var settingsService   = new SettingsService();

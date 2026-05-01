@@ -257,6 +257,7 @@
     <Compile Include="Services\DicomScannerService.cs" />
     <Compile Include="Services\NiftiConversionService.cs" />
     <Compile Include="Services\RtStructMaskService.cs" />
+    <Compile Include="Cli\HeadlessRunner.cs" />
     <Compile Include="Services\RtStructWriterService.cs" />
     <Compile Include="Services\RtDoseWriterService.cs" />
     <Compile Include="Services\HashNaming.cs" />

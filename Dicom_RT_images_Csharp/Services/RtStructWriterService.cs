@@ -160,7 +160,11 @@ namespace Dicom_RT_images_Csharp.Services
                     { DicomTag.RTROIInterpretedType, "" },
                     { DicomTag.ROIInterpreter, "" }
                 };
-                obsItem.Add(new DicomShortString(DicomTag.ROIObservationLabelRETIRED, roiName));
+                // ROIObservationLabel has VR=SH (16-char cap). Truncate ROI names that exceed
+                // the limit -- this tag is Type 3 (optional) so a truncated label is preferable
+                // to a validation crash that prevents the whole RTSTRUCT from being written.
+                string obsLabel = roiName.Length <= 16 ? roiName : roiName.Substring(0, 16);
+                obsItem.Add(new DicomShortString(DicomTag.ROIObservationLabelRETIRED, obsLabel));
                 observationsSeq.Items.Add(obsItem);
 
                 roiAdded++;
