@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using FellowOakDicom;
 using itk.simple;
 
@@ -31,7 +33,10 @@ namespace Dicom_RT_images_Csharp.Services
             IProgress<string> progress,
             CancellationToken ct)
         {
-            var results = new Dictionary<string, Image>();
+            // ConcurrentDictionary because the per-ROI loop below is parallelized
+            // (Parallel.ForEach). Each ROI gets its own private maskData buffer,
+            // so writes never alias; the only shared state is this output map.
+            var results = new ConcurrentDictionary<string, Image>();
 
             // Parse RTSTRUCT
             var dcmFile = DicomFile.Open(rtStructFilePath);
@@ -71,14 +76,26 @@ namespace Dicom_RT_images_Csharp.Services
 
             if (!ds.Contains(DicomTag.ROIContourSequence))
             {
-                return results;
+                return new Dictionary<string, Image>(results);
             }
 
-            // Process each ROI contour
-            foreach (var roiContour in ds.GetSequence(DicomTag.ROIContourSequence))
-            {
-                ct.ThrowIfCancellationRequested();
+            // Materialize the ROI sequence so Parallel.ForEach can partition it.
+            // Each ROI's rasterization is independent (private maskData buffer);
+            // the only shared writes are into the ConcurrentDictionary `results`
+            // and IProgress.Report, both of which are thread-safe.
+            var roiContours = ds.GetSequence(DicomTag.ROIContourSequence).ToList();
 
+            var parallelOpts = new ParallelOptions
+            {
+                CancellationToken = ct,
+                // Cap parallelism at the lesser of CPU count and ROI count to
+                // avoid spawning idle threads on small RTSTRUCTs (typical: 5-30
+                // ROIs in clinical OAR sets, up to ~50 in research datasets).
+                MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, Math.Max(1, roiContours.Count)),
+            };
+
+            Parallel.ForEach(roiContours, parallelOpts, roiContour =>
+            {
                 int refRoiNum;
                 try
                 {
@@ -86,18 +103,18 @@ namespace Dicom_RT_images_Csharp.Services
                 }
                 catch (Exception)
                 {
-                    continue;
+                    return;
                 }
 
-                if (!roiNumberToName.ContainsKey(refRoiNum)) continue;
+                if (!roiNumberToName.ContainsKey(refRoiNum)) return;
                 string dicomRoiName = roiNumberToName[refRoiNum];
 
-                if (!dicomNameToOutputName.ContainsKey(dicomRoiName)) continue;
+                if (!dicomNameToOutputName.ContainsKey(dicomRoiName)) return;
                 string outputName = dicomNameToOutputName[dicomRoiName];
 
                 progress?.Report($"    Rasterizing ROI: {dicomRoiName}");
 
-                if (!roiContour.Contains(DicomTag.ContourSequence)) continue;
+                if (!roiContour.Contains(DicomTag.ContourSequence)) return;
 
                 DicomSequence contourSeq;
                 try
@@ -106,10 +123,11 @@ namespace Dicom_RT_images_Csharp.Services
                 }
                 catch (Exception)
                 {
-                    continue;
+                    return;
                 }
 
-                // Allocate 3D mask: flat byte array [z * rows * cols + y * cols + x]
+                // Allocate 3D mask: flat byte array [z * rows * cols + y * cols + x].
+                // This buffer is private to the current task -- no cross-thread aliasing.
                 byte[] maskData = new byte[slices * rows * cols];
                 int contourCount = 0;
 
@@ -171,15 +189,16 @@ namespace Dicom_RT_images_Csharp.Services
                 if (contourCount == 0)
                 {
                     progress?.Report($"    Skipping ROI '{dicomRoiName}': no valid contours");
-                    continue;
+                    return;
                 }
 
-                // Create SimpleITK Image from mask data
+                // CreateMaskImage allocates a fresh SimpleITK Image; thread-safe to
+                // call from multiple workers (no shared ITK state).
                 Image maskImage = CreateMaskImage(maskData, referenceImage, cols, rows, slices);
                 results[outputName] = maskImage;
-            }
+            });
 
-            return results;
+            return new Dictionary<string, Image>(results);
         }
 
         // ────────────────────────────────────────────────────────────────

@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Dicom_RT_images_Csharp.Models;
 using FellowOakDicom;
 using itk.simple;
@@ -200,8 +202,13 @@ namespace Dicom_RT_images_Csharp.Services
             var masks = _maskService.RasterizeRois(
                 rtStructFilePath, referenceImage, roiNamesToExport, progress, ct);
 
-            // Compute volumes and write mask files
-            var roiVolumes = new Dictionary<string, double>();
+            // Compute volumes and write mask files (per-ROI work is independent;
+            // resampling + StatisticsImageFilter + WriteImage are all thread-safe
+            // across distinct Image instances, and SimpleITK.WriteImage writes to
+            // distinct paths). We bound concurrency to 4 to avoid thrashing the
+            // disk -- 4 parallel NIfTI streams already saturate a typical SSD,
+            // and oversubscription past that hurts throughput more than it helps.
+            var roiVolumes = new ConcurrentDictionary<string, double>();
             string masksDir;
             if (flatOutput)
             {
@@ -213,10 +220,15 @@ namespace Dicom_RT_images_Csharp.Services
                 Directory.CreateDirectory(masksDir);
             }
 
-            foreach (var kvp in masks)
+            var maskList = masks.ToList();
+            var parallelOpts = new ParallelOptions
             {
-                ct.ThrowIfCancellationRequested();
+                CancellationToken = ct,
+                MaxDegreeOfParallelism = Math.Min(4, Math.Max(1, maskList.Count)),
+            };
 
+            Parallel.ForEach(maskList, parallelOpts, kvp =>
+            {
                 Image maskToWrite = kvp.Value;
                 double effectiveVoxelVolume = voxelVolume;
 
@@ -228,7 +240,9 @@ namespace Dicom_RT_images_Csharp.Services
                     effectiveVoxelVolume = resampledVoxelVolume;
                 }
 
-                // Count non-zero voxels in the binary mask
+                // Per-iteration stats filter avoids cross-thread state on the
+                // C++ filter object (StatisticsImageFilter caches a result
+                // internally between Execute() and Get*()).
                 var stats = new StatisticsImageFilter();
                 stats.Execute(maskToWrite);
                 double voxelCount = stats.GetSum(); // binary mask: sum == count of 1-voxels
@@ -239,10 +253,10 @@ namespace Dicom_RT_images_Csharp.Services
                 SimpleITK.WriteImage(maskToWrite, maskPath);
                 maskToWrite.Dispose();
                 progress?.Report($"  Wrote mask: {safeName}.nii.gz");
-            }
+            });
 
             referenceImage.Dispose();
-            return roiVolumes;
+            return new Dictionary<string, double>(roiVolumes);
         }
 
         /// <summary>
