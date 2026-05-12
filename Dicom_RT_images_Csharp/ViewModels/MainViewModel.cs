@@ -351,10 +351,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
             try
             {
                 AppendLog($"Scanning {InputFolder}...");
-                var results = await Task.Run(() =>
+                var scanResult = await Task.Run(() =>
                     _scannerService.ScanFolderAsync(InputFolder, progress, _cts.Token)).ConfigureAwait(true);
 
-                foreach (var patient in results)
+                foreach (var patient in scanResult.Patients)
                 {
                     Patients.Add(new PatientGroupViewModel(patient));
                 }
@@ -362,7 +362,28 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 // Aggregate all discovered ROI names
                 AggregateDiscoveredRoiNames();
 
-                AppendLog($"Found {results.Count} patient(s), {results.Sum(p => p.Studies.Count)} study(ies), {AllDiscoveredRoiNames.Count} unique ROI name(s).");
+                string summary = $"Found {scanResult.Patients.Count} patient(s), " +
+                                 $"{scanResult.Patients.Sum(p => p.Studies.Count)} study(ies), " +
+                                 $"{AllDiscoveredRoiNames.Count} unique ROI name(s).";
+                if (scanResult.SkippedErrorCount > 0)
+                {
+                    summary += $" Skipped {scanResult.SkippedErrorCount} file(s) due to errors.";
+                }
+                AppendLog(summary);
+                if (scanResult.SkippedErrorCount > 0)
+                {
+                    // The most common cause on Windows: per-file paths > MAX_PATH (260 chars)
+                    // when long-path support is not enabled. Surface sample messages so the
+                    // user can act instead of seeing a silent "0 patients" outcome.
+                    foreach (var sample in scanResult.SkippedErrorSamples)
+                    {
+                        AppendLog("  " + sample);
+                    }
+                    if (scanResult.SkippedErrorCount > scanResult.SkippedErrorSamples.Count)
+                    {
+                        AppendLog($"  ...and {scanResult.SkippedErrorCount - scanResult.SkippedErrorSamples.Count} more.");
+                    }
+                }
                 StatusText = "Scan complete.";
                 ProgressValue = 100;
             }

@@ -14,6 +14,7 @@
     <WarningLevel>4</WarningLevel>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <Deterministic>true</Deterministic>
+    <ApplicationManifest>Properties\app.manifest</ApplicationManifest>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -244,6 +245,7 @@
   <ItemGroup>
     <Compile Include="Models\AppSettings.cs" />
     <Compile Include="Models\DicomPatientGroup.cs" />
+    <Compile Include="Models\DicomScanResult.cs" />
     <Compile Include="Models\DicomStudyGroup.cs" />
     <Compile Include="Models\DicomSeriesGroup.cs" />
     <Compile Include="Models\RoiAssociation.cs" />
