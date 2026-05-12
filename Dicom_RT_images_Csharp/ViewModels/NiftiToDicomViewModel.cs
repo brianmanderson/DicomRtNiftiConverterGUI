@@ -394,8 +394,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
         /// </summary>
         private async Task<DicomSeriesGroup> PickReferenceSeriesAsync(string dicomFolder, CancellationToken ct)
         {
-            var patients = await _scannerService.ScanFolderAsync(dicomFolder, null, ct).ConfigureAwait(false);
-            foreach (var patient in patients)
+            var scanResult = await _scannerService.ScanFolderAsync(dicomFolder, null, ct).ConfigureAwait(false);
+            foreach (var patient in scanResult.Patients)
             {
                 foreach (var study in patient.Studies)
                 {

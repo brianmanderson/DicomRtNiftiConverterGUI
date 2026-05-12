@@ -16,10 +16,16 @@ namespace Dicom_RT_images_Csharp.Services
     /// </summary>
     public class DicomScannerService
     {
+        // Cap on how many per-file error samples we keep, so a directory full of unreadable
+        // files doesn't grow the result object unboundedly. The full count is always reported.
+        private const int MaxErrorSamples = 10;
+
         /// <summary>
-        /// Scans the given root folder for DICOM files and returns grouped patient data.
+        /// Scans the given root folder for DICOM files and returns grouped patient data plus
+        /// a count of files that errored during open (so callers can surface silent failures
+        /// like PathTooLongException on long Windows paths instead of reporting "0 patients").
         /// </summary>
-        public async Task<List<DicomPatientGroup>> ScanFolderAsync(
+        public async Task<DicomScanResult> ScanFolderAsync(
             string rootFolder,
             IProgress<string> progress,
             CancellationToken cancellationToken)
@@ -29,6 +35,8 @@ namespace Dicom_RT_images_Csharp.Services
             var allFiles = Directory.EnumerateFiles(rootFolder, "*", SearchOption.AllDirectories).ToList();
             int totalFiles = allFiles.Count;
             int processedCount = 0;
+            int skippedErrorCount = 0;
+            var errorSamples = new ConcurrentQueue<string>();
 
             // Thread-safe dictionaries for grouping
             var patients = new ConcurrentDictionary<string, DicomPatientGroup>();
@@ -50,9 +58,17 @@ namespace Dicom_RT_images_Csharp.Services
                 {
                     throw;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Not a valid DICOM file — skip silently
+                    // Anything that escapes ProcessFileAsync is an open/parse error worth
+                    // surfacing — PathTooLongException, UnauthorizedAccessException, IOException,
+                    // DicomDataException on truncated files, etc. Genuinely "not a DICOM file"
+                    // is filtered inside ProcessFileAsync and never reaches here.
+                    Interlocked.Increment(ref skippedErrorCount);
+                    if (errorSamples.Count < MaxErrorSamples)
+                    {
+                        errorSamples.Enqueue($"{filePath}: {ex.GetType().Name}: {ex.Message}");
+                    }
                 }
                 finally
                 {
@@ -73,11 +89,20 @@ namespace Dicom_RT_images_Csharp.Services
             LinkRtDataToImageSeries(patients.Values.ToList(), seriesLookup);
 
             progress?.Report("Scan complete.");
-            return patients.Values.OrderBy(p => p.PatientID).ToList();
+            return new DicomScanResult
+            {
+                Patients = patients.Values.OrderBy(p => p.PatientID).ToList(),
+                TotalFileCount = totalFiles,
+                SkippedErrorCount = skippedErrorCount,
+                SkippedErrorSamples = errorSamples.ToList()
+            };
         }
 
         /// <summary>
         /// Opens a single file as DICOM and adds it to the grouping dictionaries.
+        /// Files that are genuinely not DICOM are filtered here; all other failures (path
+        /// too long, access denied, truncated read, etc.) propagate so the caller can count
+        /// and report them rather than silently producing "0 patients".
         /// </summary>
         private async Task ProcessFileAsync(
             string filePath,
@@ -90,10 +115,19 @@ namespace Dicom_RT_images_Csharp.Services
             {
                 dcmFile = await DicomFile.OpenAsync(filePath, FileReadOption.SkipLargeTags).ConfigureAwait(false);
             }
-            catch
-            {
-                return; // Not a DICOM file
-            }
+            // System-level errors that should NOT be silently swallowed — propagate to the
+            // outer counter so the GUI can warn the user. PathTooLong in particular is the
+            // canary for missing Windows long-path support on nested-UID datasets.
+            catch (PathTooLongException)        { throw; }
+            catch (UnauthorizedAccessException) { throw; }
+            catch (DirectoryNotFoundException)  { throw; }
+            // Race: file vanished between enumeration and open — benign.
+            catch (FileNotFoundException) { return; }
+            // Parser errors from FellowOakDicom: not a DICOM file (or corrupt). Treat as a
+            // silent skip so directories that mix DICOM with .nii/.json/.txt still scan cleanly.
+            catch (DicomException) { return; }
+            // Truncated reads on non-DICOM data: benign.
+            catch (System.IO.EndOfStreamException) { return; }
 
             var ds = dcmFile.Dataset;
             if (ds == null) return;
