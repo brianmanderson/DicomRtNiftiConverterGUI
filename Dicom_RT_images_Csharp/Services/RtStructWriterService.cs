@@ -152,12 +152,13 @@ namespace Dicom_RT_images_Csharp.Services
                 contourItem.Add(contourSeq);
                 roiContourSeq.Items.Add(contourItem);
 
-                // RTROIObservations item
+                // RTROIObservations item. RTROIInterpretedType is Type 2 with defined terms
+                // (PS3.3 C.8.8.5); many TPS reject an empty value, so infer from the ROI name.
                 var obsItem = new DicomDataset
                 {
                     { DicomTag.ObservationNumber, roiNumber },
                     { DicomTag.ReferencedROINumber, roiNumber },
-                    { DicomTag.RTROIInterpretedType, "" },
+                    { DicomTag.RTROIInterpretedType, InferRtRoiInterpretedType(roiName) },
                     { DicomTag.ROIInterpreter, "" }
                 };
                 // ROIObservationLabel has VR=SH (16-char cap). Truncate ROI names that exceed
@@ -235,18 +236,30 @@ namespace Dicom_RT_images_Csharp.Services
 
         /// <summary>
         /// If the mask has different geometry than the reference, resample it to the reference grid
-        /// using nearest-neighbor interpolation. Otherwise return the mask unchanged.
+        /// using linear interpolation followed by a 0.5 threshold. This majority-vote approach
+        /// preserves boundary slices that nearest-neighbor would drop when source and target Z
+        /// grids are non-aligned (e.g. 2.5 mm prediction → 3.0 mm CT).
         /// </summary>
         private static Image EnsureMaskAlignedToReference(Image mask, Image reference)
         {
             if (GeometriesMatch(mask, reference))
                 return mask;
 
+            Image maskF = mask.GetPixelID() == PixelIDValueEnum.sitkFloat32
+                ? mask
+                : SimpleITK.Cast(mask, PixelIDValueEnum.sitkFloat32);
+
             var resample = new ResampleImageFilter();
             resample.SetReferenceImage(reference);
-            resample.SetInterpolator(InterpolatorEnum.sitkNearestNeighbor);
-            resample.SetDefaultPixelValue(0);
-            return resample.Execute(mask);
+            resample.SetInterpolator(InterpolatorEnum.sitkLinear);
+            resample.SetDefaultPixelValue(0.0);
+            Image resampled = resample.Execute(maskF);
+
+            if (!ReferenceEquals(maskF, mask)) maskF.Dispose();
+
+            Image binary = SimpleITK.BinaryThreshold(resampled, 0.5, double.MaxValue, (byte)1, (byte)0);
+            resampled.Dispose();
+            return binary;
         }
 
         private static bool GeometriesMatch(Image a, Image b)
@@ -297,6 +310,8 @@ namespace Dicom_RT_images_Csharp.Services
             IntPtr buf = maskU8.GetBufferAsUInt8();
             Marshal.Copy(buf, full, 0, full.Length);
 
+            int degenerateSkipped = 0;
+
             for (int z = 0; z < depth; z++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -327,6 +342,17 @@ namespace Dicom_RT_images_Csharp.Services
                 foreach (var poly in polygons)
                 {
                     if (poly.Count < 3) continue;
+
+                    // Reject polygons with no valid surface normal: collinear points and
+                    // sub-pixel slivers have zero (or near-zero) shoelace area. Without this
+                    // check, 1-pixel-wide protrusions and isolated noise voxels emit
+                    // contours that TPS validators (RayStation/Eclipse) discard with a
+                    // "contour without a valid normal" warning.
+                    if (PolygonPixelArea(poly) < 0.5)
+                    {
+                        degenerateSkipped++;
+                        continue;
+                    }
 
                     // Convert each (col, row) to physical (x, y, z) using the reference geometry
                     var coords = new List<double>(poly.Count * 3);
@@ -366,7 +392,29 @@ namespace Dicom_RT_images_Csharp.Services
                 }
             }
 
+            if (degenerateSkipped > 0)
+                progress?.Report($"  Skipped {degenerateSkipped} degenerate (collinear/sub-pixel) contour(s).");
+
             return contourSeq;
+        }
+
+        /// <summary>
+        /// Returns the absolute 2D pixel-grid area of a closed polygon using the shoelace
+        /// formula. Collinear point sets and sub-pixel slivers return 0 (or near-0), which is
+        /// the signal we use to skip polygons that have no valid surface normal.
+        /// </summary>
+        private static double PolygonPixelArea(List<(int col, int row)> poly)
+        {
+            int n = poly.Count;
+            if (n < 3) return 0.0;
+            double sum = 0.0;
+            for (int i = 0; i < n; i++)
+            {
+                int j = i + 1 == n ? 0 : i + 1;
+                sum += (double)poly[i].col * poly[j].row;
+                sum -= (double)poly[j].col * poly[i].row;
+            }
+            return Math.Abs(sum) * 0.5;
         }
 
         /// <summary>
@@ -656,6 +704,29 @@ namespace Dicom_RT_images_Csharp.Services
             {
                 // ignore
             }
+        }
+
+        /// <summary>
+        /// Heuristically maps an ROI name to a DICOM RT ROI Interpreted Type defined term
+        /// (PS3.3 C.8.8.5). Falls back to "ORGAN" when no rule matches. The returned value is
+        /// always a non-empty defined term so strict TPS validators (Eclipse, RayStation) accept it.
+        /// </summary>
+        private static string InferRtRoiInterpretedType(string roiName)
+        {
+            if (string.IsNullOrWhiteSpace(roiName)) return "ORGAN";
+            string n = roiName.Trim().ToUpperInvariant();
+            if (n.StartsWith("PTV")) return "PTV";
+            if (n.StartsWith("CTV")) return "CTV";
+            if (n.StartsWith("GTV")) return "GTV";
+            if (n.StartsWith("ITV")) return "CTV";
+            if (n == "BODY" || n == "EXTERNAL" || n == "SKIN" || n.Contains("EXTERNAL")) return "EXTERNAL";
+            if (n.Contains("AVOID") || n.StartsWith("OAR_") || n.EndsWith("_AVOID")) return "AVOIDANCE";
+            if (n.Contains("BOLUS")) return "BOLUS";
+            if (n.Contains("MARKER") || n.Contains("FIDUCIAL")) return "MARKER";
+            if (n.Contains("ISO") && n.Contains("CENTER")) return "ISOCENTER";
+            if (n.Contains("SUPPORT") || n.Contains("COUCH") || n.Contains("TABLE")) return "SUPPORT";
+            if (n.Contains("FIXATION") || n.Contains("HEADREST")) return "FIXATION";
+            return "ORGAN";
         }
 
         private static string GetStringTag(DicomDataset ds, DicomTag tag, string defaultValue)
