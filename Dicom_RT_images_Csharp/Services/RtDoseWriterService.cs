@@ -284,11 +284,12 @@ namespace Dicom_RT_images_Csharp.Services
             string nowDate = DateTime.Now.ToString("yyyyMMdd");
             string nowTime = DateTime.Now.ToString("HHmmss");
 
-            // SOP common
+            // SOP common (MediaStorageSOPClassUID/SOPInstanceUID are Group 0002
+            // File Meta Information tags — fo-dicom populates them automatically
+            // when DicomFile is constructed from the dataset).
             ds.AddOrUpdate(DicomTag.SOPClassUID, RtDoseSopClassUid);
             ds.AddOrUpdate(DicomTag.SOPInstanceUID, sopInstanceUid);
-            ds.AddOrUpdate(DicomTag.MediaStorageSOPClassUID, RtDoseSopClassUid);
-            ds.AddOrUpdate(DicomTag.MediaStorageSOPInstanceUID, sopInstanceUid);
+            ds.AddOrUpdate(DicomTag.SpecificCharacterSet, "ISO_IR 192");
 
             // Patient
             CopyTagIfPresent(refDs, ds, DicomTag.PatientID);
@@ -315,6 +316,8 @@ namespace Dicom_RT_images_Csharp.Services
             ds.AddOrUpdate(DicomTag.Manufacturer, "Dicom_RT_images_Csharp");
             ds.AddOrUpdate(DicomTag.InstanceCreationDate, nowDate);
             ds.AddOrUpdate(DicomTag.InstanceCreationTime, nowTime);
+            ds.AddOrUpdate(DicomTag.ContentDate, nowDate);
+            ds.AddOrUpdate(DicomTag.ContentTime, nowTime);
 
             // Frame of reference (copy from CT, fall back to series field)
             string frameUid = GetStringTag(refDs, DicomTag.FrameOfReferenceUID,
@@ -323,6 +326,8 @@ namespace Dicom_RT_images_Csharp.Services
                 frameUid = DicomUIDGenerator.GenerateDerivedFromUUID().UID;
             ds.AddOrUpdate(DicomTag.FrameOfReferenceUID, frameUid);
             ds.AddOrUpdate(DicomTag.PositionReferenceIndicator, "");
+
+            ds.AddOrUpdate(DicomTag.ApprovalStatus, "UNAPPROVED");
 
             return ds;
         }
