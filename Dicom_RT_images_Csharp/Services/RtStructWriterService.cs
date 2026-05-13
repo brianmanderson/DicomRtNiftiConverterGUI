@@ -310,6 +310,8 @@ namespace Dicom_RT_images_Csharp.Services
             IntPtr buf = maskU8.GetBufferAsUInt8();
             Marshal.Copy(buf, full, 0, full.Length);
 
+            int degenerateSkipped = 0;
+
             for (int z = 0; z < depth; z++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -340,6 +342,17 @@ namespace Dicom_RT_images_Csharp.Services
                 foreach (var poly in polygons)
                 {
                     if (poly.Count < 3) continue;
+
+                    // Reject polygons with no valid surface normal: collinear points and
+                    // sub-pixel slivers have zero (or near-zero) shoelace area. Without this
+                    // check, 1-pixel-wide protrusions and isolated noise voxels emit
+                    // contours that TPS validators (RayStation/Eclipse) discard with a
+                    // "contour without a valid normal" warning.
+                    if (PolygonPixelArea(poly) < 0.5)
+                    {
+                        degenerateSkipped++;
+                        continue;
+                    }
 
                     // Convert each (col, row) to physical (x, y, z) using the reference geometry
                     var coords = new List<double>(poly.Count * 3);
@@ -379,7 +392,29 @@ namespace Dicom_RT_images_Csharp.Services
                 }
             }
 
+            if (degenerateSkipped > 0)
+                progress?.Report($"  Skipped {degenerateSkipped} degenerate (collinear/sub-pixel) contour(s).");
+
             return contourSeq;
+        }
+
+        /// <summary>
+        /// Returns the absolute 2D pixel-grid area of a closed polygon using the shoelace
+        /// formula. Collinear point sets and sub-pixel slivers return 0 (or near-0), which is
+        /// the signal we use to skip polygons that have no valid surface normal.
+        /// </summary>
+        private static double PolygonPixelArea(List<(int col, int row)> poly)
+        {
+            int n = poly.Count;
+            if (n < 3) return 0.0;
+            double sum = 0.0;
+            for (int i = 0; i < n; i++)
+            {
+                int j = i + 1 == n ? 0 : i + 1;
+                sum += (double)poly[i].col * poly[j].row;
+                sum -= (double)poly[j].col * poly[i].row;
+            }
+            return Math.Abs(sum) * 0.5;
         }
 
         /// <summary>
