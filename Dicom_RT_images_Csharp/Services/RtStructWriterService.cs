@@ -288,8 +288,10 @@ namespace Dicom_RT_images_Csharp.Services
 
         /// <summary>
         /// Walks the binary mask slice-by-slice. For each slice with non-zero pixels, traces
-        /// closed-polygon outlines (Moore-neighborhood boundary tracing per connected component)
+        /// closed-polygon outlines using marching squares (vertices at pixel-edge midpoints)
         /// and converts each polygon to a ContourSequence DICOM item with physical coordinates.
+        /// Marching squares produces simple polygons by construction (no self-intersection)
+        /// and emits outer outlines and hole outlines uniformly in a single pass.
         /// </summary>
         private static DicomSequence ExtractContoursFromMask(
             Image maskU8,
@@ -403,7 +405,7 @@ namespace Dicom_RT_images_Csharp.Services
         /// formula. Collinear point sets and sub-pixel slivers return 0 (or near-0), which is
         /// the signal we use to skip polygons that have no valid surface normal.
         /// </summary>
-        private static double PolygonPixelArea(List<(int col, int row)> poly)
+        private static double PolygonPixelArea(List<(double col, double row)> poly)
         {
             int n = poly.Count;
             if (n < 3) return 0.0;
@@ -411,175 +413,146 @@ namespace Dicom_RT_images_Csharp.Services
             for (int i = 0; i < n; i++)
             {
                 int j = i + 1 == n ? 0 : i + 1;
-                sum += (double)poly[i].col * poly[j].row;
-                sum -= (double)poly[j].col * poly[i].row;
+                sum += poly[i].col * poly[j].row;
+                sum -= poly[j].col * poly[i].row;
             }
             return Math.Abs(sum) * 0.5;
         }
 
         /// <summary>
-        /// Traces all outer polygons in a binary slice using Moore-neighborhood boundary tracing.
-        /// Returns a list of polygons, each a list of (col, row) pixel coordinates in order.
-        /// Outer boundaries of foreground components AND boundaries of any interior holes
-        /// (background regions enclosed by foreground) are emitted as separate polygons.
-        /// DICOM viewers apply the even-odd fill rule, so an inner contour cuts a hole.
+        /// Traces all closed polygons in a binary slice using the marching-squares algorithm.
+        /// Returns a list of polygons, each a list of (col, row) continuous-index coordinates
+        /// in walking order. Vertices live at pixel-edge midpoints (half-integer coordinates),
+        /// so the contour hugs the foreground/background boundary at sub-pixel precision.
+        ///
+        /// The mask is conceptually zero-padded by one cell, so foreground regions that touch
+        /// the slice edge still yield closed contours. Outer outlines of foreground components
+        /// and outlines of any interior holes are emitted uniformly as separate polygons; DICOM
+        /// viewers apply the even-odd fill rule, so an inner contour cuts a hole.
+        ///
+        /// Saddle cases (cell codes 5 and 10, where two foreground pixels are diagonally
+        /// opposite within a 2×2 cell) use the "disconnect" rule: each foreground corner is
+        /// treated as belonging to its own contour. This guarantees the output polygons are
+        /// simple (non-self-intersecting) by construction.
         /// </summary>
-        private static List<List<(int col, int row)>> TracePolygonsOnSlice(byte[] slice, int width, int height)
+        private static List<List<(double col, double row)>> TracePolygonsOnSlice(byte[] slice, int width, int height)
         {
-            var result = new List<List<(int, int)>>();
-            bool[] visitedComponent = new bool[width * height];
+            // Edge identifiers within a cell whose top-left corner is at corner-grid (cx, cy).
+            // Vertex coordinates (in continuous-index space):
+            //   T (top)    = (cx - 0.5, cy - 1)     bit 0 ↔ bit 1
+            //   R (right)  = (cx,       cy - 0.5)   bit 1 ↔ bit 2
+            //   B (bottom) = (cx - 0.5, cy)         bit 2 ↔ bit 3
+            //   L (left)   = (cx - 1,   cy - 0.5)   bit 3 ↔ bit 0
+            // Corner bits: 0=TL pixel(cx-1,cy-1), 1=TR pixel(cx,cy-1), 2=BR pixel(cx,cy), 3=BL pixel(cx-1,cy).
+            const int T = 0, R = 1, B = 2, L = 3;
 
-            // 8-neighborhood, starting from "left" of the entry direction (counter-clockwise)
-            int[] dx = { -1, -1, 0, 1, 1, 1, 0, -1 };
-            int[] dy = { 0, -1, -1, -1, 0, 1, 1, 1 };
+            // Per-case directed segments (from, to). Each cell contributes 0, 1, or 2 segments.
+            // Walking direction keeps foreground on the right (image coords, y down).
+            // Cases 5 and 10 are saddles and use the disconnect rule: emit the two segments
+            // each foreground corner would emit if it were alone, with no shared vertex.
+            int[][] caseSegs = new int[16][];
+            caseSegs[0]  = new int[0];
+            caseSegs[1]  = new int[] { T, L };
+            caseSegs[2]  = new int[] { R, T };
+            caseSegs[3]  = new int[] { R, L };
+            caseSegs[4]  = new int[] { B, R };
+            caseSegs[5]  = new int[] { T, L, B, R };  // saddle, disconnect
+            caseSegs[6]  = new int[] { B, T };
+            caseSegs[7]  = new int[] { B, L };
+            caseSegs[8]  = new int[] { L, B };
+            caseSegs[9]  = new int[] { T, B };
+            caseSegs[10] = new int[] { R, T, L, B };  // saddle, disconnect
+            caseSegs[11] = new int[] { R, B };
+            caseSegs[12] = new int[] { L, R };
+            caseSegs[13] = new int[] { T, R };
+            caseSegs[14] = new int[] { L, T };
+            caseSegs[15] = new int[0];
 
-            // 1. Outer boundaries: trace each foreground connected component
-            for (int y = 0; y < height; y++)
+            // Adjacency map: from-vertex → to-vertex. Vertex keys use 2× scaling so that
+            // half-integer continuous coordinates become exact integers (no float equality issues).
+            var adjacency = new Dictionary<(int kc, int kr), (int kc, int kr)>();
+            var coords = new Dictionary<(int kc, int kr), (double col, double row)>();
+
+            // Iterate every cell of the corner grid, including a 1-cell border for zero-padding.
+            // Cell (cx, cy) has corners at pixel positions (cx-1, cy-1), (cx, cy-1), (cx, cy), (cx-1, cy);
+            // pixels outside [0,width)×[0,height) are treated as 0 (background).
+            for (int cy = 0; cy <= height; cy++)
             {
-                for (int x = 0; x < width; x++)
+                for (int cx = 0; cx <= width; cx++)
                 {
-                    int idx = y * width + x;
-                    if (slice[idx] == 0 || visitedComponent[idx]) continue;
+                    int tl = SamplePixel(slice, width, height, cx - 1, cy - 1);
+                    int tr = SamplePixel(slice, width, height, cx,     cy - 1);
+                    int br = SamplePixel(slice, width, height, cx,     cy);
+                    int bl = SamplePixel(slice, width, height, cx - 1, cy);
+                    int code = tl | (tr << 1) | (br << 2) | (bl << 3);
+                    if (code == 0 || code == 15) continue;
 
-                    // Starting pixel found. Mark this component as visited via flood fill.
-                    FloodFillMark(slice, visitedComponent, x, y, width, height);
-
-                    // Now trace its outer boundary starting from (x, y).
-                    var poly = TraceOneBoundary(slice, x, y, width, height, dx, dy);
-                    if (poly.Count >= 3)
-                        result.Add(poly);
+                    var segs = caseSegs[code];
+                    for (int i = 0; i < segs.Length; i += 2)
+                    {
+                        int fromEdge = segs[i];
+                        int toEdge = segs[i + 1];
+                        var fk = EdgeKey(cx, cy, fromEdge);
+                        var tk = EdgeKey(cx, cy, toEdge);
+                        adjacency[fk] = tk;
+                        if (!coords.ContainsKey(fk)) coords[fk] = EdgeXY(cx, cy, fromEdge);
+                        if (!coords.ContainsKey(tk)) coords[tk] = EdgeXY(cx, cy, toEdge);
+                    }
                 }
             }
 
-            // 2. Holes: build a mask where 1 = background pixel that is NOT reachable
-            //    from the slice border via 4-connected background-flood. These are enclosed holes.
-            byte[] holeMask = BuildHoleMask(slice, width, height);
-
-            // 3. Each connected hole component → its own boundary polygon (treated as foreground in holeMask).
-            bool[] holeVisited = new bool[width * height];
-            for (int y = 0; y < height; y++)
+            // Stitch segments into closed loops by walking the adjacency map.
+            var result = new List<List<(double col, double row)>>();
+            var visited = new HashSet<(int kc, int kr)>();
+            foreach (var start in adjacency.Keys)
             {
-                for (int x = 0; x < width; x++)
+                if (visited.Contains(start)) continue;
+                var loop = new List<(double col, double row)>();
+                var cur = start;
+                while (visited.Add(cur))
                 {
-                    int idx = y * width + x;
-                    if (holeMask[idx] == 0 || holeVisited[idx]) continue;
-
-                    FloodFillMark(holeMask, holeVisited, x, y, width, height);
-                    var poly = TraceOneBoundary(holeMask, x, y, width, height, dx, dy);
-                    if (poly.Count >= 3)
-                        result.Add(poly);
+                    loop.Add(coords[cur]);
+                    if (!adjacency.TryGetValue(cur, out var next)) break;
+                    cur = next;
                 }
+                if (loop.Count >= 3) result.Add(loop);
             }
-
             return result;
         }
 
-        /// <summary>
-        /// Returns a byte array the same size as <paramref name="slice"/> where each cell is 1
-        /// iff the corresponding pixel is background (slice == 0) and is NOT reachable from any
-        /// border pixel via 4-connected background. These cells are interior holes.
-        /// </summary>
-        private static byte[] BuildHoleMask(byte[] slice, int width, int height)
+        private static int SamplePixel(byte[] slice, int width, int height, int x, int y)
         {
-            int n = width * height;
-            bool[] reachableFromBorder = new bool[n];
-            var queue = new Queue<int>();
-
-            // Seed with border background pixels
-            for (int x = 0; x < width; x++)
-            {
-                int top = x;
-                if (slice[top] == 0) { reachableFromBorder[top] = true; queue.Enqueue(top); }
-                int bot = (height - 1) * width + x;
-                if (slice[bot] == 0) { reachableFromBorder[bot] = true; queue.Enqueue(bot); }
-            }
-            for (int y = 0; y < height; y++)
-            {
-                int left = y * width;
-                if (slice[left] == 0) { reachableFromBorder[left] = true; queue.Enqueue(left); }
-                int right = y * width + (width - 1);
-                if (slice[right] == 0) { reachableFromBorder[right] = true; queue.Enqueue(right); }
-            }
-
-            // 4-connected flood through background
-            while (queue.Count > 0)
-            {
-                int idx = queue.Dequeue();
-                int y = idx / width;
-                int x = idx - y * width;
-
-                int[] nxs = { x - 1, x + 1, x, x };
-                int[] nys = { y, y, y - 1, y + 1 };
-                for (int i = 0; i < 4; i++)
-                {
-                    int nx = nxs[i], ny = nys[i];
-                    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-                    int nidx = ny * width + nx;
-                    if (slice[nidx] != 0) continue;          // foreground blocks the flood
-                    if (reachableFromBorder[nidx]) continue; // already visited
-                    reachableFromBorder[nidx] = true;
-                    queue.Enqueue(nidx);
-                }
-            }
-
-            byte[] holeMask = new byte[n];
-            for (int i = 0; i < n; i++)
-            {
-                if (slice[i] == 0 && !reachableFromBorder[i]) holeMask[i] = 1;
-            }
-            return holeMask;
+            if (x < 0 || y < 0 || x >= width || y >= height) return 0;
+            return slice[y * width + x] != 0 ? 1 : 0;
         }
 
-        private static void FloodFillMark(byte[] slice, bool[] visited, int sx, int sy, int width, int height)
+        private static (int kc, int kr) EdgeKey(int cx, int cy, int edge)
         {
-            var stack = new Stack<(int x, int y)>();
-            stack.Push((sx, sy));
-            while (stack.Count > 0)
+            // 2× the half-integer continuous-index coords, so keys are exact integers.
+            //   T midpoint = (cx - 0.5, cy - 1)
+            //   R midpoint = (cx,       cy - 0.5)
+            //   B midpoint = (cx - 0.5, cy)
+            //   L midpoint = (cx - 1,   cy - 0.5)
+            switch (edge)
             {
-                var (x, y) = stack.Pop();
-                if (x < 0 || y < 0 || x >= width || y >= height) continue;
-                int i = y * width + x;
-                if (visited[i] || slice[i] == 0) continue;
-                visited[i] = true;
-                stack.Push((x + 1, y));
-                stack.Push((x - 1, y));
-                stack.Push((x, y + 1));
-                stack.Push((x, y - 1));
+                case 0: return (2 * cx - 1, 2 * cy - 2);   // T
+                case 1: return (2 * cx,     2 * cy - 1);   // R
+                case 2: return (2 * cx - 1, 2 * cy);       // B
+                case 3: return (2 * cx - 2, 2 * cy - 1);   // L
+                default: throw new InvalidOperationException("Invalid marching-squares edge id.");
             }
         }
 
-        private static List<(int col, int row)> TraceOneBoundary(
-            byte[] slice, int startX, int startY, int width, int height, int[] dx, int[] dy)
+        private static (double col, double row) EdgeXY(int cx, int cy, int edge)
         {
-            var poly = new List<(int, int)>();
-            int cx = startX, cy = startY;
-            int prevDir = 6; // we entered from "above" (came from y-1 → +y), so previous direction was south
-            poly.Add((cx, cy));
-
-            const int maxSteps = 500_000;
-            for (int step = 0; step < maxSteps; step++)
+            switch (edge)
             {
-                int searchStart = (prevDir + 6) % 8; // start search rotating CCW from "back-left"
-                bool found = false;
-                for (int t = 0; t < 8; t++)
-                {
-                    int dir = (searchStart + t) % 8;
-                    int nx = cx + dx[dir];
-                    int ny = cy + dy[dir];
-                    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-                    if (slice[ny * width + nx] == 0) continue;
-
-                    cx = nx; cy = ny;
-                    prevDir = dir;
-                    found = true;
-                    break;
-                }
-
-                if (!found) break;
-                if (cx == startX && cy == startY) break;
-                poly.Add((cx, cy));
+                case 0: return (cx - 0.5, cy - 1);     // T
+                case 1: return (cx,       cy - 0.5);   // R
+                case 2: return (cx - 0.5, cy);         // B
+                case 3: return (cx - 1,   cy - 0.5);   // L
+                default: throw new InvalidOperationException("Invalid marching-squares edge id.");
             }
-            return poly;
         }
 
         /// <summary>
