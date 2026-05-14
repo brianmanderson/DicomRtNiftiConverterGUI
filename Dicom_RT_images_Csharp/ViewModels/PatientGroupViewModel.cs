@@ -163,8 +163,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
         {
             Model = model;
             DisplayName = string.IsNullOrEmpty(model.SeriesDescription)
-                ? $"{model.Modality} ({model.FilePaths.Count} files)"
-                : $"{model.Modality} - {model.SeriesDescription} ({model.FilePaths.Count} files)";
+                ? $"({model.FilePaths.Count} files)"
+                : $"{model.SeriesDescription} ({model.FilePaths.Count} files)";
 
             HasLinkedRtStruct = model.LinkedRtStruct != null;
             HasLinkedRtDose = model.LinkedRtDose != null;
