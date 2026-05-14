@@ -36,14 +36,17 @@ namespace Dicom_RT_images_Csharp.Services
         /// <summary>
         /// Discovers <paramref name="dicomFolder"/>/masks/*.nii.gz, builds a single RT-STRUCT
         /// referencing <paramref name="referenceSeries"/>, writes it to <paramref name="outputPath"/>,
-        /// and returns the written path.
+        /// and returns the written path. When <paramref name="referenceSeries"/> is null, falls
+        /// back to a metadata-driven shell built from <paramref name="metadata"/> with no
+        /// per-slice image references.
         /// </summary>
         public string ConvertMasksFolderToRtStruct(
             string dicomFolder,
             DicomSeriesGroup referenceSeries,
             string outputPath,
             IProgress<string> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            NiftiPatientMetadata metadata = null)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -60,18 +63,39 @@ namespace Dicom_RT_images_Csharp.Services
             if (maskFiles.Count == 0)
                 throw new InvalidOperationException($"No .nii.gz files found in {masksDir}");
 
-            if (referenceSeries == null || referenceSeries.FilePaths == null || referenceSeries.FilePaths.Count == 0)
-                throw new InvalidOperationException("Reference image series has no DICOM files.");
+            bool hasReferenceSeries = referenceSeries != null
+                && referenceSeries.FilePaths != null
+                && referenceSeries.FilePaths.Count > 0;
 
-            // Load reference image series and build slice-Z → SOP UID map
-            progress?.Report("Reading reference image series...");
-            var sortedDicomFiles = SortFilesBySlicePosition(referenceSeries.FilePaths);
-            var referenceImage = LoadImageSeries(sortedDicomFiles);
-            var sliceLookup = BuildSopInstanceLookup(sortedDicomFiles);
+            if (!hasReferenceSeries && metadata == null)
+                throw new InvalidOperationException(
+                    "Reference image series has no DICOM files and no metadata was provided.");
 
-            // Open the first DICOM file once to copy patient/study metadata
-            var refDicom = DicomFile.Open(sortedDicomFiles[0], FileReadOption.SkipLargeTags);
-            var refDs = refDicom.Dataset;
+            Image referenceImage = null;
+            Dictionary<int, (string sopClassUid, string sopInstanceUid)> sliceLookup;
+            DicomDataset refDs;
+
+            if (hasReferenceSeries)
+            {
+                // Load reference image series and build slice-Z → SOP UID map
+                progress?.Report("Reading reference image series...");
+                var sortedDicomFiles = SortFilesBySlicePosition(referenceSeries.FilePaths);
+                referenceImage = LoadImageSeries(sortedDicomFiles);
+                sliceLookup = BuildSopInstanceLookup(sortedDicomFiles);
+
+                // Open the first DICOM file once to copy patient/study metadata
+                var refDicom = DicomFile.Open(sortedDicomFiles[0], FileReadOption.SkipLargeTags);
+                refDs = refDicom.Dataset;
+            }
+            else
+            {
+                // No reference series — synthesize patient/study tags from metadata.json. Each
+                // mask's physical coordinates come from its own Nifti affine, and ContourImage
+                // references are omitted (per-contour and at the top level).
+                progress?.Report("No reference DICOM series — using metadata.json + each mask's native grid.");
+                sliceLookup = new Dictionary<int, (string sopClassUid, string sopInstanceUid)>();
+                refDs = new NiftiMetadataService().BuildSyntheticRefDataset(metadata);
+            }
 
             // Build RT-STRUCT dataset shell (patient/study/series/frame-of-ref/referenced-frame)
             var rtDs = BuildRtStructShell(refDs, referenceSeries, sliceLookup);
@@ -82,9 +106,19 @@ namespace Dicom_RT_images_Csharp.Services
 
             int roiNumber = 0;
             int roiAdded = 0;
-            string frameOfRefUid = string.IsNullOrEmpty(referenceSeries.FrameOfReferenceUID)
-                ? GetStringTag(refDs, DicomTag.FrameOfReferenceUID, "")
-                : referenceSeries.FrameOfReferenceUID;
+            string frameOfRefUid;
+            if (hasReferenceSeries)
+            {
+                frameOfRefUid = string.IsNullOrEmpty(referenceSeries.FrameOfReferenceUID)
+                    ? GetStringTag(refDs, DicomTag.FrameOfReferenceUID, "")
+                    : referenceSeries.FrameOfReferenceUID;
+            }
+            else
+            {
+                frameOfRefUid = metadata.FrameOfReferenceUid ?? "";
+                if (string.IsNullOrEmpty(frameOfRefUid))
+                    frameOfRefUid = DicomUIDGenerator.GenerateDerivedFromUUID().UID;
+            }
 
             foreach (var maskPath in maskFiles)
             {
@@ -110,7 +144,9 @@ namespace Dicom_RT_images_Csharp.Services
                     continue;
                 }
 
-                Image alignedMask = EnsureMaskAlignedToReference(rawMask, referenceImage);
+                Image alignedMask = referenceImage != null
+                    ? EnsureMaskAlignedToReference(rawMask, referenceImage)
+                    : rawMask;
                 if (!ReferenceEquals(alignedMask, rawMask))
                     rawMask.Dispose();
 
@@ -172,7 +208,7 @@ namespace Dicom_RT_images_Csharp.Services
                 progress?.Report($"  '{roiName}' → {contourSeq.Items.Count} contour(s) added.");
             }
 
-            referenceImage.Dispose();
+            referenceImage?.Dispose();
 
             if (roiAdded == 0)
                 throw new InvalidOperationException("No ROIs could be extracted from the masks (all empty or unreadable).");
@@ -626,57 +662,64 @@ namespace Dicom_RT_images_Csharp.Services
             // ReferencedFrameOfReferenceSequence. Eclipse rejects RT-STRUCTs that carry
             // (0020,0052)/(0020,1040) at the dataset root as non-conformant.
             string frameUid = GetStringTag(refDs, DicomTag.FrameOfReferenceUID,
-                referenceSeries.FrameOfReferenceUID ?? "");
+                referenceSeries?.FrameOfReferenceUID ?? "");
             if (string.IsNullOrEmpty(frameUid))
                 frameUid = DicomUIDGenerator.GenerateDerivedFromUUID().UID;
 
-            // ReferencedFrameOfReferenceSequence
-            // -> RTReferencedStudySequence -> RTReferencedSeriesSequence -> ContourImageSequence
-            var contourImageSeq = new DicomSequence(DicomTag.ContourImageSequence);
-            foreach (var kvp in sliceLookup.OrderBy(k => k.Key))
+            // ReferencedFrameOfReferenceSequence is Type 3 (User Optional) per PS3.3 A.19.
+            // Omit it entirely when there is no real reference image series — fabricating
+            // a SeriesInstanceUID that doesn't exist on disk causes Eclipse to reject the
+            // import during its "resolve referenced series" pre-check.
+            if (referenceSeries != null)
             {
-                if (string.IsNullOrEmpty(kvp.Value.sopInstanceUid)) continue;
-                var imgItem = new DicomDataset
+                // ReferencedFrameOfReferenceSequence
+                // -> RTReferencedStudySequence -> RTReferencedSeriesSequence -> ContourImageSequence
+                var contourImageSeq = new DicomSequence(DicomTag.ContourImageSequence);
+                foreach (var kvp in sliceLookup.OrderBy(k => k.Key))
                 {
-                    { DicomTag.ReferencedSOPClassUID, kvp.Value.sopClassUid },
-                    { DicomTag.ReferencedSOPInstanceUID, kvp.Value.sopInstanceUid }
+                    if (string.IsNullOrEmpty(kvp.Value.sopInstanceUid)) continue;
+                    var imgItem = new DicomDataset
+                    {
+                        { DicomTag.ReferencedSOPClassUID, kvp.Value.sopClassUid },
+                        { DicomTag.ReferencedSOPInstanceUID, kvp.Value.sopInstanceUid }
+                    };
+                    contourImageSeq.Items.Add(imgItem);
+                }
+
+                var rtRefSeriesItem = new DicomDataset
+                {
+                    { DicomTag.SeriesInstanceUID, referenceSeries.SeriesInstanceUID }
                 };
-                contourImageSeq.Items.Add(imgItem);
+                rtRefSeriesItem.Add(contourImageSeq);
+
+                var rtRefSeriesSeq = new DicomSequence(DicomTag.RTReferencedSeriesSequence);
+                rtRefSeriesSeq.Items.Add(rtRefSeriesItem);
+
+                string studyUid = GetStringTag(refDs, DicomTag.StudyInstanceUID, "");
+                // ReferencedSOPClassUID in RTReferencedStudySequence: although the formally
+                // conformant choice is 1.2.840.10008.3.1.2.3.1 (Detached Study Management,
+                // retired), Eclipse / ARIA expect the RT Structure Set Storage SOP Class UID
+                // here (matching what Varian's own writer emits) and reject imports otherwise.
+                var rtRefStudyItem = new DicomDataset
+                {
+                    { DicomTag.ReferencedSOPClassUID, RtStructSopClassUid },
+                    { DicomTag.ReferencedSOPInstanceUID, studyUid }
+                };
+                rtRefStudyItem.Add(rtRefSeriesSeq);
+
+                var rtRefStudySeq = new DicomSequence(DicomTag.RTReferencedStudySequence);
+                rtRefStudySeq.Items.Add(rtRefStudyItem);
+
+                var refFrameItem = new DicomDataset
+                {
+                    { DicomTag.FrameOfReferenceUID, frameUid }
+                };
+                refFrameItem.Add(rtRefStudySeq);
+
+                var refFrameSeq = new DicomSequence(DicomTag.ReferencedFrameOfReferenceSequence);
+                refFrameSeq.Items.Add(refFrameItem);
+                ds.AddOrUpdate(refFrameSeq);
             }
-
-            var rtRefSeriesItem = new DicomDataset
-            {
-                { DicomTag.SeriesInstanceUID, referenceSeries.SeriesInstanceUID }
-            };
-            rtRefSeriesItem.Add(contourImageSeq);
-
-            var rtRefSeriesSeq = new DicomSequence(DicomTag.RTReferencedSeriesSequence);
-            rtRefSeriesSeq.Items.Add(rtRefSeriesItem);
-
-            string studyUid = GetStringTag(refDs, DicomTag.StudyInstanceUID, "");
-            // ReferencedSOPClassUID in RTReferencedStudySequence: although the formally
-            // conformant choice is 1.2.840.10008.3.1.2.3.1 (Detached Study Management,
-            // retired), Eclipse / ARIA expect the RT Structure Set Storage SOP Class UID
-            // here (matching what Varian's own writer emits) and reject imports otherwise.
-            var rtRefStudyItem = new DicomDataset
-            {
-                { DicomTag.ReferencedSOPClassUID, RtStructSopClassUid },
-                { DicomTag.ReferencedSOPInstanceUID, studyUid }
-            };
-            rtRefStudyItem.Add(rtRefSeriesSeq);
-
-            var rtRefStudySeq = new DicomSequence(DicomTag.RTReferencedStudySequence);
-            rtRefStudySeq.Items.Add(rtRefStudyItem);
-
-            var refFrameItem = new DicomDataset
-            {
-                { DicomTag.FrameOfReferenceUID, frameUid }
-            };
-            refFrameItem.Add(rtRefStudySeq);
-
-            var refFrameSeq = new DicomSequence(DicomTag.ReferencedFrameOfReferenceSequence);
-            refFrameSeq.Items.Add(refFrameItem);
-            ds.AddOrUpdate(refFrameSeq);
 
             return ds;
         }

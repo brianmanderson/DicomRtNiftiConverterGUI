@@ -26,12 +26,15 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private readonly DicomScannerService _scannerService;
         private readonly RtStructWriterService _rtStructWriter;
         private readonly RtDoseWriterService _rtDoseWriter;
+        private readonly NiftiMetadataService _metadataService;
+        private readonly NiftiImageWriterService _imageWriter;
 
         private string _rootFolder = "";
-        private string _statusText = "Browse to a folder. Each DICOM folder containing a 'masks/' or 'doses/' subdirectory will be converted.";
+        private string _statusText = "Browse to a folder. Each DICOM folder containing a 'masks/' or 'doses/' subdirectory (or an image.nii.gz) will be converted.";
         private bool _isBusy;
         private bool _convertStructures = true;
         private bool _convertDoses = true;
+        private bool _convertImage = true;
         private bool _isServerMode;
         private CancellationTokenSource _cts;
 
@@ -45,11 +48,15 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public NiftiToDicomViewModel(
             DicomScannerService scannerService,
             RtStructWriterService rtStructWriter,
-            RtDoseWriterService rtDoseWriter)
+            RtDoseWriterService rtDoseWriter,
+            NiftiMetadataService metadataService,
+            NiftiImageWriterService imageWriter)
         {
             _scannerService = scannerService;
             _rtStructWriter = rtStructWriter;
             _rtDoseWriter = rtDoseWriter;
+            _metadataService = metadataService;
+            _imageWriter = imageWriter;
 
             DiscoveredJobs = new ObservableCollection<NiftiToDicomJob>();
 
@@ -60,11 +67,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 _ => !IsBusy
                      && !IsServerMode
                      && DiscoveredJobs.Count > 0
-                     && (ConvertStructures || ConvertDoses));
+                     && (ConvertStructures || ConvertDoses || ConvertImage));
             CancelCommand = new RelayCommand(_ => Cancel(), _ => IsBusy);
             RunServerCommand = new RelayCommand(_ => ToggleServer(),
                 _ => !IsBusy
-                     && (ConvertStructures || ConvertDoses)
+                     && (ConvertStructures || ConvertDoses || ConvertImage)
                      && !string.IsNullOrEmpty(RootFolder));
             OpenHelpCommand = new RelayCommand(p => OpenHelpWindow(p as System.Windows.Window));
         }
@@ -106,6 +113,14 @@ namespace Dicom_RT_images_Csharp.ViewModels
         {
             get { return _convertDoses; }
             set { _convertDoses = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>When true, an image.nii.gz file in the folder is converted to a DICOM image series
+        /// (CT/MR/PT) before the masks/doses, so the resulting RT-STRUCT/RT-DOSE reference it.</summary>
+        public bool ConvertImage
+        {
+            get { return _convertImage; }
+            set { _convertImage = value; OnPropertyChanged(); }
         }
 
         /// <summary>True while the periodic watcher is active.</summary>
@@ -194,19 +209,22 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
             if (DiscoveredJobs.Count == 0)
             {
-                StatusText = "No DICOM folders with a 'masks/' or 'doses/' subdirectory were found.";
+                StatusText = "No folders with a 'masks/' or 'doses/' subdirectory or 'image.nii.gz' were found.";
             }
             else
             {
                 int totalMasks = DiscoveredJobs.Sum(j => j.MaskCount);
                 int totalDoses = DiscoveredJobs.Sum(j => j.DoseCount);
-                StatusText = $"Found {DiscoveredJobs.Count} DICOM folder(s): {totalMasks} mask(s), {totalDoses} dose(s) total. Click Convert to proceed.";
+                int totalImages = DiscoveredJobs.Count(j => j.HasImage);
+                StatusText = $"Found {DiscoveredJobs.Count} folder(s): {totalImages} image(s), {totalMasks} mask(s), {totalDoses} dose(s) total. Click Convert to proceed.";
             }
         }
 
         private static bool HasConvertibleSubdir(string folder)
         {
-            return GetMaskFiles(folder).Count > 0 || GetDoseFiles(folder).Count > 0;
+            return GetMaskFiles(folder).Count > 0
+                || GetDoseFiles(folder).Count > 0
+                || HasImageNifti(folder);
         }
 
         private static List<string> GetMaskFiles(string folder)
@@ -223,6 +241,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
             return Directory.EnumerateFiles(dosesDir, "*.nii.gz", SearchOption.TopDirectoryOnly).ToList();
         }
 
+        private static bool HasImageNifti(string folder)
+        {
+            return File.Exists(Path.Combine(folder, "image.nii.gz"));
+        }
+
         private static string StripNiiGz(string fileName)
         {
             string name = Path.GetFileName(fileName);
@@ -235,6 +258,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         {
             var maskFiles = GetMaskFiles(dicomFolder);
             var doseFiles = GetDoseFiles(dicomFolder);
+            bool hasImage = HasImageNifti(dicomFolder);
 
             var maskNames = maskFiles
                 .Select(StripNiiGz)
@@ -255,6 +279,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 MaskCount = maskNames.Count,
                 DoseNames = string.Join(", ", doseNames),
                 DoseCount = doseNames.Count,
+                HasImage = hasImage,
                 OutputPath = Path.Combine(dicomFolder, outputName),
                 Status = "Pending"
             });
@@ -274,6 +299,49 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 {
                     if (_cts.Token.IsCancellationRequested) break;
 
+                    string folder = job.DicomFolder;
+                    var progress = new Progress<string>(msg => StatusText = $"{job.FolderDisplayName}: {msg}");
+                    var summary = new List<string>();
+                    bool jobFailed = false;
+                    bool didAnything = false;
+
+                    // Step 0: load (or synthesize) metadata.json. This fixes PatientID,
+                    // StudyInstanceUID, and FrameOfReferenceUID once for the folder so that
+                    // image, mask, and dose passes all reference the same UIDs.
+                    NiftiPatientMetadata metadata = _metadataService.LoadOrSynthesize(folder);
+
+                    // Step 1: if image.nii.gz exists and the user opted in, write it as a
+                    // DICOM image series. The scanner picks it up in Step 2 and the RT
+                    // writers go through their existing reference-DICOM path.
+                    if (job.HasImage && ConvertImage)
+                    {
+                        try
+                        {
+                            job.Status = "Converting image...";
+                            StatusText = $"{job.FolderDisplayName}: writing image series...";
+                            var imageWritten = await Task.Run(() =>
+                                _imageWriter.ConvertImageNiftiToDicomSeries(
+                                    folder, metadata, progress, _cts.Token)).ConfigureAwait(true);
+                            if (imageWritten.Count > 0)
+                            {
+                                summary.Add($"image series ({imageWritten.Count} slices)");
+                                didAnything = true;
+                            }
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            summary.Add($"image FAILED: {ex.Message}");
+                            jobFailed = true;
+                        }
+                    }
+                    else if (job.HasImage && !ConvertImage)
+                    {
+                        summary.Add("image skipped");
+                    }
+
+                    // Step 2: scan the folder for a CT/MR/PT series. Now that we may have
+                    // just written one, the scanner can pick it up automatically.
                     job.Status = "Scanning DICOM...";
                     StatusText = $"Processing {job.FolderDisplayName}: scanning DICOM...";
 
@@ -281,7 +349,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     try
                     {
                         refSeries = await Task.Run(async () =>
-                            await PickReferenceSeriesAsync(job.DicomFolder, _cts.Token).ConfigureAwait(false))
+                            await PickReferenceSeriesAsync(folder, _cts.Token).ConfigureAwait(false))
                             .ConfigureAwait(true);
                     }
                     catch (OperationCanceledException) { throw; }
@@ -292,20 +360,14 @@ namespace Dicom_RT_images_Csharp.ViewModels
                         continue;
                     }
 
-                    if (refSeries == null)
+                    // refSeries may still be null — that's fine, the writers fall back to
+                    // the metadata-driven path (no per-slice image references).
+                    if (refSeries == null && (job.MaskCount > 0 || job.DoseCount > 0))
                     {
-                        job.Status = "FAILED — no CT/MR/PT image series found.";
-                        fail++;
-                        continue;
+                        StatusText = $"{job.FolderDisplayName}: no reference DICOM — using metadata.json fallback.";
                     }
 
-                    var progress = new Progress<string>(msg => StatusText = $"{job.FolderDisplayName}: {msg}");
-                    string folder = job.DicomFolder;
-                    var summary = new List<string>();
-                    bool jobFailed = false;
-                    bool didAnything = false;
-
-                    // 1. RT-STRUCT (if any masks AND user chose to convert structures)
+                    // Step 3: RT-STRUCT (if any masks AND user chose to convert structures)
                     if (job.MaskCount > 0 && ConvertStructures)
                     {
                         didAnything = true;
@@ -316,7 +378,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                             string outPath = job.OutputPath;
                             string written = await Task.Run(() =>
                                 _rtStructWriter.ConvertMasksFolderToRtStruct(
-                                    folder, refSeries, outPath, progress, _cts.Token)).ConfigureAwait(true);
+                                    folder, refSeries, outPath, progress, _cts.Token, metadata)).ConfigureAwait(true);
                             summary.Add($"1 RT-STRUCT ({Path.GetFileName(written)})");
                         }
                         catch (OperationCanceledException) { throw; }
@@ -331,7 +393,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                         summary.Add("masks skipped");
                     }
 
-                    // 2. RT-DOSE (if any doses AND user chose to convert doses)
+                    // Step 4: RT-DOSE (if any doses AND user chose to convert doses)
                     if (job.DoseCount > 0 && ConvertDoses)
                     {
                         didAnything = true;
@@ -341,7 +403,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
                             StatusText = $"{job.FolderDisplayName}: building RT-DOSE files...";
                             var written = await Task.Run(() =>
                                 _rtDoseWriter.ConvertDoseFolderToRtDoses(
-                                    folder, refSeries, progress, _cts.Token)).ConfigureAwait(true);
+                                    folder, refSeries, progress, _cts.Token,
+                                    useStableHashNames: false, skipIfExists: false,
+                                    metadata: metadata)).ConfigureAwait(true);
                             summary.Add($"{written.Count} RT-DOSE");
                         }
                         catch (OperationCanceledException) { throw; }
@@ -553,12 +617,45 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
         private async Task<JobOutcome> RunSettledJobAsync(NiftiToDicomJob job)
         {
-            // Auto-detect the reference image series.
+            string folder = job.DicomFolder;
+            var summary = new List<string>();
+            bool jobFailed = false;
+            bool didAnything = false;
+
+            // Step 0: load metadata.json (creating one if needed). The same UIDs persist
+            // across the image / mask / dose passes.
+            NiftiPatientMetadata metadata = _metadataService.LoadOrSynthesize(folder);
+
+            // Step 1: convert image.nii.gz once. Subsequent ticks skip if the series UID
+            // recorded in metadata.json is already on disk.
+            if (job.HasImage && ConvertImage)
+            {
+                try
+                {
+                    var imageProgress = new Progress<string>(msg => StatusText = $"{job.FolderDisplayName}: {msg}");
+                    var imageWritten = await Task.Run(() =>
+                        _imageWriter.ConvertImageNiftiToDicomSeries(
+                            folder, metadata, imageProgress, CancellationToken.None))
+                        .ConfigureAwait(true);
+                    if (imageWritten.Count > 0)
+                    {
+                        summary.Add($"image series ({imageWritten.Count} slices)");
+                        didAnything = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    summary.Add($"image FAILED: {ex.Message}");
+                    jobFailed = true;
+                }
+            }
+
+            // Step 2: scan for a reference image series — possibly the one we just wrote.
             DicomSeriesGroup refSeries;
             try
             {
                 refSeries = await Task.Run(async () =>
-                    await PickReferenceSeriesAsync(job.DicomFolder, CancellationToken.None).ConfigureAwait(false))
+                    await PickReferenceSeriesAsync(folder, CancellationToken.None).ConfigureAwait(false))
                     .ConfigureAwait(true);
             }
             catch (Exception ex)
@@ -567,16 +664,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 return JobOutcome.Failed;
             }
 
-            if (refSeries == null)
-            {
-                job.Status = "FAILED — no CT/MR/PT image series found.";
-                return JobOutcome.Failed;
-            }
-
-            string folder = job.DicomFolder;
-            var summary = new List<string>();
-            bool jobFailed = false;
-            bool didAnything = false;
+            // refSeries may be null if there's no image and no DICOMs — the writers handle
+            // that case via the metadata fallback.
 
             // RT-STRUCT: hash from sorted mask basenames; skip if the resulting filename exists.
             if (job.MaskCount > 0 && ConvertStructures)
@@ -598,7 +687,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                         var progress = new Progress<string>(msg => StatusText = $"{job.FolderDisplayName}: {msg}");
                         string written = await Task.Run(() =>
                             _rtStructWriter.ConvertMasksFolderToRtStruct(
-                                folder, refSeries, structOutPath, progress, CancellationToken.None))
+                                folder, refSeries, structOutPath, progress, CancellationToken.None, metadata))
                             .ConfigureAwait(true);
                         summary.Add($"RT-STRUCT ({Path.GetFileName(written)})");
                     }
@@ -623,7 +712,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     var written = await Task.Run(() =>
                         _rtDoseWriter.ConvertDoseFolderToRtDoses(
                             folder, refSeries, progress, CancellationToken.None,
-                            useStableHashNames: true, skipIfExists: true))
+                            useStableHashNames: true, skipIfExists: true,
+                            metadata: metadata))
                         .ConfigureAwait(true);
 
                     var afterCount = Directory
@@ -692,7 +782,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public int MaskCount { get; set; }
         public string DoseNames { get; set; } = "";
         public int DoseCount { get; set; }
+        public bool HasImage { get; set; }
         public string OutputPath { get; set; } = "";
+
+        /// <summary>"yes" / "" for the DataGrid Image column.</summary>
+        public string ImageDisplay => HasImage ? "yes" : "";
 
         public string Status
         {

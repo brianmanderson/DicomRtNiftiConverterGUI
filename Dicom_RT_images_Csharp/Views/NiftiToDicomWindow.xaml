@@ -30,12 +30,14 @@
                     <TextBlock Text="NIfTI to DICOM (Batch)"
                                FontSize="16" FontWeight="SemiBold" Foreground="White"/>
                     <TextBlock Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0">
-                        Select a folder. Each DICOM folder containing a <Run FontFamily="Consolas">masks/</Run>
-                        and/or <Run FontFamily="Consolas">doses/</Run> subdirectory (the folder itself OR any
-                        first-level subfolder) will be converted: <Run FontWeight="SemiBold">masks/</Run> →
-                        one RT-STRUCT, <Run FontWeight="SemiBold">doses/</Run> → one RT-DOSE per file. Outputs
-                        are written into the DICOM folder. The reference CT/MR/PT image series is
-                        auto-detected — you don't need to pick one.
+                        Select a folder. Each folder containing an <Run FontFamily="Consolas">image.nii.gz</Run>,
+                        a <Run FontFamily="Consolas">masks/</Run> subdir, or a <Run FontFamily="Consolas">doses/</Run>
+                        subdir (the folder itself OR any first-level subfolder) is a job:
+                        <Run FontWeight="SemiBold">image.nii.gz</Run> → a DICOM CT (or MR/PT) series,
+                        <Run FontWeight="SemiBold">masks/</Run> → one RT-STRUCT,
+                        <Run FontWeight="SemiBold">doses/</Run> → one RT-DOSE per file. If no reference DICOMs
+                        are present, patient/study UIDs come from <Run FontFamily="Consolas">metadata.json</Run>
+                        in the folder (auto-created on first run).
                     </TextBlock>
                 </StackPanel>
             </DockPanel>
@@ -70,6 +72,9 @@
 
                 <!-- Conversion options -->
                 <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
+                    <CheckBox Content="Convert Image?"
+                              IsChecked="{Binding ConvertImage}"
+                              VerticalContentAlignment="Center" FontSize="13" Margin="0,0,20,0"/>
                     <CheckBox Content="Convert Structures?"
                               IsChecked="{Binding ConvertStructures}"
                               VerticalContentAlignment="Center" FontSize="13" Margin="0,0,20,0"/>
@@ -89,7 +94,8 @@
                               BorderThickness="0" Background="Transparent"
                               FontSize="12">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="DICOM Folder" Binding="{Binding FolderDisplayName}" Width="160"/>
+                            <DataGridTextColumn Header="Folder" Binding="{Binding FolderDisplayName}" Width="150"/>
+                            <DataGridTextColumn Header="Image" Binding="{Binding ImageDisplay}" Width="50"/>
                             <DataGridTextColumn Header="Masks" Binding="{Binding MaskCount}" Width="55"/>
                             <DataGridTextColumn Header="ROI Names" Binding="{Binding MaskNames}" Width="*"/>
                             <DataGridTextColumn Header="Doses" Binding="{Binding DoseCount}" Width="55"/>
