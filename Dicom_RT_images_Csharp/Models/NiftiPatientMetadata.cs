@@ -44,10 +44,23 @@ namespace Dicom_RT_images_Csharp.Models
         /// </summary>
         public string PatientPosition { get; set; } = "HFS";
 
-        /// <summary>SeriesInstanceUID of the image series written from image.nii.gz.</summary>
+        /// <summary>
+        /// SeriesInstanceUID of the image series the RT-STRUCT references. Filled in
+        /// automatically by <see cref="Services.NiftiImageWriterService"/> after a successful
+        /// image.nii.gz -> DICOM conversion. In masks-only mode (no image.nii.gz), the user
+        /// may pre-populate this with the SeriesInstanceUID of an image series already
+        /// imported into their TPS so the generated RT-STRUCT attaches to that series.
+        /// </summary>
         public string ImageSeriesInstanceUid { get; set; } = "";
 
-        /// <summary>Per-slice SOPInstanceUIDs, ordered by ascending z-index (slice 0 first).</summary>
+        /// <summary>
+        /// Per-slice SOPInstanceUIDs of the referenced image series, ordered by ascending
+        /// z-index (slice 0 first). Filled in by <see cref="Services.NiftiImageWriterService"/>
+        /// after a successful image conversion. In masks-only mode, the user may pre-populate
+        /// these to emit a fully populated ContourImageSequence pointing at an existing
+        /// series; leaving the list empty omits the per-slice references (the SeriesInstanceUID
+        /// reference is still emitted).
+        /// </summary>
         public List<string> ImageSopInstanceUids { get; set; } = new List<string>();
 
         /// <summary>DICOM RescaleSlope written to each image slice. 1.0 by default.</summary>
