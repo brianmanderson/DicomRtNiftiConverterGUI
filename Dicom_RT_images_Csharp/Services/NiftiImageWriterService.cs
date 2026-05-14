@@ -171,6 +171,12 @@ namespace Dicom_RT_images_Csharp.Services
                         metadata.ImageRescaleSlope, metadata.ImageRescaleIntercept,
                         signedPixels);
 
+                    // SliceLocation is the projection of ImagePositionPatient onto the slice
+                    // normal (third column of the direction matrix). For axial-aligned scans
+                    // this is identical to ippZ; for tilted scans it is the dot product. TPS
+                    // systems (Eclipse) often refuse import without SliceLocation present.
+                    double sliceLocation = ippX * dzX + ippY * dzY + ippZ * dzZ;
+
                     var ds = BuildImageSliceDataset(
                         metadata: metadata,
                         sopClassUid: sopClassUid,
@@ -190,7 +196,8 @@ namespace Dicom_RT_images_Csharp.Services
                         iop: iop,
                         instanceNumber: z + 1,
                         signedPixels: signedPixels,
-                        pixelBytes: pixelBytes);
+                        pixelBytes: pixelBytes,
+                        sliceLocation: sliceLocation);
 
                     string outName = $"image_{(z + 1):D4}.dcm";
                     string outPath = Path.Combine(dicomFolder, outName);
@@ -277,7 +284,8 @@ namespace Dicom_RT_images_Csharp.Services
             string[] iop,
             int instanceNumber,
             bool signedPixels,
-            byte[] pixelBytes)
+            byte[] pixelBytes,
+            double sliceLocation)
         {
             var ds = new DicomDataset();
 
@@ -285,6 +293,11 @@ namespace Dicom_RT_images_Csharp.Services
             ds.AddOrUpdate(DicomTag.SOPClassUID, sopClassUid);
             ds.AddOrUpdate(DicomTag.SOPInstanceUID, sopInstanceUid);
             ds.AddOrUpdate(DicomTag.SpecificCharacterSet, "ISO_IR 192");
+
+            // ImageType is Type 1 (required, non-empty) in the CT / MR / PT Image Module
+            // (DICOM PS3.3 C.7.6.1). DERIVED/SECONDARY because we regenerated the pixel
+            // data from a NIfTI volume rather than directly from the modality.
+            ds.AddOrUpdate(DicomTag.ImageType, "DERIVED", "SECONDARY", "AXIAL");
 
             // Patient
             ds.AddOrUpdate(DicomTag.PatientID, metadata.PatientId ?? "");
@@ -310,6 +323,12 @@ namespace Dicom_RT_images_Csharp.Services
             ds.AddOrUpdate(DicomTag.FrameOfReferenceUID, metadata.FrameOfReferenceUid ?? "");
             ds.AddOrUpdate(DicomTag.PositionReferenceIndicator, "");
 
+            // PatientPosition (0018,5100) is Type 2C — required for CT/MR/PT image storage
+            // SOP classes; TPS systems reject the series with "Unknown patient position"
+            // when this tag is absent. Falls back to HFS when the metadata field is empty.
+            string patientPosition = string.IsNullOrEmpty(metadata.PatientPosition) ? "HFS" : metadata.PatientPosition;
+            ds.AddOrUpdate(DicomTag.PatientPosition, patientPosition);
+
             // General image / instance creation
             ds.AddOrUpdate(DicomTag.InstanceNumber, instanceNumber);
             ds.AddOrUpdate(DicomTag.InstanceCreationDate, nowDate);
@@ -330,6 +349,7 @@ namespace Dicom_RT_images_Csharp.Services
 
             ds.AddOrUpdate(DicomTag.PixelSpacing, new[] { FormatDs(spY), FormatDs(spX) });
             ds.AddOrUpdate(DicomTag.SliceThickness, FormatDs(spZ));
+            ds.AddOrUpdate(DicomTag.SliceLocation, FormatDs(sliceLocation));
             ds.AddOrUpdate(DicomTag.ImagePositionPatient, new[]
             {
                 FormatDs(ippX), FormatDs(ippY), FormatDs(ippZ)
