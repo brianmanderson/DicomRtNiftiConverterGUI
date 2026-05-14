@@ -249,6 +249,7 @@
     <Compile Include="Models\DicomStudyGroup.cs" />
     <Compile Include="Models\DicomSeriesGroup.cs" />
     <Compile Include="Models\RoiAssociation.cs" />
+    <Compile Include="Models\NiftiPatientMetadata.cs" />
     <Compile Include="ViewModels\RelayCommand.cs" />
     <Compile Include="ViewModels\MainViewModel.cs" />
     <Compile Include="ViewModels\PatientGroupViewModel.cs" />
@@ -265,6 +266,8 @@
     <Compile Include="Services\HashNaming.cs" />
     <Compile Include="Services\SettingsService.cs" />
     <Compile Include="Services\AnonymizationService.cs" />
+    <Compile Include="Services\NiftiMetadataService.cs" />
+    <Compile Include="Services\NiftiImageWriterService.cs" />
     <Compile Include="Converters\BoolToVisibilityConverter.cs" />
     <Compile Include="Converters\InverseBoolConverter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">

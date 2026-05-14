@@ -140,30 +140,37 @@ namespace Dicom_RT_images_Csharp.Cli
 
         private static int RunReverse(string[] args)
         {
-            string imageFolder = RequireArg(args, "--image-folder");
+            string imageFolder = OptionalArg(args, "--image-folder");
             string masksFolder = RequireArg(args, "--masks-folder");
             string outputPath  = RequireArg(args, "--output");
 
-            if (!Directory.Exists(imageFolder))
-                throw new DirectoryNotFoundException($"Image folder not found: {imageFolder}");
             if (!Directory.Exists(masksFolder))
                 throw new DirectoryNotFoundException($"Masks folder not found: {masksFolder}");
+            if (!string.IsNullOrEmpty(imageFolder) && !Directory.Exists(imageFolder))
+                throw new DirectoryNotFoundException($"Image folder not found: {imageFolder}");
 
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath)));
 
-            // RtStructWriterService expects the masks at <dicomFolder>/masks/. If the
-            // user pointed --masks-folder somewhere else, we link / copy the .nii.gz
-            // files into a temporary "<imageFolder>/masks/" mirror before invoking
-            // the service. We use a *staging directory* that mirrors imageFolder
-            // so we never modify the input tree.
+            var writer = new RtStructWriterService();
+            var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
+
+            // Nifti-only path: --image-folder is omitted. The mask folder is the DICOM
+            // root; metadata.json supplies patient/study/frame-of-reference. We honour
+            // an --image-nifti flag (defaulting to <masks-folder>/image.nii.gz) so the
+            // caller can opt into image.nii.gz -> DICOM series conversion too.
+            if (string.IsNullOrEmpty(imageFolder))
+            {
+                return RunReverseNiftiOnly(masksFolder, outputPath, writer, progress, args);
+            }
+
+            // Reference-DICOM path: existing behaviour. RtStructWriterService expects the
+            // masks at <dicomFolder>/masks/. Stage the inputs into a temporary mirror so
+            // we don't modify the input tree.
             string stagingFolder = CreateMasksStagingFolder(imageFolder, masksFolder);
 
             try
             {
                 var imageSeries = BuildImageSeriesFromFolder(imageFolder);
-
-                var writer = new RtStructWriterService();
-                var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
 
                 Console.Error.WriteLine($"  Image series: {imageSeries.FilePaths.Count} files in {imageFolder}");
                 Console.Error.WriteLine($"  Masks folder: {masksFolder}");
@@ -183,6 +190,93 @@ namespace Dicom_RT_images_Csharp.Cli
             finally
             {
                 TryCleanupStaging(stagingFolder);
+            }
+        }
+
+        /// <summary>
+        /// Nifti-only reverse mode: no reference DICOM series. Stages masks under a
+        /// temporary directory that becomes the dicomFolder; if --image-nifti points to a
+        /// readable file, that image is converted to a DICOM CT series first so the
+        /// RT-STRUCT can reference its per-slice SOPInstanceUIDs.
+        /// </summary>
+        private static int RunReverseNiftiOnly(
+            string masksFolder, string outputPath,
+            RtStructWriterService writer, IProgress<string> progress, string[] args)
+        {
+            string stage = Path.Combine(
+                Path.GetTempPath(),
+                "rt_mask_validation_stage_" + Path.GetRandomFileName());
+            Directory.CreateDirectory(stage);
+            string stagedMasks = Path.Combine(stage, "masks");
+            Directory.CreateDirectory(stagedMasks);
+
+            try
+            {
+                foreach (var src in Directory.EnumerateFiles(masksFolder, "*.nii.gz", SearchOption.TopDirectoryOnly))
+                {
+                    string dst = Path.Combine(stagedMasks, Path.GetFileName(src));
+                    if (!CreateHardLink(dst, src, IntPtr.Zero)) File.Copy(src, dst);
+                }
+
+                // Optional image.nii.gz: defaults to <masks-folder>/image.nii.gz; explicitly
+                // overridable via --image-nifti.
+                string imageNifti = OptionalArg(args, "--image-nifti")
+                    ?? Path.Combine(masksFolder, "image.nii.gz");
+                if (File.Exists(imageNifti))
+                {
+                    string stagedImage = Path.Combine(stage, "image.nii.gz");
+                    if (!CreateHardLink(stagedImage, imageNifti, IntPtr.Zero))
+                        File.Copy(imageNifti, stagedImage);
+                }
+
+                // Optional --metadata override: copy the source metadata.json into the
+                // staging folder so the metadata service picks it up.
+                string metaPath = OptionalArg(args, "--metadata")
+                    ?? Path.Combine(masksFolder, "metadata.json");
+                if (File.Exists(metaPath))
+                {
+                    File.Copy(metaPath, Path.Combine(stage, "metadata.json"), overwrite: true);
+                }
+
+                var metaService = new NiftiMetadataService();
+                var meta = metaService.LoadOrSynthesize(stage);
+
+                // If image.nii.gz was staged, convert it now so the scanner can pick up
+                // the resulting DICOM series as the reference.
+                var imageWriter = new NiftiImageWriterService(metaService);
+                imageWriter.ConvertImageNiftiToDicomSeries(stage, meta, progress, CancellationToken.None);
+
+                Dicom_RT_images_Csharp.Models.DicomSeriesGroup imageSeries = null;
+                var dcmFiles = Directory.EnumerateFiles(stage, "*.dcm", SearchOption.TopDirectoryOnly).ToList();
+                if (dcmFiles.Count > 0)
+                {
+                    imageSeries = BuildImageSeriesFromFolder(stage);
+                }
+
+                Console.Error.WriteLine($"  Masks folder:   {masksFolder}");
+                Console.Error.WriteLine($"  Image series:   {(imageSeries != null ? imageSeries.FilePaths.Count + " slice(s) (from image.nii.gz)" : "(none — metadata.json-only mode)")}");
+                Console.Error.WriteLine($"  metadata.json:  {(File.Exists(metaPath) ? metaPath : "auto-generated in stage")}");
+                Console.Error.WriteLine($"  Output:         {outputPath}");
+
+                string written = writer.ConvertMasksFolderToRtStruct(
+                    dicomFolder: stage,
+                    referenceSeries: imageSeries,
+                    outputPath: outputPath,
+                    progress: progress,
+                    ct: CancellationToken.None,
+                    metadata: meta);
+
+                // Persist the (possibly updated) metadata.json back next to the masks so
+                // re-runs reuse the same UIDs.
+                metaService.Save(masksFolder, meta);
+
+                Console.Out.WriteLine("# rt_mask_validation reverse (nifti-only)");
+                Console.Out.WriteLine(written);
+                return 0;
+            }
+            finally
+            {
+                TryCleanupStaging(stage);
             }
         }
 
@@ -298,12 +392,20 @@ namespace Dicom_RT_images_Csharp.Cli
 
         private static string RequireArg(string[] args, string name)
         {
+            string v = OptionalArg(args, name);
+            if (v == null)
+                throw new ArgumentException($"Required argument '{name}' is missing.");
+            return v;
+        }
+
+        private static string OptionalArg(string[] args, string name)
+        {
             for (int i = 0; i < args.Length - 1; i++)
             {
                 if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
                     return args[i + 1];
             }
-            throw new ArgumentException($"Required argument '{name}' is missing.");
+            return null;
         }
 
         private static string SanitizeFileName(string name)
@@ -319,8 +421,13 @@ namespace Dicom_RT_images_Csharp.Cli
             Console.Error.WriteLine("Forward (RTSTRUCT -> per-ROI masks):");
             Console.Error.WriteLine("  --headless --forward --rtstruct PATH --image-folder PATH --output-folder PATH");
             Console.Error.WriteLine();
-            Console.Error.WriteLine("Reverse (per-ROI masks -> RTSTRUCT):");
+            Console.Error.WriteLine("Reverse (per-ROI masks -> RTSTRUCT) with reference DICOM:");
             Console.Error.WriteLine("  --headless --reverse --image-folder PATH --masks-folder PATH --output PATH");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Reverse (per-ROI masks -> RTSTRUCT) without reference DICOM:");
+            Console.Error.WriteLine("  --headless --reverse --masks-folder PATH --output PATH");
+            Console.Error.WriteLine("                       [--image-nifti PATH]   (default: <masks-folder>/image.nii.gz)");
+            Console.Error.WriteLine("                       [--metadata PATH]      (default: <masks-folder>/metadata.json)");
         }
     }
 }

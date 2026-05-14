@@ -29,15 +29,18 @@ namespace Dicom_RT_images_Csharp
             }
 
             // Build all services once and share across both workflows.
-            var settingsService   = new SettingsService();
-            var scannerService    = new DicomScannerService();
-            var maskService       = new RtStructMaskService();
-            var conversionService = new NiftiConversionService(maskService);
-            var rtStructWriter    = new RtStructWriterService();
-            var rtDoseWriter      = new RtDoseWriterService();
+            var settingsService    = new SettingsService();
+            var scannerService     = new DicomScannerService();
+            var maskService        = new RtStructMaskService();
+            var conversionService  = new NiftiConversionService(maskService);
+            var rtStructWriter     = new RtStructWriterService();
+            var rtDoseWriter       = new RtDoseWriterService();
+            var niftiMetadata      = new NiftiMetadataService();
+            var niftiImageWriter   = new NiftiImageWriterService(niftiMetadata);
 
             var launcherVm = new LauncherViewModel(
-                scannerService, conversionService, maskService, settingsService, rtStructWriter, rtDoseWriter);
+                scannerService, conversionService, maskService, settingsService,
+                rtStructWriter, rtDoseWriter, niftiMetadata, niftiImageWriter);
 
             var launcher = new LauncherWindow();
             launcher.DataContext = launcherVm;

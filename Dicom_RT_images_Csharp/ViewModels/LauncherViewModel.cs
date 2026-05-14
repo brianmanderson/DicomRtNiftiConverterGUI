@@ -17,7 +17,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
             RtStructMaskService maskService,
             SettingsService settingsService,
             RtStructWriterService rtStructWriter,
-            RtDoseWriterService rtDoseWriter)
+            RtDoseWriterService rtDoseWriter,
+            NiftiMetadataService niftiMetadataService,
+            NiftiImageWriterService niftiImageWriter)
         {
             ScannerService = scannerService;
             ConversionService = conversionService;
@@ -25,6 +27,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
             SettingsService = settingsService;
             RtStructWriter = rtStructWriter;
             RtDoseWriter = rtDoseWriter;
+            NiftiMetadataService = niftiMetadataService;
+            NiftiImageWriter = niftiImageWriter;
 
             OpenDicomToNiftiCommand = new RelayCommand(_ => OpenDicomToNiftiRequested?.Invoke(this, EventArgs.Empty));
             OpenNiftiToDicomCommand = new RelayCommand(_ => OpenNiftiToDicomRequested?.Invoke(this, EventArgs.Empty));
@@ -37,6 +41,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public SettingsService SettingsService { get; }
         public RtStructWriterService RtStructWriter { get; }
         public RtDoseWriterService RtDoseWriter { get; }
+        public NiftiMetadataService NiftiMetadataService { get; }
+        public NiftiImageWriterService NiftiImageWriter { get; }
 
         public ICommand OpenDicomToNiftiCommand { get; }
         public ICommand OpenNiftiToDicomCommand { get; }

@@ -68,7 +68,9 @@ namespace Dicom_RT_images_Csharp.Views
                 _niftiToDicomWindow.DataContext = new NiftiToDicomViewModel(
                     _vm.ScannerService,
                     _vm.RtStructWriter,
-                    _vm.RtDoseWriter);
+                    _vm.RtDoseWriter,
+                    _vm.NiftiMetadataService,
+                    _vm.NiftiImageWriter);
 
                 _niftiToDicomWindow.Closing += WorkflowWindow_Closing;
             }

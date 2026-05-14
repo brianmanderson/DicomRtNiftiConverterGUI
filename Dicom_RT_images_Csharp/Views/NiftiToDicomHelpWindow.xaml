@@ -51,32 +51,39 @@
                 <StackPanel>
                     <TextBlock Style="{StaticResource H1}" Text="Workflow overview"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Reverse of the DICOM → NIfTI workflow. You point at a folder containing existing DICOM
-                        image files (CT/MR/PT) plus optional <Run FontFamily="Consolas">masks/</Run> and
-                        <Run FontFamily="Consolas">doses/</Run> subdirectories with .nii.gz inputs. The window
-                        produces:
+                        Reverse of the DICOM → NIfTI workflow. You point at a folder containing any of:
+                        an <Run FontFamily="Consolas">image.nii.gz</Run>, a
+                        <Run FontFamily="Consolas">masks/</Run> subdir, a <Run FontFamily="Consolas">doses/</Run>
+                        subdir, and/or existing reference DICOM image files (CT/MR/PT). The window produces:
                         <LineBreak/>
                         <LineBreak/>
-                        • One <Run FontWeight="SemiBold">RT-STRUCT</Run> per DICOM folder, containing all ROIs
+                        • One DICOM <Run FontWeight="SemiBold">image series</Run> from
+                          <Run FontFamily="Consolas">image.nii.gz</Run> (CT by default; MR/PT supported via
+                          metadata.json).
+                        <LineBreak/>
+                        • One <Run FontWeight="SemiBold">RT-STRUCT</Run> per folder, containing all ROIs
                           from <Run FontFamily="Consolas">masks/*.nii.gz</Run>.
                         <LineBreak/>
                         • One <Run FontWeight="SemiBold">RT-DOSE</Run> per dose file in
                           <Run FontFamily="Consolas">doses/*.nii.gz</Run>.
                         <LineBreak/>
                         <LineBreak/>
-                        Outputs are written into the same DICOM folder as the source CT, with new SOPInstanceUIDs
-                        and a FrameOfReferenceUID matching the CT for spatial alignment.
+                        All outputs share one StudyInstanceUID and one FrameOfReferenceUID, so TPS systems can
+                        co-register them. Existing reference DICOMs are used when present; otherwise UIDs come
+                        from a <Run FontFamily="Consolas">metadata.json</Run> sidecar (auto-created on first run).
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H1}" Text="Folder layout"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Each "DICOM folder" looks like:
+                        Each input folder looks like one of these:
                     </TextBlock>
                     <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
                             CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
                         <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
 PatientFolder/<LineBreak/>
-&#x9;CT.1.dcm, CT.2.dcm, ...&#x9;&#x9;&#x9;<Run Foreground="#888888"># reference image series</Run><LineBreak/>
+&#x9;image.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional: converts to DICOM CT/MR/PT series</Run><LineBreak/>
+&#x9;metadata.json&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional: patient/study/UIDs (auto-generated if absent)</Run><LineBreak/>
+&#x9;CT.1.dcm, CT.2.dcm, ...&#x9;&#x9;<Run Foreground="#888888"># optional: existing reference series</Run><LineBreak/>
 &#x9;masks/<LineBreak/>
 &#x9;&#x9;Brain.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># → ROI "Brain"</Run><LineBreak/>
 &#x9;&#x9;CTV.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># → ROI "CTV"</Run><LineBreak/>
@@ -86,7 +93,30 @@ PatientFolder/<LineBreak/>
                     </Border>
                     <TextBlock Style="{StaticResource Body}">
                         You can also point at a <Run FontStyle="Italic">parent</Run> folder containing many such
-                        DICOM folders side-by-side; each one becomes its own batch job.
+                        folders side-by-side; each one becomes its own batch job.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H1}" Text="metadata.json (no reference DICOM mode)"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        When the folder has no reference CT/MR/PT DICOM, the writers read
+                        <Run FontFamily="Consolas">metadata.json</Run> for patient/study identifiers. Missing
+                        fields are synthesized on first run (anonymous patient, fresh UIDs) and persisted back
+                        — so subsequent runs reuse the same StudyInstanceUID, FrameOfReferenceUID, and
+                        image-series UIDs. This is what keeps image + RT-STRUCT + RT-DOSE self-consistent.
+                        <LineBreak/>
+                        <LineBreak/>
+                        Edit any field by hand before the first run (e.g.
+                        <Run FontFamily="Consolas">patientId</Run> = "JD_001"). For CT data in Hounsfield units,
+                        set <Run FontFamily="Consolas">imageRescaleSlope</Run> = 1 and
+                        <Run FontFamily="Consolas">imageRescaleIntercept</Run> = -1024 if your image.nii.gz
+                        stores HU + 1024 as unsigned values; or leave both at defaults if it stores raw HU.
+                        <LineBreak/>
+                        <LineBreak/>
+                        To force a clean image regeneration, delete the
+                        <Run FontFamily="Consolas">image_*.dcm</Run> files and remove
+                        <Run FontFamily="Consolas">imageSeriesInstanceUid</Run> /
+                        <Run FontFamily="Consolas">imageSopInstanceUids</Run> from
+                        <Run FontFamily="Consolas">metadata.json</Run>; the next run rewrites them.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H1}" Text="Step-by-step"/>
@@ -130,12 +160,14 @@ PatientFolder/<LineBreak/>
                         adding/removing files to refresh the list.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H2}" Text="Convert Structures? / Convert Doses?"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Convert Image? / Convert Structures? / Convert Doses?"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Toggle which artifact types to produce. Files in
+                        Toggle which artifact types to produce.
+                        <Run FontFamily="Consolas">image.nii.gz</Run> requires Convert Image = ON;
                         <Run FontFamily="Consolas">masks/</Run> require Convert Structures = ON;
-                        <Run FontFamily="Consolas">doses/</Run> require Convert Doses = ON. With both off, the
-                        Convert button is disabled.
+                        <Run FontFamily="Consolas">doses/</Run> require Convert Doses = ON. With all three off,
+                        the Convert button is disabled. The image is converted first (if any) so the RT-STRUCT
+                        and RT-DOSE reference the resulting DICOM image series.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Discovered jobs grid"/>

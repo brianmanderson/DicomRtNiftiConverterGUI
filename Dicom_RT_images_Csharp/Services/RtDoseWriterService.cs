@@ -26,7 +26,8 @@ namespace Dicom_RT_images_Csharp.Services
         /// <summary>
         /// Discovers <paramref name="dicomFolder"/>/doses/*.nii.gz, builds one RT-DOSE per file
         /// referencing <paramref name="referenceSeries"/>, writes each into <paramref name="dicomFolder"/>.
-        /// Returns the list of written file paths.
+        /// Returns the list of written file paths. When <paramref name="referenceSeries"/> is
+        /// null, falls back to a metadata-driven shell built from <paramref name="metadata"/>.
         /// </summary>
         public List<string> ConvertDoseFolderToRtDoses(
             string dicomFolder,
@@ -34,7 +35,8 @@ namespace Dicom_RT_images_Csharp.Services
             IProgress<string> progress,
             CancellationToken ct,
             bool useStableHashNames = false,
-            bool skipIfExists = false)
+            bool skipIfExists = false,
+            NiftiPatientMetadata metadata = null)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -53,13 +55,27 @@ namespace Dicom_RT_images_Csharp.Services
             if (doseFiles.Count == 0)
                 return written;
 
-            if (referenceSeries == null || referenceSeries.FilePaths == null || referenceSeries.FilePaths.Count == 0)
-                throw new InvalidOperationException("Reference image series has no DICOM files.");
+            bool hasReferenceSeries = referenceSeries != null
+                && referenceSeries.FilePaths != null
+                && referenceSeries.FilePaths.Count > 0;
 
-            // Open the first reference DICOM file once to copy patient/study metadata.
-            var sortedDicomFiles = SortFilesBySlicePosition(referenceSeries.FilePaths);
-            var refDicom = DicomFile.Open(sortedDicomFiles[0], FileReadOption.SkipLargeTags);
-            var refDs = refDicom.Dataset;
+            if (!hasReferenceSeries && metadata == null)
+                throw new InvalidOperationException(
+                    "Reference image series has no DICOM files and no metadata was provided.");
+
+            DicomDataset refDs;
+            if (hasReferenceSeries)
+            {
+                // Open the first reference DICOM file once to copy patient/study metadata.
+                var sortedDicomFiles = SortFilesBySlicePosition(referenceSeries.FilePaths);
+                var refDicom = DicomFile.Open(sortedDicomFiles[0], FileReadOption.SkipLargeTags);
+                refDs = refDicom.Dataset;
+            }
+            else
+            {
+                progress?.Report("No reference DICOM series — using metadata.json for patient/study tags.");
+                refDs = new NiftiMetadataService().BuildSyntheticRefDataset(metadata);
+            }
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
@@ -321,7 +337,7 @@ namespace Dicom_RT_images_Csharp.Services
 
             // Frame of reference (copy from CT, fall back to series field)
             string frameUid = GetStringTag(refDs, DicomTag.FrameOfReferenceUID,
-                referenceSeries.FrameOfReferenceUID ?? "");
+                referenceSeries?.FrameOfReferenceUID ?? "");
             if (string.IsNullOrEmpty(frameUid))
                 frameUid = DicomUIDGenerator.GenerateDerivedFromUUID().UID;
             ds.AddOrUpdate(DicomTag.FrameOfReferenceUID, frameUid);
