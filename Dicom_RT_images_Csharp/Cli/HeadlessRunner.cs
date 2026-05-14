@@ -19,11 +19,12 @@ namespace Dicom_RT_images_Csharp.Cli
     ///
     /// Usage:
     ///
-    ///   Forward (RTSTRUCT -> per-ROI binary masks):
+    ///   Forward (RTSTRUCT -> per-ROI binary masks; optionally also image.nii.gz):
     ///       Dicom_RT_images_Csharp.exe --headless --forward
     ///           --rtstruct PATH
     ///           --image-folder PATH
     ///           --output-folder PATH
+    ///           [--include-image]    (also write image.nii.gz alongside masks)
     ///
     ///   Reverse (per-ROI binary masks -> RTSTRUCT):
     ///       Dicom_RT_images_Csharp.exe --headless --reverse
@@ -103,6 +104,16 @@ namespace Dicom_RT_images_Csharp.Cli
             var conversionService = new NiftiConversionService(maskService);
 
             var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
+
+            if (HasFlag(args, "--include-image"))
+            {
+                conversionService.ConvertImageSeriesToNifti(
+                    series: imageSeries,
+                    outputDir: outputFolder,
+                    progress: progress,
+                    ct: CancellationToken.None,
+                    targetSpacing: null);
+            }
 
             // No ROI associations / no resampling: keep the conversion as faithful
             // as possible to the input. This matches the benchmark harness's
@@ -212,21 +223,34 @@ namespace Dicom_RT_images_Csharp.Cli
 
             try
             {
+                // Resolve image.nii.gz first so we can exclude it from the mask staging
+                // sweep -- otherwise it would be picked up as an "image" ROI.
+                string imageNifti = OptionalArg(args, "--image-nifti")
+                    ?? Path.Combine(masksFolder, "image.nii.gz");
+                string imageNiftiFull = File.Exists(imageNifti) ? Path.GetFullPath(imageNifti) : null;
+
                 foreach (var src in Directory.EnumerateFiles(masksFolder, "*.nii.gz", SearchOption.TopDirectoryOnly))
                 {
+                    // Skip the image volume; it must not be staged as a mask.
+                    if (imageNiftiFull != null &&
+                        string.Equals(Path.GetFullPath(src), imageNiftiFull, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                    // Also skip any dose.nii.gz that happens to share the folder.
+                    if (string.Equals(Path.GetFileName(src), "dose.nii.gz", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
                     string dst = Path.Combine(stagedMasks, Path.GetFileName(src));
                     if (!CreateHardLink(dst, src, IntPtr.Zero)) File.Copy(src, dst);
                 }
 
-                // Optional image.nii.gz: defaults to <masks-folder>/image.nii.gz; explicitly
-                // overridable via --image-nifti.
-                string imageNifti = OptionalArg(args, "--image-nifti")
-                    ?? Path.Combine(masksFolder, "image.nii.gz");
-                if (File.Exists(imageNifti))
+                if (imageNiftiFull != null)
                 {
                     string stagedImage = Path.Combine(stage, "image.nii.gz");
-                    if (!CreateHardLink(stagedImage, imageNifti, IntPtr.Zero))
-                        File.Copy(imageNifti, stagedImage);
+                    if (!CreateHardLink(stagedImage, imageNiftiFull, IntPtr.Zero))
+                        File.Copy(imageNiftiFull, stagedImage);
                 }
 
                 // Optional --metadata override: copy the source metadata.json into the
@@ -270,6 +294,20 @@ namespace Dicom_RT_images_Csharp.Cli
                 // re-runs reuse the same UIDs.
                 metaService.Save(masksFolder, meta);
 
+                // Optionally persist the generated DICOM image series next to the RT-STRUCT
+                // for inspection / comparison against an original reference series.
+                string outImageFolder = OptionalArg(args, "--output-image-folder");
+                if (!string.IsNullOrEmpty(outImageFolder) && imageSeries != null)
+                {
+                    Directory.CreateDirectory(outImageFolder);
+                    foreach (var src in imageSeries.FilePaths)
+                    {
+                        string dst = Path.Combine(outImageFolder, Path.GetFileName(src));
+                        File.Copy(src, dst, overwrite: true);
+                    }
+                    Console.Error.WriteLine($"  Copied {imageSeries.FilePaths.Count} DICOM image slice(s) to {outImageFolder}");
+                }
+
                 Console.Out.WriteLine("# rt_mask_validation reverse (nifti-only)");
                 Console.Out.WriteLine(written);
                 return 0;
@@ -286,23 +324,46 @@ namespace Dicom_RT_images_Csharp.Cli
 
         private static DicomSeriesGroup BuildImageSeriesFromFolder(string folder)
         {
-            var dcmFiles = Directory
-                .EnumerateFiles(folder, "*.dcm", SearchOption.TopDirectoryOnly)
-                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            if (dcmFiles.Count == 0)
-                throw new InvalidOperationException($"No .dcm files in {folder}.");
+            // Filter to actual image slices: keep only files whose Modality is one of
+            // the supported image modalities (CT/MR/PT) and that carry ImagePositionPatient.
+            // This drops RT-STRUCT / RT-DOSE / RT-PLAN files that may live alongside the
+            // image slices in the same folder -- ImageSeriesReader cannot ingest them
+            // and would crash with a GDCM read error.
+            var imageFiles = new List<string>();
+            DicomDataset firstImage = null;
+            foreach (var path in Directory.EnumerateFiles(folder, "*.dcm", SearchOption.TopDirectoryOnly)
+                                          .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            {
+                DicomDataset ds;
+                try { ds = DicomFile.Open(path, FileReadOption.SkipLargeTags).Dataset; }
+                catch { continue; }
 
-            // Read tags from the first file to populate series metadata.
-            var first = DicomFile.Open(dcmFiles[0], FileReadOption.SkipLargeTags).Dataset;
+                string modality = GetStringOrEmpty(ds, DicomTag.Modality);
+                if (string.Equals(modality, "RTSTRUCT", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(modality, "RTDOSE",   StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(modality, "RTPLAN",   StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                if (!ds.Contains(DicomTag.ImagePositionPatient))
+                {
+                    continue;
+                }
+
+                imageFiles.Add(path);
+                if (firstImage == null) firstImage = ds;
+            }
+            if (imageFiles.Count == 0 || firstImage == null)
+                throw new InvalidOperationException($"No image (.dcm) slices in {folder}.");
+
             return new DicomSeriesGroup
             {
-                SeriesInstanceUID    = GetStringOrEmpty(first, DicomTag.SeriesInstanceUID),
-                SeriesDescription    = GetStringOrEmpty(first, DicomTag.SeriesDescription),
-                Modality             = GetStringOrEmpty(first, DicomTag.Modality),
-                SeriesDate           = GetStringOrEmpty(first, DicomTag.SeriesDate),
-                FrameOfReferenceUID  = GetStringOrEmpty(first, DicomTag.FrameOfReferenceUID),
-                FilePaths            = dcmFiles,
+                SeriesInstanceUID    = GetStringOrEmpty(firstImage, DicomTag.SeriesInstanceUID),
+                SeriesDescription    = GetStringOrEmpty(firstImage, DicomTag.SeriesDescription),
+                Modality             = GetStringOrEmpty(firstImage, DicomTag.Modality),
+                SeriesDate           = GetStringOrEmpty(firstImage, DicomTag.SeriesDate),
+                FrameOfReferenceUID  = GetStringOrEmpty(firstImage, DicomTag.FrameOfReferenceUID),
+                FilePaths            = imageFiles,
             };
         }
 
@@ -420,14 +481,16 @@ namespace Dicom_RT_images_Csharp.Cli
             Console.Error.WriteLine();
             Console.Error.WriteLine("Forward (RTSTRUCT -> per-ROI masks):");
             Console.Error.WriteLine("  --headless --forward --rtstruct PATH --image-folder PATH --output-folder PATH");
+            Console.Error.WriteLine("                       [--include-image]      (also write image.nii.gz)");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Reverse (per-ROI masks -> RTSTRUCT) with reference DICOM:");
             Console.Error.WriteLine("  --headless --reverse --image-folder PATH --masks-folder PATH --output PATH");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Reverse (per-ROI masks -> RTSTRUCT) without reference DICOM:");
             Console.Error.WriteLine("  --headless --reverse --masks-folder PATH --output PATH");
-            Console.Error.WriteLine("                       [--image-nifti PATH]   (default: <masks-folder>/image.nii.gz)");
-            Console.Error.WriteLine("                       [--metadata PATH]      (default: <masks-folder>/metadata.json)");
+            Console.Error.WriteLine("                       [--image-nifti PATH]         (default: <masks-folder>/image.nii.gz)");
+            Console.Error.WriteLine("                       [--metadata PATH]            (default: <masks-folder>/metadata.json)");
+            Console.Error.WriteLine("                       [--output-image-folder PATH] (persist generated DICOM image series)");
         }
     }
 }
