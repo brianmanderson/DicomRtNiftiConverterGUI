@@ -36,6 +36,14 @@ namespace Dicom_RT_images_Csharp.Models
         /// <summary>Modality of the converted image series ("CT", "MR", "PT"). Default "CT".</summary>
         public string ImageModality { get; set; } = "CT";
 
+        /// <summary>
+        /// DICOM PatientPosition (0018,5100). One of HFS / FFS / HFP / FFP / etc. Required (Type 2C)
+        /// for CT/MR/PT image storage SOPs — TPS systems (Eclipse, RayStation, ...) reject the
+        /// series with "Unknown patient position" when this tag is missing. Default "HFS"
+        /// (head-first supine) covers the overwhelming majority of clinical scans.
+        /// </summary>
+        public string PatientPosition { get; set; } = "HFS";
+
         /// <summary>SeriesInstanceUID of the image series written from image.nii.gz.</summary>
         public string ImageSeriesInstanceUid { get; set; } = "";
 

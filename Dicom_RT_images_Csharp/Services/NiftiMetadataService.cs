@@ -146,6 +146,11 @@ namespace Dicom_RT_images_Csharp.Services
                 meta.ImageModality = "CT";
                 changed = true;
             }
+            if (string.IsNullOrEmpty(meta.PatientPosition))
+            {
+                meta.PatientPosition = "HFS";
+                changed = true;
+            }
             // Note: ImageSeriesInstanceUid and ImageSopInstanceUids are intentionally NOT
             // synthesized here — they are filled in by NiftiImageWriterService only after a
             // successful image conversion run. If image.nii.gz is never present, they stay empty.
