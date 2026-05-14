@@ -670,14 +670,22 @@ namespace Dicom_RT_images_Csharp.Services
             if (string.IsNullOrEmpty(frameUid))
                 frameUid = DicomUIDGenerator.GenerateDerivedFromUUID().UID;
 
-            // ReferencedFrameOfReferenceSequence is Type 3 (User Optional) per PS3.3 A.19.
-            // Omit it entirely when there is no real reference image series — fabricating
-            // a SeriesInstanceUID that doesn't exist on disk causes Eclipse to reject the
-            // import during its "resolve referenced series" pre-check.
+            // ReferencedFrameOfReferenceSequence is nominally Type 3 (User Optional) per
+            // PS3.3 A.19, but Eclipse rejects the import with "Frame of reference sequence
+            // must contain at least one entry" when it is absent. We therefore always emit
+            // the outer sequence with one item carrying the FrameOfReferenceUID. The inner
+            // RTReferencedStudySequence (which points at the image series + per-slice
+            // SOPInstanceUIDs) is only populated when we have a real reference series --
+            // fabricating a SeriesInstanceUID that doesn't exist would break Eclipse's
+            // "resolve referenced series" pre-check.
+            var refFrameItemTop = new DicomDataset
+            {
+                { DicomTag.FrameOfReferenceUID, frameUid }
+            };
+
             if (referenceSeries != null)
             {
-                // ReferencedFrameOfReferenceSequence
-                // -> RTReferencedStudySequence -> RTReferencedSeriesSequence -> ContourImageSequence
+                // RTReferencedStudySequence -> RTReferencedSeriesSequence -> ContourImageSequence
                 var contourImageSeq = new DicomSequence(DicomTag.ContourImageSequence);
                 foreach (var kvp in sliceLookup.OrderBy(k => k.Key))
                 {
@@ -714,16 +722,12 @@ namespace Dicom_RT_images_Csharp.Services
                 var rtRefStudySeq = new DicomSequence(DicomTag.RTReferencedStudySequence);
                 rtRefStudySeq.Items.Add(rtRefStudyItem);
 
-                var refFrameItem = new DicomDataset
-                {
-                    { DicomTag.FrameOfReferenceUID, frameUid }
-                };
-                refFrameItem.Add(rtRefStudySeq);
-
-                var refFrameSeq = new DicomSequence(DicomTag.ReferencedFrameOfReferenceSequence);
-                refFrameSeq.Items.Add(refFrameItem);
-                ds.AddOrUpdate(refFrameSeq);
+                refFrameItemTop.Add(rtRefStudySeq);
             }
+
+            var refFrameSeq = new DicomSequence(DicomTag.ReferencedFrameOfReferenceSequence);
+            refFrameSeq.Items.Add(refFrameItemTop);
+            ds.AddOrUpdate(refFrameSeq);
 
             return ds;
         }
