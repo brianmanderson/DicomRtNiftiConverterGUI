@@ -345,31 +345,31 @@
                     <TextBlock Style="{StaticResource H2}" Text="Non-anonymized"/>
                     <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
                             CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
-{Output}/<LineBreak/>
-&#x9;{PatientID}/<LineBreak/>
-&#x9;&#x9;{SeriesDate}_{SeriesDescription}/<LineBreak/>
-&#x9;&#x9;&#x9;image.nii.gz&#x9;&#x9;<Run Foreground="#888888"># if Export Images is ON</Run><LineBreak/>
-&#x9;&#x9;&#x9;dose.nii.gz&#x9;&#x9;<Run Foreground="#888888"># if Include Dose is ON and a dose is linked</Run><LineBreak/>
-&#x9;&#x9;&#x9;masks/<LineBreak/>
-&#x9;&#x9;&#x9;&#x9;{ROI_Name}.nii.gz&#x9;<Run Foreground="#888888"># if Include Structures is ON</Run><LineBreak/>
-&#x9;export_manifest.csv&#x9;&#x9;<Run Foreground="#888888"># at the output root</Run>
-                        </TextBlock>
+                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">{Output}/
+│
+├─ {PatientID}/
+│   └─ {SeriesDate}_{SeriesDescription}/
+│       ├─ image.nii.gz            → CT/MR/PT volume        <Run Foreground="#888888">(if Export Images is ON)</Run>
+│       ├─ dose.nii.gz             → RT-DOSE volume         <Run Foreground="#888888">(if Include Dose is ON and a dose is linked)</Run>
+│       └─ masks/
+│           └─ {ROI_Name}.nii.gz   → per-ROI binary mask    <Run Foreground="#888888">(if Include Structures is ON)</Run>
+│
+└─ export_manifest.csv                                      <Run Foreground="#888888">(or export_manifest_meta.csv from Export MetaData)</Run></TextBlock>
                     </Border>
 
                     <TextBlock Style="{StaticResource H2}" Text="Anonymized"/>
                     <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
                             CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
-{Output}/<LineBreak/>
-&#x9;{ExportID}/&#x9;&#x9;&#x9;<Run Foreground="#888888"># flat — no {PatientID}/{Date}_... nesting</Run><LineBreak/>
-&#x9;&#x9;image.nii.gz<LineBreak/>
-&#x9;&#x9;dose.nii.gz<LineBreak/>
-&#x9;&#x9;masks/<LineBreak/>
-&#x9;&#x9;&#x9;{ROI_Name}.nii.gz<LineBreak/>
-&#x9;export_manifest.csv<LineBreak/>
-&#x9;AnonymizationKey.json&#x9;&#x9;<Run Foreground="#888888"># deterministic ExportID ↔ MRN/StudyUID/SeriesUID mapping</Run>
-                        </TextBlock>
+                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">{Output}/
+│
+├─ {ExportID}/                                              <Run Foreground="#888888">(flat — no {PatientID}/{Date}_... nesting)</Run>
+│   ├─ image.nii.gz                → CT/MR/PT volume
+│   ├─ dose.nii.gz                 → RT-DOSE volume
+│   └─ masks/
+│       └─ {ROI_Name}.nii.gz       → per-ROI binary mask
+│
+├─ export_manifest.csv
+└─ AnonymizationKey.json                                    <Run Foreground="#888888">(deterministic ExportID ↔ MRN/StudyUID/SeriesUID mapping)</Run></TextBlock>
                     </Border>
                     <TextBlock Style="{StaticResource Body}">
                         <Run FontWeight="SemiBold">Export MetaData</Run> writes

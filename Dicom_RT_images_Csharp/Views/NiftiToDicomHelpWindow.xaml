@@ -173,17 +173,18 @@
                     </TextBlock>
                     <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
                             CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
-PatientFolder/<LineBreak/>
-&#x9;image.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional — converts to DICOM CT/MR/PT image series</Run><LineBreak/>
-&#x9;metadata.json&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional — patient/study/UIDs; auto-generated if missing</Run><LineBreak/>
-&#x9;CT.1.dcm, CT.2.dcm, ...&#x9;&#x9;<Run Foreground="#888888"># optional — existing reference image series</Run><LineBreak/>
-&#x9;masks/<LineBreak/>
-&#x9;&#x9;Brain.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional — one ROI in the generated RT-STRUCT</Run><LineBreak/>
-&#x9;&#x9;CTV.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional — another ROI</Run><LineBreak/>
-&#x9;doses/<LineBreak/>
-&#x9;&#x9;plan_total.nii.gz&#x9;&#x9;<Run Foreground="#888888"># optional — one RT-DOSE per file</Run>
-                        </TextBlock>
+                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">PatientFolder/
+│
+├─ image.nii.gz              → DICOM CT/MR/PT image series       <Run Foreground="#888888">(optional)</Run>
+├─ metadata.json                patient / study / UIDs           <Run Foreground="#888888">(optional — auto-generated with anonymous defaults if missing)</Run>
+├─ CT.1.dcm, CT.2.dcm, ...      existing reference image series  <Run Foreground="#888888">(optional — used instead of image.nii.gz if present)</Run>
+│
+├─ masks/                                                        <Run Foreground="#888888">(optional folder — each .nii.gz below becomes one ROI)</Run>
+│   ├─ Brain.nii.gz          → ROI "Brain"  in the generated RT-STRUCT
+│   └─ CTV.nii.gz            → ROI "CTV"    in the generated RT-STRUCT
+│
+└─ doses/                                                        <Run Foreground="#888888">(optional folder — each .nii.gz below becomes its own RT-DOSE)</Run>
+    └─ plan_total.nii.gz     → one RT-DOSE file</TextBlock>
                     </Border>
                     <TextBlock Style="{StaticResource Body}">
                         The reference image series for the RT-STRUCT / RT-DOSE writers is auto-detected: if any
@@ -268,27 +269,25 @@ PatientFolder/<LineBreak/>
                     <TextBlock Style="{StaticResource H2}" Text="Sample metadata.json (CT defaults)"/>
                     <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
                             CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
-{<LineBreak/>
-&#x9;"PatientId": "ANON_a1b2c3",<LineBreak/>
-&#x9;"PatientName": "ANON^ANON",<LineBreak/>
-&#x9;"PatientBirthDate": "",<LineBreak/>
-&#x9;"PatientSex": "",<LineBreak/>
-&#x9;"StudyInstanceUid": "1.2.826.0.1.3680043.8.498.12345...",<LineBreak/>
-&#x9;"StudyDate": "20260515",<LineBreak/>
-&#x9;"StudyTime": "094230",<LineBreak/>
-&#x9;"StudyId": "",<LineBreak/>
-&#x9;"AccessionNumber": "",<LineBreak/>
-&#x9;"ReferringPhysicianName": "",<LineBreak/>
-&#x9;"FrameOfReferenceUid": "1.2.826.0.1.3680043.8.498.67890...",<LineBreak/>
-&#x9;"ImageModality": "CT",<LineBreak/>
-&#x9;"PatientPosition": "HFS",<LineBreak/>
-&#x9;"ImageSeriesInstanceUid": "",<LineBreak/>
-&#x9;"ImageSopInstanceUids": [],<LineBreak/>
-&#x9;"ImageRescaleSlope": 1.0,<LineBreak/>
-&#x9;"ImageRescaleIntercept": 0.0<LineBreak/>
-}
-                        </TextBlock>
+                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">{
+    "PatientId": "ANON_a1b2c3",
+    "PatientName": "ANON^ANON",
+    "PatientBirthDate": "",
+    "PatientSex": "",
+    "StudyInstanceUid": "1.2.826.0.1.3680043.8.498.12345...",
+    "StudyDate": "20260515",
+    "StudyTime": "094230",
+    "StudyId": "",
+    "AccessionNumber": "",
+    "ReferringPhysicianName": "",
+    "FrameOfReferenceUid": "1.2.826.0.1.3680043.8.498.67890...",
+    "ImageModality": "CT",
+    "PatientPosition": "HFS",
+    "ImageSeriesInstanceUid": "",
+    "ImageSopInstanceUids": [],
+    "ImageRescaleSlope": 1.0,
+    "ImageRescaleIntercept": 0.0
+}</TextBlock>
                     </Border>
 
                     <TextBlock Style="{StaticResource H2}" Text="Rescale slope / intercept"/>
