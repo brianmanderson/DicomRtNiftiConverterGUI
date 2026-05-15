@@ -49,139 +49,408 @@
                 BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="20,12">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource H1}" Text="Workflow overview"/>
+                    <!-- ============================================================ -->
+                    <!-- 1. QUICK START                                                -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Quick start"/>
                     <TextBlock Style="{StaticResource Body}">
-                        This window walks a folder of DICOM files, lets you choose what to export, and writes
-                        NIfTI (.nii.gz) outputs for downstream research / analysis use. Image series, structure
-                        masks, and dose grids are all supported.
+                        For the common case (export every series for every selected patient, no anonymization,
+                        no resampling):
                     </TextBlock>
-
-                    <TextBlock Style="{StaticResource H1}" Text="Step-by-step"/>
                     <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">1.</Run> Set the <Run FontWeight="SemiBold">Input</Run> folder
-                        (the root of your DICOM archive) and the <Run FontWeight="SemiBold">Output</Run> folder
-                        (where NIfTI files will be written).
+                        <Run FontWeight="SemiBold">1.</Run> Set <Run FontWeight="SemiBold">Input</Run> (the root of
+                        your DICOM archive — scanned recursively) and <Run FontWeight="SemiBold">Output</Run>
+                        (where the NIfTI files land) via the <Run FontWeight="SemiBold">Browse...</Run> buttons.
                     </TextBlock>
                     <TextBlock Style="{StaticResource Body}">
                         <Run FontWeight="SemiBold">2.</Run> Click <Run FontWeight="SemiBold">Scan</Run>. The
-                        Patient / Study / Series tree fills in. Tick the patients/series you want to export.
+                        Patient / Study / Series tree on the left fills in. Tick the patients (or individual
+                        series) you want to export.
                     </TextBlock>
                     <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">3.</Run> Pick what to write in the
-                        <Run FontWeight="SemiBold">Export Options</Run> panel: images, structures, dose. Optionally
-                        define ROI associations, restrict to a subset of ROIs, set an output spacing, or
-                        anonymize.
+                        <Run FontWeight="SemiBold">3.</Run> In the <Run FontWeight="SemiBold">Export Options</Run>
+                        panel on the right, tick the artifact types you want:
+                        <Run FontWeight="SemiBold">Export Images</Run> (CT/MR/PT →
+                        <Run FontFamily="Consolas">image.nii.gz</Run>),
+                        <Run FontWeight="SemiBold">Include Structures</Run> (RT-STRUCT → per-ROI masks under
+                        <Run FontFamily="Consolas">masks/</Run>),
+                        <Run FontWeight="SemiBold">Include Dose</Run> (RT-DOSE →
+                        <Run FontFamily="Consolas">dose.nii.gz</Run>).
                     </TextBlock>
                     <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert Selected</Run>
-                        — or use <Run FontWeight="SemiBold">Export MetaData</Run> to produce only a CSV manifest
-                        (no .nii.gz files written).
+                        <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert Selected</Run>.
+                        A status bar shows progress; the log box below records each step.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">5.</Run> Outputs land under
+                        <Run FontFamily="Consolas">{Output}/{PatientID}/{SeriesDate}_{SeriesDescription}/</Run>.
+                        A CSV manifest (<Run FontFamily="Consolas">export_manifest.csv</Run>) sits at the output root.
+                        See <Run FontWeight="SemiBold">Output structure</Run> below for the full layout.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="Top toolbar"/>
+                    <!-- ============================================================ -->
+                    <!-- 2. WORKFLOW WALKTHROUGHS                                      -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Workflow walkthroughs"/>
+
+                    <TextBlock Style="{StaticResource H2}" Text="A. Plain export of one cohort"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        The 5-step Quick start above. Defaults give you images + structures + dose for every
+                        selected series, ROIs keep their original DICOM names, original voxel spacing preserved,
+                        patient identifiers preserved in folder names.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="B. Anonymized batch for research"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Tick <Run FontWeight="SemiBold">Anonymize export?</Run> before Convert Selected. Each
+                        exported series gets a deterministic integer Export ID derived from
+                        <Run FontFamily="Consolas">{MRN}_{StudyUID}_{SeriesUID}</Run>; the output layout flattens
+                        to <Run FontFamily="Consolas">{Output}/{ExportID}/...</Run> (no patient or series
+                        subfolders). A <Run FontFamily="Consolas">AnonymizationKey.json</Run> is written at the
+                        output root mapping each ExportID back to the original identifiers. Re-exporting the
+                        same series in any later session — even into a different output folder that already has
+                        an <Run FontFamily="Consolas">AnonymizationKey.json</Run> — reuses the previously
+                        assigned ID.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="C. Restricted ROI cohort with canonical renames"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Use this when different patients call the same structure different names (e.g.
+                        <Run FontFamily="Consolas">PTV</Run>, <Run FontFamily="Consolas">PTV_5400</Run>,
+                        <Run FontFamily="Consolas">Target</Run>) and you want one canonical mask per ROI.
+                        <LineBreak/>
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">1.</Run> Click <Run FontWeight="SemiBold">Edit ROI Associations...</Run>
+                        and define alias sets, e.g. canonical
+                        <Run FontFamily="Consolas">Target</Run> ↔ aliases
+                        <Run FontFamily="Consolas">{ CTV, GTV, PTV }</Run>.
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">2.</Run> Tick <Run FontWeight="SemiBold">Only export specific ROIs?</Run>.
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">3.</Run> Click <Run FontWeight="SemiBold">Select ROIs for Export...</Run>
+                        and tick the canonical names you want. Patients whose series contain none of the
+                        selected ROIs are auto-deselected in the tree.
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">4.</Run> Convert Selected. ROIs that match an alias are
+                        renamed to their canonical name on disk; unmatched ROIs are dropped.
+                        <LineBreak/>
+                        <LineBreak/>
+                        With <Run FontWeight="SemiBold">Only export specific ROIs?</Run> OFF but ROI Associations
+                        defined, matched ROIs are still renamed — but unmatched ones are also exported with
+                        their original names.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="D. Inventory pass (no .nii.gz files written)"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Set up Export Options exactly as you would for a full export, then click
+                        <Run FontWeight="SemiBold">Export MetaData</Run> instead of Convert Selected. The
+                        rasterizer runs against each selected RT-STRUCT to compute per-ROI volumes (in cc), and
+                        image spacings are read, but nothing is written except
+                        <Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root. Ideal for
+                        cohort sizing, ROI prevalence audits, and spacing surveys.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="E. Resampled to a target voxel spacing"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Tick <Run FontWeight="SemiBold">Specify Output Spacing</Run>, click
+                        <Run FontWeight="SemiBold">Specify Output...</Run>, and enter X / Y / Z spacings in mm
+                        (e.g. 1.0 × 1.0 × 1.0). On Convert Selected, every output volume is resampled to that
+                        grid: image and dose with <Run FontWeight="SemiBold">linear</Run> interpolation, masks
+                        with <Run FontWeight="SemiBold">nearest-neighbour</Run>. The CSV manifest reflects the
+                        target spacing, not the source spacing.
+                    </TextBlock>
+
+                    <!-- ============================================================ -->
+                    <!-- 3. REFERENCE: TOP TOOLBAR                                     -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Reference: top toolbar"/>
 
                     <TextBlock Style="{StaticResource H2}" Text="Input / Output"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Folder paths. <Run FontWeight="SemiBold">Browse...</Run> opens a folder picker. The
-                        <Run FontWeight="SemiBold">Input</Run> folder is the root of the DICOM archive (scanned
-                        recursively); the <Run FontWeight="SemiBold">Output</Run> folder receives the .nii.gz files.
+                        Folder paths. <Run FontWeight="SemiBold">Browse...</Run> opens a folder picker; you can
+                        also paste a path directly. <Run FontWeight="SemiBold">Input</Run> is the root of the
+                        DICOM archive (scanned recursively — every file is opened). <Run FontWeight="SemiBold">Output</Run>
+                        is where .nii.gz files and the CSV manifest are written; it is created if it does not exist.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H2}" Text="Scan / Cancel"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Scan / Cancel + progress"/>
                     <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">Scan</Run> walks the input folder, parses each DICOM file, and
-                        builds the patient → study → series tree. <Run FontWeight="SemiBold">Cancel</Run> stops
-                        the in-progress scan or conversion.
+                        <Run FontWeight="SemiBold">Scan</Run> walks the Input folder in parallel, parses each
+                        DICOM file, and builds the Patient → Study → Series tree.
+                        <Run FontWeight="SemiBold">Cancel</Run> stops an in-progress scan or conversion.
+                        The progress bar and adjacent status text show live percentages and per-step messages
+                        (e.g. "Rasterizing structures: PatientA/CT_HEAD"). The bigger log box at the bottom of
+                        the window accumulates a timestamped record of every action.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="Patient tree"/>
+                    <!-- ============================================================ -->
+                    <!-- 4. REFERENCE: PATIENT / STUDY / SERIES TREE                   -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Reference: Patient / Study / Series tree"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Three-level checkbox tree. Tick patients/series you want to export. Use
-                        <Run FontWeight="SemiBold">Select All?</Run> at the top of the tree to toggle every
-                        patient at once.
+                        Three-level hierarchy with a checkbox at the patient and the series level (studies are
+                        a structural grouping only). Each series row shows a modality badge in brackets:
+                        <Run FontFamily="Consolas">[CT]</Run>, <Run FontFamily="Consolas">[MR]</Run>,
+                        <Run FontFamily="Consolas">[PT]</Run>, <Run FontFamily="Consolas">[RTSTRUCT]</Run>,
+                        <Run FontFamily="Consolas">[RTDOSE]</Run> (and any other modality found in the archive).
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        The <Run FontWeight="SemiBold">Select All?</Run> checkbox at the tree header toggles
+                        every patient at once. For each image series that has a linked RT-STRUCT, an
+                        <Run FontWeight="SemiBold">ROI Names</Run> expander appears underneath the row and lists
+                        every ROI name found in that structure set.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="Export Options panel"/>
+                    <!-- ============================================================ -->
+                    <!-- 5. REFERENCE: EXPORT OPTIONS PANEL                            -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Reference: Export Options panel"/>
 
-                    <TextBlock Style="{StaticResource H2}" Text="Data to Export"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Export Images / Include Structures / Include Dose"/>
                     <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">Export Images</Run>: writes the CT/MR/PT image series as
-                        <Run FontFamily="Consolas">image.nii.gz</Run> per series.
+                        <Run FontWeight="SemiBold">Export Images</Run> writes the image series as
+                        <Run FontFamily="Consolas">image.nii.gz</Run> per series (one file per series, not per
+                        slice).
                         <LineBreak/>
-                        <Run FontWeight="SemiBold">Include Structures</Run>: rasterizes RT-STRUCT contours into
-                        per-ROI binary masks under <Run FontFamily="Consolas">masks/</Run>.
+                        <Run FontWeight="SemiBold">Include Structures</Run> rasterizes the linked RT-STRUCT into
+                        per-ROI binary masks under <Run FontFamily="Consolas">masks/{ROI_Name}.nii.gz</Run>.
                         <LineBreak/>
-                        <Run FontWeight="SemiBold">Include Dose</Run>: writes RT-DOSE as
+                        <Run FontWeight="SemiBold">Include Dose</Run> writes the linked RT-DOSE as
                         <Run FontFamily="Consolas">dose.nii.gz</Run>, applying any
-                        <Run FontFamily="Consolas">DoseGridScaling</Run>.
+                        <Run FontFamily="Consolas">DoseGridScaling</Run> so the stored values are in physical units.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Modality scope"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Only <Run FontFamily="Consolas">CT</Run>, <Run FontFamily="Consolas">MR</Run>, and
+                        <Run FontFamily="Consolas">PT</Run> image series are linked to RT-STRUCT and RT-DOSE
+                        files during the scan. Other modalities (US, NM, etc.) appear in the tree and can be
+                        exported as <Run FontFamily="Consolas">image.nii.gz</Run>, but no structures or dose
+                        will be associated with them.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Multi-RT-STRUCT / multi-RT-DOSE per series"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        When several RT-STRUCT (or RT-DOSE) files reference the same image series, only one is
+                        linked per series. If you need to export multiple structure sets from one image series,
+                        run the export twice with the unwanted RT-STRUCT files moved out of the input tree
+                        between runs.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Export Images OFF + Include Structures ON"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Masks are still rasterized to the image grid (or to the target spacing, if
+                        <Run FontWeight="SemiBold">Specify Output Spacing</Run> is ON), but no
+                        <Run FontFamily="Consolas">image.nii.gz</Run> is written. The CSV manifest still records
+                        the series' voxel spacing and per-ROI volumes.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Only export specific ROIs?"/>
                     <TextBlock Style="{StaticResource Body}">
-                        When ON: only ROIs that match a defined association (or are explicitly selected via the
-                        ROI Selection window) are exported, and matching ROIs are renamed to their canonical
-                        names. When OFF: all ROIs are exported and unmatched ones keep their original names —
-                        but matched ones are still renamed.
+                        When ON: only ROIs whose DICOM name matches a defined association (or that you tick in
+                        <Run FontWeight="SemiBold">Select ROIs for Export...</Run>) are exported, and matching
+                        ROIs are renamed to their canonical names. Patients whose series contain none of the
+                        selected ROIs are auto-deselected in the tree.
+                        <LineBreak/>
+                        When OFF: all ROIs are exported. Matched ROIs are still renamed to their canonical
+                        names; unmatched ROIs keep their original DICOM names.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Edit ROI Associations..."/>
                     <TextBlock Style="{StaticResource Body}">
-                        Define alias sets that all map to one canonical name. Example:
-                        <Run FontFamily="Consolas">Target</Run> = {<Run FontFamily="Consolas">CTV</Run>,
-                        <Run FontFamily="Consolas">GTV</Run>, <Run FontFamily="Consolas">PTV</Run>}. During export,
-                        any DICOM ROI matching one of those aliases is renamed to <Run FontFamily="Consolas">Target</Run>.
+                        Define alias sets that all map to one canonical name. Persisted to
+                        <Run FontFamily="Consolas">%AppData%\DicomToNifti\roi_associations.json</Run>.
+                        Example: canonical <Run FontFamily="Consolas">Target</Run> with aliases
+                        <Run FontFamily="Consolas">CTV</Run>, <Run FontFamily="Consolas">GTV</Run>,
+                        <Run FontFamily="Consolas">PTV</Run> — any DICOM ROI matching one of those aliases is
+                        exported as <Run FontFamily="Consolas">Target.nii.gz</Run>.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Select ROIs for Export..."/>
                     <TextBlock Style="{StaticResource Body}">
-                        Enabled when "Only export specific ROIs?" is checked. Lists every canonical ROI name
-                        discovered in the scan and lets you tick the subset to export. Patients without any
-                        matching ROI are auto-deselected.
+                        Enabled only when <Run FontWeight="SemiBold">Only export specific ROIs?</Run> is ON.
+                        Lists every canonical name from the associations plus every unique DICOM ROI name
+                        discovered in the scan; tick the subset you want to export. Patients whose series have
+                        no matching ROI are auto-deselected when you click OK.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H2}" Text="Specify Output Spacing"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Specify Output Spacing + Specify Output..."/>
                     <TextBlock Style="{StaticResource Body}">
-                        When ON, all exported volumes (image, dose, masks) are resampled to a uniform voxel
-                        spacing in mm. Linear interpolation for image and dose; nearest-neighbor for masks.
-                        Click <Run FontWeight="SemiBold">Specify Output...</Run> to set X/Y/Z spacing.
+                        When the checkbox is ON, all exported volumes (image, dose, masks) are resampled to a
+                        uniform voxel spacing in mm. Click <Run FontWeight="SemiBold">Specify Output...</Run> to
+                        set X / Y / Z spacing. Image and dose use <Run FontWeight="SemiBold">linear</Run>
+                        interpolation; structure masks use <Run FontWeight="SemiBold">nearest-neighbour</Run> so
+                        labels stay binary. The target spacing is also recorded in the CSV manifest.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H2}" Text="Anonymize export?"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Anonymize export? + Edit Anonymization Key..."/>
                     <TextBlock Style="{StaticResource Body}">
-                        Replaces patient identifiers with deterministic integer IDs (saltable hash) and writes
-                        a <Run FontFamily="Consolas">AnonymizationKey.json</Run> linking IDs back to the originals.
-                        <Run FontWeight="SemiBold">Edit Anonymization Key...</Run> opens the key for inspection.
+                        When ON, patient/series folders are replaced with integer Export IDs. The hash key
+                        <Run FontFamily="Consolas">{MRN}_{StudyUID}_{SeriesUID}</Run> is salted (default salt
+                        <Run FontFamily="Consolas">"DicomToNifti"</Run>, configurable in Settings) and SHA256-hashed,
+                        and the resulting hash is mapped to a sequential integer.
+                        <LineBreak/>
+                        <Run FontFamily="Consolas">AnonymizationKey.json</Run> is written to the output folder
+                        and reused across sessions: the same series will always receive the same Export ID
+                        provided the file is preserved.
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">Edit Anonymization Key...</Run> opens the key file in a
+                        viewer (output-folder copy if set, else the
+                        <Run FontFamily="Consolas">%AppData%\DicomToNifti\</Run> fallback) for inspection.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="Bottom action bar"/>
+                    <!-- ============================================================ -->
+                    <!-- 6. REFERENCE: BOTTOM ACTIONS                                  -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Reference: bottom action bar"/>
 
                     <TextBlock Style="{StaticResource H2}" Text="Convert Selected"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Runs the full export (images, structures, dose) for every selected series with the
-                        current Export Options applied. Writes a CSV manifest summarizing each exported series
-                        + ROI volumes.
+                        Runs the full export for every selected series with the current Export Options applied.
+                        Writes <Run FontFamily="Consolas">image.nii.gz</Run>,
+                        <Run FontFamily="Consolas">dose.nii.gz</Run>, and per-ROI
+                        <Run FontFamily="Consolas">masks/*.nii.gz</Run> per series, plus
+                        <Run FontFamily="Consolas">export_manifest.csv</Run> at the output root summarizing
+                        every exported series and its per-ROI volumes.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Export MetaData"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Generates only the CSV manifest (
-                        <Run FontFamily="Consolas">export_manifest_meta.csv</Run>) — patient ID, study/series
-                        UIDs, voxel spacing, and ROI volumes (if Include Structures is on) — without writing any
-                        .nii.gz files. Useful for inventory passes.
+                        Inventory pass — writes only the CSV manifest
+                        (<Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root). No
+                        .nii.gz files are produced; the rasterizer still runs in-memory to compute per-ROI
+                        volumes if <Run FontWeight="SemiBold">Include Structures</Run> is ON.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Settings..."/>
                     <TextBlock Style="{StaticResource Body}">
-                        Per-app settings: default output directory, auto-open after conversion, anonymization
-                        salt, etc.
+                        Per-app preferences, persisted to
+                        <Run FontFamily="Consolas">%AppData%\DicomToNifti\settings.json</Run>:
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Default Output Directory</Run> — pre-fills the Output field
+                          on startup.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Auto-open after conversion</Run> — opens the Output folder
+                          in Windows Explorer when Convert Selected finishes.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Anonymization salt</Run> (<Run FontFamily="Consolas">HashSalt</Run>) — feeds the SHA256 hash for Export IDs. Changing the salt produces a different ID
+                          space; keep it stable across sessions to keep IDs reproducible.
                     </TextBlock>
 
+                    <!-- ============================================================ -->
+                    <!-- 7. OUTPUT STRUCTURE                                           -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Output structure"/>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Non-anonymized"/>
+                    <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+                            CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
+                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
+{Output}/<LineBreak/>
+&#x9;{PatientID}/<LineBreak/>
+&#x9;&#x9;{SeriesDate}_{SeriesDescription}/<LineBreak/>
+&#x9;&#x9;&#x9;image.nii.gz&#x9;&#x9;<Run Foreground="#888888"># if Export Images is ON</Run><LineBreak/>
+&#x9;&#x9;&#x9;dose.nii.gz&#x9;&#x9;<Run Foreground="#888888"># if Include Dose is ON and a dose is linked</Run><LineBreak/>
+&#x9;&#x9;&#x9;masks/<LineBreak/>
+&#x9;&#x9;&#x9;&#x9;{ROI_Name}.nii.gz&#x9;<Run Foreground="#888888"># if Include Structures is ON</Run><LineBreak/>
+&#x9;export_manifest.csv&#x9;&#x9;<Run Foreground="#888888"># at the output root</Run>
+                        </TextBlock>
+                    </Border>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Anonymized"/>
+                    <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+                            CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
+                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
+{Output}/<LineBreak/>
+&#x9;{ExportID}/&#x9;&#x9;&#x9;<Run Foreground="#888888"># flat — no {PatientID}/{Date}_... nesting</Run><LineBreak/>
+&#x9;&#x9;image.nii.gz<LineBreak/>
+&#x9;&#x9;dose.nii.gz<LineBreak/>
+&#x9;&#x9;masks/<LineBreak/>
+&#x9;&#x9;&#x9;{ROI_Name}.nii.gz<LineBreak/>
+&#x9;export_manifest.csv<LineBreak/>
+&#x9;AnonymizationKey.json&#x9;&#x9;<Run Foreground="#888888"># deterministic ExportID ↔ MRN/StudyUID/SeriesUID mapping</Run>
+                        </TextBlock>
+                    </Border>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">Export MetaData</Run> writes
+                        <Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root instead of
+                        <Run FontFamily="Consolas">export_manifest.csv</Run>; no per-series subfolders are created.
+                    </TextBlock>
+
+                    <!-- ============================================================ -->
+                    <!-- 8. CSV MANIFEST                                               -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="CSV manifest"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Two filenames depending on which button you clicked:
+                        <Run FontFamily="Consolas">export_manifest.csv</Run> (Convert Selected) or
+                        <Run FontFamily="Consolas">export_manifest_meta.csv</Run> (Export MetaData). Same column
+                        format in both, written to the output root.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource H2}" Text="Columns (in order)"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        • <Run FontFamily="Consolas">MRN</Run> — DICOM PatientID, quoted.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">StudyUID</Run> — DICOM StudyInstanceUID, quoted.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">SeriesUID</Run> — DICOM SeriesInstanceUID, quoted.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">ExportID</Run> — integer Export ID (anonymized rows) or
+                        <Run FontFamily="Consolas">-1</Run> (non-anonymized rows).
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">SpacingX</Run>, <Run FontFamily="Consolas">SpacingY</Run>,
+                          <Run FontFamily="Consolas">SpacingZ</Run> — voxel spacing in mm. When
+                          <Run FontWeight="SemiBold">Specify Output Spacing</Run> is ON, these reflect the target
+                          spacing.
+                        <LineBreak/>
+                        • One column per unique canonical ROI name across all exported series — the value is the
+                          mask volume in cc, or <Run FontFamily="Consolas">-1</Run> if the row's series did not
+                          contain that ROI.
+                    </TextBlock>
+
+                    <!-- ============================================================ -->
+                    <!-- 9. AnonymizationKey.json                                      -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="AnonymizationKey.json"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Written to the output root whenever <Run FontWeight="SemiBold">Anonymize export?</Run>
+                        was ON. Three top-level fields:
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">NextExportID</Run> — next integer ID to hand out.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">Salt</Run> — salt used for the SHA256 hash (defaults to
+                          <Run FontFamily="Consolas">"DicomToNifti"</Run>; settable in Settings).
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">Entries</Run> — dict keyed by the salted hash string
+                          (<Run FontFamily="Consolas">"A" + 8 hex chars</Run> of SHA256 over
+                          <Run FontFamily="Consolas">{MRN}_{StudyUID}_{SeriesUID}:{Salt}</Run>). Each entry holds
+                          <Run FontFamily="Consolas">{ ExportID, MRN, StudyUID, SeriesUID }</Run>.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        Determinism guarantee: identical hash key + identical salt always yields the same
+                        Export ID across sessions, provided the existing
+                        <Run FontFamily="Consolas">AnonymizationKey.json</Run> in the target output folder is
+                        preserved. Deleting that file restarts numbering from 0 — previously exported series
+                        will be assigned new (different) IDs on re-export.
+                    </TextBlock>
+
+                    <!-- ============================================================ -->
+                    <!-- 10. TIPS                                                      -->
+                    <!-- ============================================================ -->
                     <TextBlock Style="{StaticResource H1}" Text="Tips"/>
                     <TextBlock Style="{StaticResource Body}">
-                        • A status bar at the bottom of the main window shows progress messages.<LineBreak/>
-                        • Closing the window returns you to the launcher; in-memory state (last folder, options) is retained.<LineBreak/>
-                        • For large archives, consider scanning a subset first — Scan walks <Run FontStyle="Italic">every</Run>
-                          file in the folder.
+                        • The log box at the bottom keeps a timestamped record of every step; the status bar at
+                          the very bottom of the window mirrors the latest message.
+                        <LineBreak/>
+                        • Closing this window returns you to the launcher; the in-memory state (last folder,
+                          options, scan results) is retained until the launcher closes.
+                        <LineBreak/>
+                        • For very large archives, scan a subset first — Scan opens
+                          <Run FontStyle="Italic">every</Run> file in the input tree.
+                        <LineBreak/>
+                        • If the scan log reports "Skipped N file(s) due to errors" with messages about long
+                          paths, enable long-path support on the source drive — Windows refuses to open paths
+                          over 260 characters by default.
                     </TextBlock>
                 </StackPanel>
             </ScrollViewer>
