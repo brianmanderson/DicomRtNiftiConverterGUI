@@ -1,0 +1,243 @@
+name: Release
+
+# Publishes the Windows x64 binary to the GitHub Releases page.
+#
+# Trigger matrix:
+#   - push to main        -> rolling pre-release at fixed tag `latest-build`
+#                            (deleted+recreated each time so URLs stay stable)
+#   - push of tag `v*`    -> stable release at that exact tag
+#   - workflow_dispatch   -> manual run (treated as rolling unless from a tag)
+#
+# windows-latest is the only viable runner: .NET Framework 4.8 + WPF (WinExe)
+# + SimpleITK C# native DLLs, none of which build on Linux/macOS hosted runners.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # required to publish releases + delete the rolling tag
+
+env:
+  SIMPLEITK_VERSION: "2.5.0"
+  SIMPLEITK_ZIP_URL: "https://github.com/SimpleITK/SimpleITK/releases/download/v2.5.0/SimpleITK-2.5.0-CSharp-win64-x64.zip"
+  # Opt JS actions into Node.js 24 ahead of GitHub's 2026-06-02 forced switch.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+# Rolling builds (main) cancel each other so two pushes don't race to
+# republish `latest-build`. Tag pushes have distinct refs so they never
+# share a concurrency group.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
+jobs:
+  build-and-release:
+    name: Build x64 Release + publish to GitHub Releases
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set up NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Stage SimpleITK C# binaries one level above the workspace
+        # The .csproj uses `..\..\SimpleITK\...` relative to the project folder
+        # at `<workspace>\Dicom_RT_images_Csharp\`, which resolves to
+        # `<workspace>\..\SimpleITK\`. Actions runners permit writing one
+        # level above $GITHUB_WORKSPACE.
+        shell: pwsh
+        run: |
+          $url = "${{ env.SIMPLEITK_ZIP_URL }}"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile sitk.zip -UseBasicParsing
+          Expand-Archive -Path sitk.zip -DestinationPath sitk-extracted -Force
+          $inner = Get-ChildItem sitk-extracted -Directory | Select-Object -First 1
+          if ($null -eq $inner) {
+              $sourcePath = "sitk-extracted"
+          } else {
+              $sourcePath = $inner.FullName
+          }
+          $target = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "SimpleITK"
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Copy-Item -Path "$sourcePath\*" -Destination $target -Recurse -Force
+          Write-Host "SimpleITK staged at $target"
+          Get-ChildItem $target | Select-Object Name, Length
+
+      - name: Restore NuGet packages
+        run: nuget restore Dicom_RT_images_Csharp.sln
+
+      - name: Build C# project (Release|x64)
+        run: msbuild Dicom_RT_images_Csharp.sln /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Verify build output contains required artifacts
+        # Hard gate: missing SimpleITKCSharpNative.dll specifically means the
+        # .csproj `<Content>` reference didn't resolve and the exe won't run
+        # on an end-user box.
+        shell: pwsh
+        run: |
+          $bin = "Dicom_RT_images_Csharp\bin\x64\Release"
+          if (-not (Test-Path $bin)) { throw "Build output dir missing: $bin" }
+          Write-Host "Contents of $bin :"
+          Get-ChildItem $bin | Sort-Object Name | ForEach-Object {
+              "{0,12:N0}  {1}" -f $_.Length, $_.Name | Write-Host
+          }
+          $required = @(
+              "Dicom_RT_images_Csharp.exe",
+              "Dicom_RT_images_Csharp.exe.config",
+              "SimpleITKCSharpManaged.dll",
+              "SimpleITKCSharpNative.dll"
+          )
+          foreach ($f in $required) {
+              if (-not (Test-Path (Join-Path $bin $f))) {
+                  throw "Required artifact missing from build output: $f"
+              }
+          }
+
+      - name: Compute version label and release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref }}"
+          if ($ref -like "refs/tags/v*") {
+              $tag      = $ref -replace "^refs/tags/", ""
+              $isTagged = "true"
+              $tagName  = $tag
+              $version  = $tag
+          } else {
+              $isTagged = "false"
+              $tagName  = "latest-build"
+              $sha      = "${{ github.sha }}".Substring(0,7)
+              $date     = (Get-Date).ToUniversalTime().ToString("yyyyMMdd")
+              $version  = "latest-$date-$sha"
+          }
+          "version_label=$version" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          "is_tagged=$isTagged"    | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          "tag_name=$tagName"      | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          Write-Host "version_label = $version"
+          Write-Host "is_tagged     = $isTagged"
+          Write-Host "tag_name      = $tagName"
+
+      - name: Package release ZIP
+        # ZIPs the entire Release\ output: exe + .exe.config + every NuGet
+        # runtime DLL + SimpleITK managed/native + .pdb. .pdb INCLUDED so
+        # clinical crash addresses come with line numbers; ~1 MB cost.
+        id: package
+        shell: pwsh
+        run: |
+          $bin = "Dicom_RT_images_Csharp\bin\x64\Release"
+          $version = "${{ steps.meta.outputs.version_label }}"
+          $zipName = "Dicom_RT_images_Csharp-$version-win-x64.zip"
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE $zipName
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$bin\*" -DestinationPath $zipPath -CompressionLevel Optimal
+          Write-Host "Wrote $zipPath"
+          $size = (Get-Item $zipPath).Length
+          Write-Host ("Size: {0:N0} bytes" -f $size)
+          "zip_name=$zipName" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          "zip_path=$zipPath" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+
+      - name: Sanity-check ZIP contents
+        # Belt-and-suspenders: re-verify post-zip. Fails before the asset
+        # hits the Releases page if Compress-Archive dropped something.
+        shell: pwsh
+        run: |
+          $zip = "${{ steps.package.outputs.zip_path }}"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+              $entries = $archive.Entries | ForEach-Object { $_.FullName }
+              $required = @(
+                  "Dicom_RT_images_Csharp.exe",
+                  "Dicom_RT_images_Csharp.exe.config",
+                  "SimpleITKCSharpManaged.dll",
+                  "SimpleITKCSharpNative.dll"
+              )
+              foreach ($f in $required) {
+                  if ($entries -notcontains $f) {
+                      throw "ZIP is missing required file: $f"
+                  }
+              }
+              Write-Host "ZIP sanity check passed. Entry count: $($entries.Count)"
+          } finally {
+              $archive.Dispose()
+          }
+
+      - name: Delete previous rolling release (main only)
+        # softprops/action-gh-release appends to existing release assets
+        # rather than replacing them. Without this step, `latest-build`
+        # would accumulate stale ZIP names. Tagged releases never go
+        # through this path.
+        if: steps.meta.outputs.is_tagged == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.meta.outputs.tag_name }}"
+          gh release delete $tag --yes --cleanup-tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+              Write-Host "No prior $tag release to delete (first run). Continuing."
+              $global:LASTEXITCODE = 0
+          } else {
+              Write-Host "Deleted prior $tag release and tag."
+          }
+
+      - name: Compose rolling release notes
+        if: steps.meta.outputs.is_tagged == 'false'
+        id: notes
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}"
+          $shortSha = $sha.Substring(0,7)
+          $msg = git log -1 --pretty=%B $sha
+          $when = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
+          $body = @"
+          Rolling pre-release build of the latest commit on ``main``.
+
+          - Commit: [``$shortSha``](https://github.com/${{ github.repository }}/commit/$sha)
+          - Built:  $when
+          - Runtime requirement: .NET Framework 4.8 (x64 Windows)
+
+          ### Commit message
+          ``````
+          $msg
+          ``````
+
+          ### Run
+          Unzip ``${{ steps.package.outputs.zip_name }}`` and double-click ``Dicom_RT_images_Csharp.exe``.
+          The headless CLI is available via ``Dicom_RT_images_Csharp.exe --headless --help``.
+          "@
+          $bodyFile = Join-Path $env:RUNNER_TEMP "release-body.md"
+          Set-Content -Path $bodyFile -Value $body -Encoding utf8
+          "body_path=$bodyFile" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+
+      - name: Publish rolling pre-release (main / manual dispatch)
+        if: steps.meta.outputs.is_tagged == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: "Latest build (${{ steps.meta.outputs.version_label }})"
+          body_path: ${{ steps.notes.outputs.body_path }}
+          prerelease: true
+          make_latest: false
+          files: ${{ steps.package.outputs.zip_path }}
+          fail_on_unmatched_files: true
+
+      - name: Publish tagged stable release (v* tag)
+        if: steps.meta.outputs.is_tagged == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.tag_name }}
+          generate_release_notes: true
+          prerelease: false
+          make_latest: true
+          files: ${{ steps.package.outputs.zip_path }}
+          fail_on_unmatched_files: true

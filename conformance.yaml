@@ -1,0 +1,26 @@
+# RTMaskConformanceTest threshold overrides for this repo's C# headless converter.
+#
+# Defaults (Dice >= 0.95, sDSC1 >= 0.95, HD95 <= 2 mm, MSD <= 0.5 mm,
+# vol_err <= 3%) ship inside the rtmask-conformance package; per-primitive
+# overrides shallow-merge over those.
+#
+# Each relaxation below is documented: what the C# converter currently
+# produces, why, and the path back to the published default. If a
+# rasterizer change lifts the actual metric, the corresponding line here
+# should be removed (or its number tightened) so the conformance gate
+# gets stricter.
+
+schema_version: 1
+
+primitives:
+  cube:
+    # The C# scanline polygon fill produces an axis-aligned 60 mm cube with
+    # exact volume (volume_rel_err = 0.00) but ~3500 voxels of symmetric
+    # boundary disagreement vs the partial-volume ground truth — Dice
+    # lands at 0.9833. Surface metrics still hit the published defaults
+    # (sDSC1 = 1.000, HD95 = 1.0 mm, MSD = 0.33 mm) so the cube boundary
+    # is in the right place; the gap is purely a ~half-voxel scanline
+    # rule difference vs the GT's sub-voxel quadrature on the cube faces.
+    # Tighten to dice >= 0.99 once RtStructMaskService's scanline
+    # boundary convention matches the partial-volume GT.
+    dice: 0.98

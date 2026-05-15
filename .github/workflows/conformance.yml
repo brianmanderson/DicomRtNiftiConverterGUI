@@ -1,0 +1,184 @@
+name: Conformance
+
+# Runs the RTMaskConformanceTest analytical accuracy gate against this repo's
+# C# headless RTSTRUCT->mask converter. The fixture (synthetic CT + RTSTRUCT
+# + analytic per-ROI ground-truth NIfTIs) is generated at the start of the
+# job -- no test data is committed to the repo.
+#
+# windows-latest is the only viable runner: .NET Framework 4.8 + WPF (WinExe)
+# + SimpleITK C# native DLLs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SIMPLEITK_VERSION: "2.5.0"
+  SIMPLEITK_ZIP_URL: "https://github.com/SimpleITK/SimpleITK/releases/download/v2.5.0/SimpleITK-2.5.0-CSharp-win64-x64.zip"
+  # rtmask-conformance pin. SHA-pin (not branch/tag) so the gate is
+  # reproducible across PRs. Matches the SHA the outer parent project
+  # currently tracks; bump to lift conformance versions.
+  RTMASK_CONFORMANCE_REF: "f1080dfdbbcf04c37499234e68e6c4970233e2dc"
+  # Opt JavaScript actions (checkout, setup-python, setup-msbuild,
+  # setup-nuget, upload-artifact) into Node.js 24 ahead of GitHub's
+  # 2026-06-02 forced switch.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  conformance:
+    name: RTSTRUCT->mask conformance (C# headless)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install rtmask-conformance from pinned commit
+        # `python -m pip` (not bare `pip`) avoids a file-lock self-upgrade
+        # edge case on Windows pip.exe. The actions/setup-python image ships
+        # a recent pip (>=26) so an explicit --upgrade is unnecessary.
+        run: python -m pip install "git+https://github.com/brianmanderson/RTMaskConformanceTest@${{ env.RTMASK_CONFORMANCE_REF }}"
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set up NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Stage SimpleITK C# binaries one level above the workspace
+        # The .csproj's `<HintPath>..\..\SimpleITK\SimpleITKCSharpManaged.dll</HintPath>`
+        # is relative to the project folder at
+        # `<workspace>/Dicom_RT_images_Csharp/`, so `..\..\SimpleITK\`
+        # resolves to `<workspace>/../SimpleITK/`. GitHub Actions runners
+        # permit writing one level above $GITHUB_WORKSPACE.
+        shell: pwsh
+        run: |
+          $url = "${{ env.SIMPLEITK_ZIP_URL }}"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile sitk.zip -UseBasicParsing
+          Expand-Archive -Path sitk.zip -DestinationPath sitk-extracted -Force
+          # SimpleITK's C# release ZIP contains a single top-level directory; flatten.
+          $inner = Get-ChildItem sitk-extracted -Directory | Select-Object -First 1
+          if ($null -eq $inner) {
+              # Some releases unzip flat (no inner dir); use the extracted dir directly.
+              $sourcePath = "sitk-extracted"
+          } else {
+              $sourcePath = $inner.FullName
+          }
+          $target = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "SimpleITK"
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Copy-Item -Path "$sourcePath\*" -Destination $target -Recurse -Force
+          Write-Host "SimpleITK staged at $target"
+          Get-ChildItem $target | Select-Object Name, Length
+
+      - name: Restore NuGet packages
+        run: nuget restore Dicom_RT_images_Csharp.sln
+
+      - name: Build C# project (Release|x64)
+        # Release|x64 matches the convention used by the existing benchmark
+        # harness's `our_csharp_tool.py` adapter and ensures the 64-bit native
+        # SimpleITK DLL loads correctly. AnyCPU also works on a 64-bit runner
+        # but x64 makes the platform contract explicit.
+        run: msbuild Dicom_RT_images_Csharp.sln /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Generate conformance fixture
+        # n_quadrature=2 produces partial-volume GT stable to ~1 voxel of
+        # boundary disagreement (well below pass thresholds) and is ~16x
+        # faster than the n=8 used for the published reference fixture.
+        shell: pwsh
+        run: rtmask-conformance generate ./fixture --n-quadrature 2
+
+      - name: Inspect build output
+        # Verifies that both the managed assembly AND the native SimpleITK
+        # DLL ended up next to the exe. The .csproj has
+        # `<CopyToOutputDirectory>Always</CopyToOutputDirectory>` on
+        # SimpleITKCSharpNative.dll, so its absence here means the
+        # `..\..\SimpleITK\` content reference didn't resolve at build time.
+        shell: pwsh
+        run: |
+          $bin = "Dicom_RT_images_Csharp\bin\x64\Release"
+          if (-not (Test-Path $bin)) { throw "Build output dir missing: $bin" }
+          Write-Host "Contents of $bin :"
+          Get-ChildItem $bin | Sort-Object Name | ForEach-Object {
+              "{0,12:N0}  {1}" -f $_.Length, $_.Name | Write-Host
+          }
+          $required = @("Dicom_RT_images_Csharp.exe", "SimpleITKCSharpManaged.dll", "SimpleITKCSharpNative.dll")
+          foreach ($f in $required) {
+              if (-not (Test-Path (Join-Path $bin $f))) {
+                  throw "Required artifact missing from build output: $f"
+              }
+          }
+
+      - name: Run C# headless forward conversion
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "Dicom_RT_images_Csharp\bin\x64\Release\Dicom_RT_images_Csharp.exe").Path
+          New-Item -ItemType Directory -Path predictions -Force | Out-Null
+
+          # AttachConsole(ATTACH_PARENT_PROCESS) inside HeadlessRunner is
+          # unreliable on hosted runners -- pwsh's `&` invocation against a
+          # WinExe doesn't always plumb the binary's stdout/stderr back to
+          # the GitHub Actions log. We work around it with
+          # Start-Process -Wait -RedirectStandardOutput/Error to capture
+          # both streams to files, then dump them unconditionally so a
+          # failure here is debuggable from the run log alone.
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "csharp_forward.stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "csharp_forward.stderr.log"
+
+          $args = @(
+              "--headless", "--forward",
+              "--rtstruct",      (Resolve-Path fixture/rtstruct/primitives_planar.dcm).Path,
+              "--image-folder",  (Resolve-Path fixture/refct).Path,
+              "--output-folder", (Resolve-Path predictions).Path
+          )
+          Write-Host "Launching: $exe $args"
+          $proc = Start-Process -FilePath $exe `
+              -ArgumentList $args `
+              -NoNewWindow -Wait -PassThru `
+              -RedirectStandardOutput $stdoutPath `
+              -RedirectStandardError  $stderrPath
+          $rc = $proc.ExitCode
+
+          Write-Host "----- C# stdout -----"
+          if (Test-Path $stdoutPath) { Get-Content $stdoutPath } else { Write-Host "(none)" }
+          Write-Host "----- C# stderr -----"
+          if (Test-Path $stderrPath) { Get-Content $stderrPath } else { Write-Host "(none)" }
+          Write-Host "---------------------"
+          Write-Host "Exit code: $rc"
+
+          if ($rc -ne 0) {
+              throw "Headless conversion failed with exit code $rc"
+          }
+
+          Write-Host "Predictions:"
+          Get-ChildItem predictions
+
+      - name: Verify predictions against analytic ground truth
+        shell: pwsh
+        run: |
+          rtmask-conformance verify `
+              --predictions ./predictions `
+              --groundtruth ./fixture/groundtruth `
+              --config ./conformance.yaml `
+              --report-json conformance-report.json
+
+      - name: Upload conformance report + artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report
+          path: |
+            conformance-report.json
+            predictions/
+            fixture/groundtruth/
+            fixture/manifest.json
+          retention-days: 30
+          if-no-files-found: warn
