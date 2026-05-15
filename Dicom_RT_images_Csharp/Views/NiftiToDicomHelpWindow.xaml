@@ -49,211 +49,510 @@
                 BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="20,12">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource H1}" Text="Workflow overview"/>
+                    <!-- ============================================================ -->
+                    <!-- 1. QUICK START                                                -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Quick start"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Reverse of the DICOM → NIfTI workflow. You point at a folder containing any of:
-                        an <Run FontFamily="Consolas">image.nii.gz</Run>, a
-                        <Run FontFamily="Consolas">masks/</Run> subdir, a <Run FontFamily="Consolas">doses/</Run>
-                        subdir, and/or existing reference DICOM image files (CT/MR/PT). The window produces:
-                        <LineBreak/>
-                        <LineBreak/>
-                        • One DICOM <Run FontWeight="SemiBold">image series</Run> from
-                          <Run FontFamily="Consolas">image.nii.gz</Run> (CT by default; MR/PT supported via
-                          metadata.json).
-                        <LineBreak/>
-                        • One <Run FontWeight="SemiBold">RT-STRUCT</Run> per folder, containing all ROIs
-                          from <Run FontFamily="Consolas">masks/*.nii.gz</Run>.
-                        <LineBreak/>
-                        • One <Run FontWeight="SemiBold">RT-DOSE</Run> per dose file in
-                          <Run FontFamily="Consolas">doses/*.nii.gz</Run>.
-                        <LineBreak/>
-                        <LineBreak/>
-                        All outputs share one StudyInstanceUID and one FrameOfReferenceUID, so TPS systems can
-                        co-register them. Existing reference DICOMs are used when present; otherwise UIDs come
-                        from a <Run FontFamily="Consolas">metadata.json</Run> sidecar (auto-created on first run).
+                        For a folder containing <Run FontFamily="Consolas">image.nii.gz</Run> +
+                        <Run FontFamily="Consolas">masks/</Run> (and optionally
+                        <Run FontFamily="Consolas">doses/</Run>):
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">1.</Run> Paste the folder path into the
+                        <Run FontWeight="SemiBold">Folder</Run> field, or click
+                        <Run FontWeight="SemiBold">Browse...</Run>.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">2.</Run> Click <Run FontWeight="SemiBold">Scan</Run>. Each
+                        eligible folder appears as a row showing its image / mask / dose counts.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">3.</Run> Leave
+                        <Run FontWeight="SemiBold">Convert Image?</Run>,
+                        <Run FontWeight="SemiBold">Convert Structures?</Run>, and
+                        <Run FontWeight="SemiBold">Convert Doses?</Run> ticked (untick whichever you want to
+                        skip).
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert All</Run>.
+                        DICOM files are written into each input folder; the Status column shows live progress.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Body}">
+                        On the first run a <Run FontFamily="Consolas">metadata.json</Run> is created in each
+                        folder with anonymous defaults (patient ID
+                        <Run FontFamily="Consolas">ANON_&lt;6 hex&gt;</Run>, fresh StudyInstanceUID, etc.). Edit
+                        it between runs to set real identifiers — see the
+                        <Run FontWeight="SemiBold">metadata.json schema</Run> section below.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="Folder layout"/>
+                    <!-- ============================================================ -->
+                    <!-- 2. WORKFLOW WALKTHROUGHS                                      -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Workflow walkthroughs"/>
+
+                    <TextBlock Style="{StaticResource H2}" Text="A. Round-trip from a prior forward export"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Each input folder looks like one of these:
+                        Point at a per-series folder produced by DICOM → NIfTI (it already has
+                        <Run FontFamily="Consolas">image.nii.gz</Run> and a populated
+                        <Run FontFamily="Consolas">masks/</Run> sub-directory). Tick all three Convert toggles.
+                        Click <Run FontWeight="SemiBold">Convert All</Run>. You'll get a complete DICOM CT (or
+                        MR/PT) image series, one RT-STRUCT covering every mask, and one RT-DOSE per dose file,
+                        all sharing the same FrameOfReferenceUID.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="B. Masks-only, attaching to an existing DICOM image series"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Use this when the image series is already in your TPS and you only want to push a new
+                        RT-STRUCT against it.
+                        <LineBreak/>
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">1.</Run> Put your <Run FontFamily="Consolas">masks/*.nii.gz</Run>
+                        files in the folder (no <Run FontFamily="Consolas">image.nii.gz</Run> needed).
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">2.</Run> Edit <Run FontFamily="Consolas">metadata.json</Run>
+                        in that folder and set <Run FontFamily="Consolas">ImageSeriesInstanceUid</Run> to the
+                        SeriesInstanceUID of the existing image series, and
+                        <Run FontFamily="Consolas">ImageSopInstanceUids</Run> to the per-slice SOPInstanceUIDs
+                        in ascending z-order. (If you also have the original DICOM files in the same folder,
+                        you can skip the metadata edit — the scanner will pick them up automatically.)
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">3.</Run> Untick
+                        <Run FontWeight="SemiBold">Convert Image?</Run> and
+                        <Run FontWeight="SemiBold">Convert Doses?</Run>; leave
+                        <Run FontWeight="SemiBold">Convert Structures?</Run> ticked.
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert All</Run>.
+                        The resulting RT-STRUCT references the existing image series without writing new image
+                        DICOMs.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="C. Drop-folder / watch mode (server)"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        For unattended workflows where uploads trickle in: pick a watch folder, tick the
+                        Convert toggles you want, and click <Run FontWeight="SemiBold">Run Server</Run>. Every
+                        10 seconds the window:
+                        <LineBreak/>
+                        • Re-scans the watch folder and computes a per-folder fingerprint (file count, total
+                          bytes, latest LastWriteTimeUtc, across the folder itself plus
+                          <Run FontFamily="Consolas">masks/</Run> and <Run FontFamily="Consolas">doses/</Run>).
+                        <LineBreak/>
+                        • If a folder's fingerprint matches the previous tick → "settled" → conversion runs.
+                        <LineBreak/>
+                        • Otherwise the row goes to "Watching — files changed, waiting for stability." and the
+                          tick is skipped (the next tick re-checks).
+                        <LineBreak/>
+                        <LineBreak/>
+                        Outputs use content-derived filenames (see <Run FontWeight="SemiBold">Output details</Run>
+                        below), so server mode is idempotent: re-running on the same inputs skips files that
+                        already exist; adding a new mask or dose changes the hash and produces a new output
+                        without overwriting prior ones. Click <Run FontWeight="SemiBold">Stop Server</Run> to
+                        end watching.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="D. Batch over many patient folders"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Point at a <Run FontStyle="Italic">parent</Run> folder containing several patient
+                        folders side-by-side. <Run FontWeight="SemiBold">Scan</Run> walks the parent and its
+                        first-level subfolders; each subfolder with at least one of
+                        <Run FontFamily="Consolas">image.nii.gz</Run>, <Run FontFamily="Consolas">masks/*.nii.gz</Run>,
+                        or <Run FontFamily="Consolas">doses/*.nii.gz</Run> becomes its own row.
+                        <Run FontWeight="SemiBold">Convert All</Run> processes them in sequence.
+                    </TextBlock>
+
+                    <!-- ============================================================ -->
+                    <!-- 3. REQUIRED FOLDER LAYOUT                                     -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Required folder layout"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        A folder qualifies as a job if it contains at least one of:
+                        <Run FontFamily="Consolas">image.nii.gz</Run>,
+                        <Run FontFamily="Consolas">masks/*.nii.gz</Run>, or
+                        <Run FontFamily="Consolas">doses/*.nii.gz</Run>. Scan checks the path you provide
+                        <Run FontWeight="SemiBold">and</Run> its first-level subfolders.
                     </TextBlock>
                     <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
                             CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
                         <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
 PatientFolder/<LineBreak/>
-&#x9;image.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional: converts to DICOM CT/MR/PT series</Run><LineBreak/>
-&#x9;metadata.json&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional: patient/study/UIDs (auto-generated if absent)</Run><LineBreak/>
-&#x9;CT.1.dcm, CT.2.dcm, ...&#x9;&#x9;<Run Foreground="#888888"># optional: existing reference series</Run><LineBreak/>
+&#x9;image.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional — converts to DICOM CT/MR/PT image series</Run><LineBreak/>
+&#x9;metadata.json&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional — patient/study/UIDs; auto-generated if missing</Run><LineBreak/>
+&#x9;CT.1.dcm, CT.2.dcm, ...&#x9;&#x9;<Run Foreground="#888888"># optional — existing reference image series</Run><LineBreak/>
 &#x9;masks/<LineBreak/>
-&#x9;&#x9;Brain.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># → ROI "Brain"</Run><LineBreak/>
-&#x9;&#x9;CTV.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># → ROI "CTV"</Run><LineBreak/>
+&#x9;&#x9;Brain.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional — one ROI in the generated RT-STRUCT</Run><LineBreak/>
+&#x9;&#x9;CTV.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># optional — another ROI</Run><LineBreak/>
 &#x9;doses/<LineBreak/>
-&#x9;&#x9;dose.nii.gz&#x9;&#x9;&#x9;<Run Foreground="#888888"># → its own RT-DOSE</Run>
+&#x9;&#x9;plan_total.nii.gz&#x9;&#x9;<Run Foreground="#888888"># optional — one RT-DOSE per file</Run>
                         </TextBlock>
                     </Border>
                     <TextBlock Style="{StaticResource Body}">
-                        You can also point at a <Run FontStyle="Italic">parent</Run> folder containing many such
-                        folders side-by-side; each one becomes its own batch job.
+                        The reference image series for the RT-STRUCT / RT-DOSE writers is auto-detected: if any
+                        <Run FontFamily="Consolas">.dcm</Run> files in the folder describe a CT/MR/PT series,
+                        those are used directly; otherwise the writers fall back to
+                        <Run FontFamily="Consolas">metadata.json</Run> (with the image series that
+                        <Run FontWeight="SemiBold">Convert Image?</Run> just produced from
+                        <Run FontFamily="Consolas">image.nii.gz</Run>, if any).
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="metadata.json (no reference DICOM mode)"/>
+                    <!-- ============================================================ -->
+                    <!-- 4. metadata.json SCHEMA                                       -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="metadata.json schema"/>
                     <TextBlock Style="{StaticResource Body}">
-                        When the folder has no reference CT/MR/PT DICOM, the writers read
-                        <Run FontFamily="Consolas">metadata.json</Run> for patient/study identifiers. Missing
-                        fields are synthesized on first run (anonymous patient, fresh UIDs) and persisted back
-                        — so subsequent runs reuse the same StudyInstanceUID, FrameOfReferenceUID, and
-                        image-series UIDs. This is what keeps image + RT-STRUCT + RT-DOSE self-consistent.
+                        <Run FontFamily="Consolas">metadata.json</Run> lives in each job folder and pins one
+                        StudyInstanceUID + one FrameOfReferenceUID across the image / RT-STRUCT / RT-DOSE
+                        passes — so the three artifacts stay co-registered. Missing fields are synthesized on
+                        first run and written back, so re-runs reuse the same UIDs.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource H2}" Text="Fields"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">Patient</Run>
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">PatientId</Run> — defaults to
+                          <Run FontFamily="Consolas">ANON_&lt;6 hex&gt;</Run>.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">PatientName</Run> — defaults to
+                          <Run FontFamily="Consolas">ANON^ANON</Run>.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">PatientBirthDate</Run>,
+                          <Run FontFamily="Consolas">PatientSex</Run> — empty by default.
                         <LineBreak/>
                         <LineBreak/>
-                        Edit any field by hand before the first run (e.g.
-                        <Run FontFamily="Consolas">patientId</Run> = "JD_001"). For CT data in Hounsfield units,
-                        set <Run FontFamily="Consolas">imageRescaleSlope</Run> = 1 and
-                        <Run FontFamily="Consolas">imageRescaleIntercept</Run> = -1024 if your image.nii.gz
-                        stores HU + 1024 as unsigned values; or leave both at defaults if it stores raw HU.
+                        <Run FontWeight="SemiBold">Study</Run>
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">StudyInstanceUid</Run> — auto-generated DICOM UID on first
+                          run.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">StudyDate</Run> — today in <Run FontFamily="Consolas">YYYYMMDD</Run> format.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">StudyTime</Run> — now in <Run FontFamily="Consolas">HHmmss</Run> format.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">StudyId</Run>,
+                          <Run FontFamily="Consolas">AccessionNumber</Run>,
+                          <Run FontFamily="Consolas">ReferringPhysicianName</Run> — empty by default.
                         <LineBreak/>
                         <LineBreak/>
-                        To force a clean image regeneration, delete the
-                        <Run FontFamily="Consolas">image_*.dcm</Run> files and remove
-                        <Run FontFamily="Consolas">imageSeriesInstanceUid</Run> /
-                        <Run FontFamily="Consolas">imageSopInstanceUids</Run> from
-                        <Run FontFamily="Consolas">metadata.json</Run>; the next run rewrites them.
+                        <Run FontWeight="SemiBold">Frame of reference</Run>
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">FrameOfReferenceUid</Run> — auto-generated DICOM UID on
+                          first run; shared by image, RT-STRUCT, and RT-DOSE.
+                        <LineBreak/>
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">Image series</Run>
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">ImageModality</Run> — modality for the generated image
+                          series. Defaults to <Run FontFamily="Consolas">"CT"</Run>; also accepts
+                          <Run FontFamily="Consolas">"MR"</Run> or <Run FontFamily="Consolas">"PT"</Run>.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">PatientPosition</Run> — DICOM (0018,5100). Defaults to
+                          <Run FontFamily="Consolas">"HFS"</Run> (head-first supine, fits the vast majority of
+                          clinical scans); also accepts <Run FontFamily="Consolas">"FFS"</Run>,
+                          <Run FontFamily="Consolas">"HFP"</Run>, <Run FontFamily="Consolas">"FFP"</Run>, etc.
+                          Required (Type 2C) — TPS systems reject series without it.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">ImageRescaleSlope</Run> — defaults to
+                          <Run FontFamily="Consolas">1.0</Run>.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">ImageRescaleIntercept</Run> — defaults to
+                          <Run FontFamily="Consolas">0.0</Run>.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">ImageSeriesInstanceUid</Run> — empty by default; populated
+                          automatically after a successful image conversion. May be pre-set by hand to attach
+                          to an existing image series (workflow B above).
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">ImageSopInstanceUids</Run> — empty list by default;
+                          per-slice SOPInstanceUIDs in ascending z-order, populated by the image writer. May
+                          be pre-populated for the masks-only-attaches-to-existing-DICOM workflow.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="Step-by-step"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Sample metadata.json (CT defaults)"/>
+                    <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+                            CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
+                        <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333">
+{<LineBreak/>
+&#x9;"PatientId": "ANON_a1b2c3",<LineBreak/>
+&#x9;"PatientName": "ANON^ANON",<LineBreak/>
+&#x9;"PatientBirthDate": "",<LineBreak/>
+&#x9;"PatientSex": "",<LineBreak/>
+&#x9;"StudyInstanceUid": "1.2.826.0.1.3680043.8.498.12345...",<LineBreak/>
+&#x9;"StudyDate": "20260515",<LineBreak/>
+&#x9;"StudyTime": "094230",<LineBreak/>
+&#x9;"StudyId": "",<LineBreak/>
+&#x9;"AccessionNumber": "",<LineBreak/>
+&#x9;"ReferringPhysicianName": "",<LineBreak/>
+&#x9;"FrameOfReferenceUid": "1.2.826.0.1.3680043.8.498.67890...",<LineBreak/>
+&#x9;"ImageModality": "CT",<LineBreak/>
+&#x9;"PatientPosition": "HFS",<LineBreak/>
+&#x9;"ImageSeriesInstanceUid": "",<LineBreak/>
+&#x9;"ImageSopInstanceUids": [],<LineBreak/>
+&#x9;"ImageRescaleSlope": 1.0,<LineBreak/>
+&#x9;"ImageRescaleIntercept": 0.0<LineBreak/>
+}
+                        </TextBlock>
+                    </Border>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Rescale slope / intercept"/>
                     <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">1.</Run> Click <Run FontWeight="SemiBold">Browse...</Run>
-                        and select either a single DICOM folder or a parent containing several DICOM folders.
-                        (You can also paste a path directly into the textbox.)
+                        Per-slice inverse formula used to convert your NIfTI voxel values into stored DICOM
+                        pixel values:
+                        <Run FontFamily="Consolas">stored = (input − ImageRescaleIntercept) / ImageRescaleSlope</Run>.
+                        Two common configurations:
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Raw signed Hounsfield units</Run> (typical NIfTI export of
+                          CT): leave defaults — <Run FontFamily="Consolas">ImageRescaleSlope = 1.0</Run>,
+                          <Run FontFamily="Consolas">ImageRescaleIntercept = 0.0</Run>. Pixel data is stored as
+                          int16; physical value equals the input.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">HU + 1024 stored as unsigned</Run>: set
+                          <Run FontFamily="Consolas">ImageRescaleSlope = 1.0</Run>,
+                          <Run FontFamily="Consolas">ImageRescaleIntercept = -1024.0</Run>. Stored values land in
+                          <Run FontFamily="Consolas">0..4095</Run>; viewers add the intercept back to recover HU.
                     </TextBlock>
                     <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">2.</Run> Click <Run FontWeight="SemiBold">Scan</Run>. The list
-                        populates with each discovered folder, the ROI names found in
-                        <Run FontFamily="Consolas">masks/</Run>, and the dose files found in
-                        <Run FontFamily="Consolas">doses/</Run>.
-                    </TextBlock>
-                    <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">3.</Run> Choose
-                        <Run FontWeight="SemiBold">Convert Structures?</Run> and/or
-                        <Run FontWeight="SemiBold">Convert Doses?</Run> as needed.
-                    </TextBlock>
-                    <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert All</Run>
-                        for a one-shot run, or <Run FontWeight="SemiBold">Run Server</Run> to start a watcher
-                        that auto-converts as new files appear.
+                        Modality choices the writer recognizes: <Run FontFamily="Consolas">CT</Run> and
+                        <Run FontFamily="Consolas">MR</Run> store as <Run FontFamily="Consolas">int16</Run>;
+                        <Run FontFamily="Consolas">PT</Run> stores as <Run FontFamily="Consolas">uint16</Run>.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="Buttons and controls"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Masks-only / attach-to-existing-DICOM"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Pre-populate <Run FontFamily="Consolas">ImageSeriesInstanceUid</Run> (and optionally
+                        <Run FontFamily="Consolas">ImageSopInstanceUids</Run> in ascending z-order) to make the
+                        generated RT-STRUCT reference an existing DICOM image series in the TPS without
+                        rewriting any image DICOMs. Untick
+                        <Run FontWeight="SemiBold">Convert Image?</Run>. If
+                        <Run FontFamily="Consolas">ImageSopInstanceUids</Run> is empty, the RT-STRUCT still
+                        emits a series-level reference but omits per-slice ContourImageSequence entries.
+                    </TextBlock>
+
+                    <TextBlock Style="{StaticResource H2}" Text="Forcing a clean image regeneration"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        Delete the existing image DICOM files (the per-slice
+                        <Run FontFamily="Consolas">image_*.dcm</Run> / <Run FontFamily="Consolas">CT_*.dcm</Run>
+                        in the folder) and clear <Run FontFamily="Consolas">ImageSeriesInstanceUid</Run> +
+                        <Run FontFamily="Consolas">ImageSopInstanceUids</Run> in
+                        <Run FontFamily="Consolas">metadata.json</Run>. The next run with
+                        <Run FontWeight="SemiBold">Convert Image?</Run> ON rewrites them.
+                    </TextBlock>
+
+                    <!-- ============================================================ -->
+                    <!-- 5. REFERENCE: CONTROLS                                        -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Reference: controls"/>
 
                     <TextBlock Style="{StaticResource H2}" Text="Browse..."/>
                     <TextBlock Style="{StaticResource Body}">
-                        Opens a folder picker so you can choose the root folder. Selecting a folder only sets
-                        the path — it does <Run FontWeight="SemiBold">not</Run> auto-scan. You can also type or
-                        paste a path directly into the textbox.
+                        Opens a folder picker. Selecting a folder only sets the path — it does
+                        <Run FontWeight="SemiBold">not</Run> auto-scan. You can also type or paste a path
+                        directly into the textbox.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Scan"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Walks the chosen root folder and its first-level subdirectories, looking for valid DICOM
-                        folders containing <Run FontFamily="Consolas">masks/</Run> and/or
-                        <Run FontFamily="Consolas">doses/</Run> with .nii.gz files. Each match becomes a row in
-                        the discovered-jobs grid. Click Scan again any time after editing the folder path or
-                        adding/removing files to refresh the list.
+                        Walks the chosen folder and its first-level subdirectories, looking for jobs (folders
+                        with <Run FontFamily="Consolas">image.nii.gz</Run> and/or
+                        <Run FontFamily="Consolas">masks/*.nii.gz</Run> and/or
+                        <Run FontFamily="Consolas">doses/*.nii.gz</Run>). Each match becomes one row in the
+                        grid. Click Scan again any time after editing the folder path or adding/removing files
+                        to refresh the list.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Convert Image? / Convert Structures? / Convert Doses?"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Toggle which artifact types to produce.
-                        <Run FontFamily="Consolas">image.nii.gz</Run> requires Convert Image = ON;
-                        <Run FontFamily="Consolas">masks/</Run> require Convert Structures = ON;
-                        <Run FontFamily="Consolas">doses/</Run> require Convert Doses = ON. With all three off,
-                        the Convert button is disabled. The image is converted first (if any) so the RT-STRUCT
-                        and RT-DOSE reference the resulting DICOM image series.
+                        Per-artifact toggles. <Run FontFamily="Consolas">image.nii.gz</Run> writes only when
+                        <Run FontWeight="SemiBold">Convert Image?</Run> is ON;
+                        <Run FontFamily="Consolas">masks/</Run> write only when
+                        <Run FontWeight="SemiBold">Convert Structures?</Run> is ON;
+                        <Run FontFamily="Consolas">doses/</Run> write only when
+                        <Run FontWeight="SemiBold">Convert Doses?</Run> is ON. With all three off, the Convert
+                        / Run Server buttons are disabled. When Convert Image is ON, the image is written
+                        first per folder so the RT-STRUCT and RT-DOSE reference the resulting DICOM image
+                        series.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Discovered jobs grid"/>
                     <TextBlock Style="{StaticResource Body}">
-                        One row per discovered DICOM folder. Columns:
+                        One row per discovered folder. Columns:
                         <LineBreak/>
-                        • <Run FontWeight="SemiBold">DICOM Folder</Run>: the folder leaf name.
+                        • <Run FontWeight="SemiBold">Folder</Run> — leaf folder name.
                         <LineBreak/>
-                        • <Run FontWeight="SemiBold">Masks / ROI Names</Run>: count and the comma-separated ROI
-                          names found in <Run FontFamily="Consolas">masks/</Run>.
+                        • <Run FontWeight="SemiBold">Image</Run> — <Run FontFamily="Consolas">yes</Run> if an
+                          <Run FontFamily="Consolas">image.nii.gz</Run> is present, blank otherwise.
                         <LineBreak/>
-                        • <Run FontWeight="SemiBold">Doses / Dose Files</Run>: count and dose filenames found in
-                          <Run FontFamily="Consolas">doses/</Run>.
+                        • <Run FontWeight="SemiBold">Masks</Run> — count of
+                          <Run FontFamily="Consolas">masks/*.nii.gz</Run> files.
                         <LineBreak/>
-                        • <Run FontWeight="SemiBold">Status</Run>: live progress per folder
-                          (Pending → Converting → OK / FAILED / Up-to-date).
+                        • <Run FontWeight="SemiBold">ROI Names</Run> — comma-separated mask basenames
+                          (file stem without <Run FontFamily="Consolas">.nii.gz</Run>) in sorted order.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Doses</Run> — count of
+                          <Run FontFamily="Consolas">doses/*.nii.gz</Run> files.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Dose Files</Run> — comma-separated dose basenames.
+                        <LineBreak/>
+                        • <Run FontWeight="SemiBold">Status</Run> — live per-folder progress; see
+                          <Run FontWeight="SemiBold">Reference: status values</Run> below.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Run Server / Stop Server"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Toggles a periodic watcher (every 10 seconds). Each tick:
-                        <LineBreak/>
-                        • Re-scan all discovered folders and compute a "fingerprint" (file count + sizes +
-                          last-write-times) of the DICOM folder, <Run FontFamily="Consolas">masks/</Run>, and
-                          <Run FontFamily="Consolas">doses/</Run>.
-                        <LineBreak/>
-                        • If the fingerprint matches the previous tick → folder is <Run FontStyle="Italic">settled</Run>
-                          → run conversion.
-                        <LineBreak/>
-                        • Otherwise wait another 10 s. This prevents triggering mid-upload while files are still being added.
-                        <LineBreak/>
-                        <LineBreak/>
-                        Server-mode outputs use a stable hash filename derived from the input basenames:
-                        <LineBreak/>
-                        • <Run FontFamily="Consolas">RTSTRUCT_&lt;hash(maskNames)&gt;.dcm</Run>
-                        <LineBreak/>
-                        • <Run FontFamily="Consolas">RTDOSE_&lt;hash(doseName)&gt;.dcm</Run>
-                        <LineBreak/>
-                        <LineBreak/>
-                        If the file already exists, conversion is skipped — server mode is idempotent and
-                        won't re-run on the same inputs. Adding a new mask or dose changes the hash, so a
-                        new output file is created and prior ones stay untouched.
+                        Toggles a periodic watcher (every 10 seconds). The button text flips from
+                        <Run FontWeight="SemiBold">Run Server</Run> to
+                        <Run FontWeight="SemiBold">Stop Server</Run> while the watcher is active. See workflow C
+                        above for the per-tick logic. Server mode writes content-derived filenames so re-running
+                        on identical inputs is idempotent — see <Run FontWeight="SemiBold">Output details</Run>
+                        below.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Convert All"/>
                     <TextBlock Style="{StaticResource Body}">
-                        Manual one-shot mode: walks every discovered folder and runs both writers (per the
-                        Convert Structures / Convert Doses toggles). Outputs use a timestamp suffix
-                        (e.g. <Run FontFamily="Consolas">RTSTRUCT_20260428_103527.dcm</Run>) — every click
-                        produces a new file. Use this when you want to force a fresh conversion regardless
-                        of what's already there.
+                        Manual one-shot mode: walks every discovered folder and runs every selected writer.
+                        Outputs use a timestamp suffix
+                        (<Run FontFamily="Consolas">RTSTRUCT_YYYYMMDD_HHmmss.dcm</Run> and
+                        <Run FontFamily="Consolas">RTDOSE_&lt;basename&gt;_YYYYMMDD_HHmmss.dcm</Run>) — every
+                        click produces fresh files even if prior ones exist.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Cancel / Close"/>
                     <TextBlock Style="{StaticResource Body}">
-                        <Run FontWeight="SemiBold">Cancel</Run>: aborts an in-progress Convert All.
-                        <Run FontWeight="SemiBold">Close</Run>: closes the window. The window's state (folder,
-                        toggles, server status) is retained when reopened from the launcher.
+                        <Run FontWeight="SemiBold">Cancel</Run>: aborts an in-progress
+                        <Run FontWeight="SemiBold">Convert All</Run>.
+                        <Run FontWeight="SemiBold">Close</Run>: closes the window; the state (folder, toggles,
+                        discovered jobs, server status) is preserved while the launcher is open.
                     </TextBlock>
 
-                    <TextBlock Style="{StaticResource H1}" Text="Output details"/>
+                    <!-- ============================================================ -->
+                    <!-- 6. REFERENCE: STATUS VALUES                                   -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Reference: status values"/>
                     <TextBlock Style="{StaticResource Body}">
-                        • Reference series is auto-detected (first CT/MR/PT series in the DICOM folder).
+                        Every literal string the Status column can show:
                         <LineBreak/>
-                        • RT-STRUCT contour traces support holes (interior cavities are emitted as additional
-                          CLOSED_PLANAR contours; viewers render via even-odd fill rule).
+                        • <Run FontFamily="Consolas">Pending</Run> — initial state, set when Scan discovers the
+                          folder.
                         <LineBreak/>
-                        • RT-DOSE is encoded as 32-bit unsigned with a per-volume
-                          <Run FontFamily="Consolas">DoseGridScaling</Run> chosen so the max value uses the
-                          full dynamic range — preserves ~10 digits of precision relative to max.
+                        • <Run FontFamily="Consolas">Converting image...</Run> — image.nii.gz → DICOM image
+                          series in progress.
                         <LineBreak/>
-                        • Masks must align to the reference image grid; if geometry differs, the writer
-                          NN-resamples the mask to the CT grid before tracing.
+                        • <Run FontFamily="Consolas">Scanning DICOM...</Run> — re-scanning the folder for the
+                          reference image series after the image pass.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">Converting masks...</Run> — masks → RT-STRUCT in progress.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">Converting doses...</Run> — doses → RT-DOSE in progress.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">OK — &lt;summary&gt;</Run> — Convert All finished this job
+                          successfully; summary lists which artifacts were written.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">Converted — &lt;summary&gt;</Run> — server-mode tick wrote
+                          new files for this job.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">Up-to-date — &lt;reason&gt;</Run> — server-mode tick; the
+                          stable-hash output(s) already exist on disk, nothing was written.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">Skipped — &lt;reason&gt;</Run> — Convert All was clicked
+                          but every applicable Convert toggle was OFF for this folder.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">Watching — files changed, waiting for stability.</Run> —
+                          server-mode tick; this folder's fingerprint differs from the previous tick. The next
+                          tick will re-check.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">FAILED — &lt;reason&gt;</Run> — exception raised during
+                          scan, image, mask, or dose write; the rest of the batch continues. The reason
+                          includes the per-stage error message.
                     </TextBlock>
 
+                    <!-- ============================================================ -->
+                    <!-- 7. OUTPUT DETAILS                                             -->
+                    <!-- ============================================================ -->
+                    <TextBlock Style="{StaticResource H1}" Text="Output details"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Reference DICOM auto-detection"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        After the image pass, the folder is scanned and the first CT/MR/PT series found
+                        (patient → study → series traversal order) is used as the reference for RT-STRUCT and
+                        RT-DOSE writing. The reference supplies both <Run FontStyle="Italic">spatial</Run>
+                        alignment (FrameOfReferenceUID, per-slice geometry) <Run FontStyle="Italic">and</Run>
+                        patient/study metadata copied into the RT files.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource H2}" Text="Image idempotency"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        If the folder already contains a DICOM series whose SeriesInstanceUID equals
+                        <Run FontFamily="Consolas">metadata.ImageSeriesInstanceUid</Run>, the image conversion
+                        pass is skipped — even when <Run FontWeight="SemiBold">Convert All</Run> is clicked. To
+                        force a re-conversion, delete the existing image DICOMs and clear those metadata
+                        fields (see "Forcing a clean image regeneration" above).
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource H2}" Text="RT-STRUCT writer"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        • One ROI per <Run FontFamily="Consolas">masks/*.nii.gz</Run> file; the file stem
+                          becomes the ROIName.
+                        <LineBreak/>
+                        • If the mask geometry differs from the reference image grid, the mask is resampled to
+                          the reference grid with nearest-neighbour before contour tracing.
+                        <LineBreak/>
+                        • Contours support holes: interior cavities are emitted as additional
+                          <Run FontFamily="Consolas">CLOSED_PLANAR</Run> contours on the same slice; viewers
+                          render via even-odd fill rule.
+                        <LineBreak/>
+                        • Empty masks (all zero) are silently skipped — they consume no ROI Number, and a note
+                          appears in the bottom status bar.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">RTROIInterpretedType</Run> is inferred from the ROI name —
+                          e.g. <Run FontFamily="Consolas">PTV</Run> →
+                          <Run FontFamily="Consolas">TREATED_VOLUME</Run>, names containing
+                          <Run FontFamily="Consolas">OAR</Run> →
+                          <Run FontFamily="Consolas">ORGAN_AT_RISK</Run>; otherwise omitted.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource H2}" Text="RT-DOSE writer"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        • One RT-DOSE per dose file.
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">DoseGridScaling</Run> is computed automatically per file:
+                          the maximum voxel value is mapped to fill the stored-pixel range, preserving roughly
+                          10 significant digits relative to that maximum.
+                        <LineBreak/>
+                        • Dose units are Gy.
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource H2}" Text="Output filenames"/>
+                    <TextBlock Style="{StaticResource Body}">
+                        <Run FontWeight="SemiBold">Convert All</Run> (timestamp suffix, not idempotent):
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">RTSTRUCT_YYYYMMDD_HHmmss.dcm</Run>
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">RTDOSE_&lt;sanitized-basename&gt;_YYYYMMDD_HHmmss.dcm</Run>
+                          (one per dose file)
+                        <LineBreak/>
+                        <LineBreak/>
+                        <Run FontWeight="SemiBold">Run Server</Run> (stable hash, idempotent):
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">RTSTRUCT_&lt;hash12&gt;.dcm</Run>
+                        <LineBreak/>
+                        • <Run FontFamily="Consolas">RTDOSE_&lt;hash12&gt;.dcm</Run> (one per dose file)
+                        <LineBreak/>
+                        <LineBreak/>
+                        <Run FontFamily="Consolas">hash12</Run> = first 12 hex characters (48 bits) of SHA-256
+                        over the input basenames, normalized to lowercase invariant culture, sorted ordinally,
+                        and joined with <Run FontFamily="Consolas">|</Run>. Same inputs always produce the same
+                        filename; adding a new mask or dose changes the hash and produces a new file alongside
+                        the prior one.
+                    </TextBlock>
+
+                    <!-- ============================================================ -->
+                    <!-- 8. TIPS                                                       -->
+                    <!-- ============================================================ -->
                     <TextBlock Style="{StaticResource H1}" Text="Tips"/>
                     <TextBlock Style="{StaticResource Body}">
-                        • Server mode is great for "drop-folder" workflows: copy CT + masks/ + doses/ into a
-                          watch directory and walk away.
+                        • Server mode is ideal for "drop-folder" pipelines: copy the image / masks / doses into
+                          a watch directory and walk away.
                         <LineBreak/>
-                        • To force a re-run in server mode, delete the existing
+                        • To force a re-run of a settled job in server mode, delete the existing
                           <Run FontFamily="Consolas">RTSTRUCT_*.dcm</Run> /
-                          <Run FontFamily="Consolas">RTDOSE_*.dcm</Run> file — the hash will be missing on the
-                          next tick and conversion fires again.
+                          <Run FontFamily="Consolas">RTDOSE_*.dcm</Run> outputs — the next tick will find the
+                          hash missing and rebuild them.
                         <LineBreak/>
-                        • Empty masks (all-zero) are skipped silently; warnings appear in the bottom status bar.
+                        • If a TPS rejects the generated series with "Unknown patient position", check
+                          <Run FontFamily="Consolas">PatientPosition</Run> in
+                          <Run FontFamily="Consolas">metadata.json</Run>.
                     </TextBlock>
                 </StackPanel>
             </ScrollViewer>
