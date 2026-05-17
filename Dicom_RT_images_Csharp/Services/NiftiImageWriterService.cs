@@ -136,6 +136,35 @@ namespace Dicom_RT_images_Csharp.Services
                 bool signedPixels = !string.Equals(modality, "PT", StringComparison.OrdinalIgnoreCase);
                 string sopClassUid = SopClassUidFor(modality);
 
+                // Adaptive RescaleSlope for PT: PET SUV / activity-concentration values
+                // are continuous and typically span a small dynamic range (e.g. [0, 20]).
+                // Encoding them with slope=1 into uint16 collapses sub-integer detail —
+                // a 0.4 SUV reconstruction error is then baked in by rounding. If the
+                // caller has not provided an explicit slope, derive one from the actual
+                // data range so each LSB represents ~max/65535 SUV, bounding the
+                // quantization error by half an LSB per voxel.
+                if (string.Equals(modality, "PT", StringComparison.OrdinalIgnoreCase)
+                    && Math.Abs(metadata.ImageRescaleSlope - 1.0) < 1e-12
+                    && Math.Abs(metadata.ImageRescaleIntercept) < 1e-12)
+                {
+                    double maxVal = 0.0;
+                    for (int i = 0; i < totalInt; i++)
+                    {
+                        double v = floatData[i];
+                        if (v > maxVal) maxVal = v;
+                    }
+                    double headroom = signedPixels
+                        ? (double)short.MaxValue
+                        : (double)ushort.MaxValue;
+                    if (maxVal > 0 && headroom > 0)
+                    {
+                        metadata.ImageRescaleSlope = maxVal / headroom;
+                        progress?.Report(
+                            $"  PT adaptive RescaleSlope = {metadata.ImageRescaleSlope:G6} "
+                            + $"(max={maxVal:G6} / headroom={headroom}).");
+                    }
+                }
+
                 // Fresh series UID + per-slice SOP UIDs. Persist into metadata at end.
                 string seriesInstanceUid = DicomUIDGenerator.GenerateDerivedFromUUID().UID;
                 var perSliceSopUids = new List<string>(depth);
@@ -360,6 +389,22 @@ namespace Dicom_RT_images_Csharp.Services
             // physical value via stored * slope + intercept.
             ds.AddOrUpdate(DicomTag.RescaleSlope, FormatDs(metadata.ImageRescaleSlope));
             ds.AddOrUpdate(DicomTag.RescaleIntercept, FormatDs(metadata.ImageRescaleIntercept));
+
+            // Modality-specific required tags. CT Image IOD requires KVP (Type 2);
+            // PT Image IOD requires Units (Type 1) and CorrectedImage (Type 2). TPSes
+            // and PET viewers reject the series outright when these are missing — the
+            // SUV interpretation in particular is undefined without Units.
+            switch ((modality ?? "CT").ToUpperInvariant())
+            {
+                case "CT":
+                    ds.AddOrUpdate(DicomTag.KVP, "120");
+                    break;
+                case "PT":
+                    ds.AddOrUpdate(DicomTag.Units, "BQML");
+                    ds.AddOrUpdate(DicomTag.CorrectedImage,
+                        "DECY", "ATTN", "SCAT", "DTIM", "RAN", "RADL", "DCAL", "SLSENS", "NORM");
+                    break;
+            }
 
             // Pixel data: 16-bit little-endian, OW VR.
             ds.AddOrUpdate(new DicomOtherWord(DicomTag.PixelData, new MemoryByteBuffer(pixelBytes)));
