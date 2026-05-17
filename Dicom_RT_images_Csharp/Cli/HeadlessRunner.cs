@@ -32,6 +32,13 @@ namespace Dicom_RT_images_Csharp.Cli
     ///           --masks-folder PATH
     ///           --output PATH
     ///
+    ///   Image-reverse (NIfTI image volume -> DICOM image series):
+    ///       Dicom_RT_images_Csharp.exe --headless --image-reverse
+    ///           --nifti-image PATH
+    ///           --output-folder PATH
+    ///           [--modality {CT|MR|PT}]   (default: CT)
+    ///           [--ref-dicom-folder PATH] (template for patient/study metadata)
+    ///
     /// stdout: machine-readable lines describing every output file written.
     /// stderr: human-readable progress / error messages.
     /// Exit code: 0 on success, non-zero on failure.
@@ -62,7 +69,12 @@ namespace Dicom_RT_images_Csharp.Cli
                 {
                     return RunReverse(args);
                 }
-                Console.Error.WriteLine("Headless mode requires --forward or --reverse.");
+                if (HasFlag(args, "--image-reverse"))
+                {
+                    return RunImageReverse(args);
+                }
+                Console.Error.WriteLine(
+                    "Headless mode requires --forward, --reverse, or --image-reverse.");
                 PrintUsage();
                 return 2;
             }
@@ -319,6 +331,93 @@ namespace Dicom_RT_images_Csharp.Cli
         }
 
         // -----------------------------------------------------------------
+        //  Image-reverse: NIfTI image volume -> DICOM image series
+        // -----------------------------------------------------------------
+
+        /// <summary>
+        /// Standalone NIfTI -> DICOM image series conversion. Distinct from
+        /// <see cref="RunReverseNiftiOnly"/> because no RT-STRUCT is written:
+        /// the caller only wants the DICOM image series corresponding to the
+        /// input NIfTI volume.
+        /// </summary>
+        private static int RunImageReverse(string[] args)
+        {
+            string niftiImage     = RequireArg(args, "--nifti-image");
+            string outputFolder   = RequireArg(args, "--output-folder");
+            string modality       = OptionalArg(args, "--modality") ?? "CT";
+            string refDicomFolder = OptionalArg(args, "--ref-dicom-folder");
+
+            if (!File.Exists(niftiImage))
+                throw new FileNotFoundException($"NIfTI image not found: {niftiImage}");
+
+            string upperMod = modality.ToUpperInvariant();
+            if (upperMod != "CT" && upperMod != "MR" && upperMod != "PT")
+                throw new ArgumentException(
+                    $"Unsupported modality '{modality}'; expected CT, MR, or PT.");
+
+            Directory.CreateDirectory(outputFolder);
+
+            // Stage the input NIfTI as <stage>/image.nii.gz so the existing
+            // NiftiImageWriterService -- which scans for that fixed filename --
+            // runs unchanged. We then copy the generated DICOM files to the
+            // caller's output folder.
+            string stage = Path.Combine(
+                Path.GetTempPath(),
+                "rt_mask_validation_imrev_" + Path.GetRandomFileName());
+            Directory.CreateDirectory(stage);
+            try
+            {
+                string stagedImage = Path.Combine(stage, "image.nii.gz");
+                if (!CreateHardLink(stagedImage, niftiImage, IntPtr.Zero))
+                    File.Copy(niftiImage, stagedImage);
+
+                var metaService = new NiftiMetadataService();
+                var meta = metaService.LoadOrSynthesize(stage);
+                meta.ImageModality = upperMod;
+
+                if (!string.IsNullOrEmpty(refDicomFolder))
+                {
+                    Console.Error.WriteLine(
+                        $"  (note) --ref-dicom-folder '{refDicomFolder}' currently ignored; "
+                        + "metadata auto-synthesized.");
+                }
+
+                var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
+                var imageWriter = new NiftiImageWriterService(metaService);
+                var written = imageWriter.ConvertImageNiftiToDicomSeries(
+                    stage, meta, progress, CancellationToken.None);
+
+                if (written == null || written.Count == 0)
+                {
+                    Console.Error.WriteLine("Conversion produced no DICOM slices.");
+                    return 1;
+                }
+
+                var outputPaths = new List<string>();
+                foreach (var src in written)
+                {
+                    string dst = Path.Combine(outputFolder, Path.GetFileName(src));
+                    File.Copy(src, dst, overwrite: true);
+                    outputPaths.Add(dst);
+                }
+
+                Console.Error.WriteLine($"  NIfTI input:    {niftiImage}");
+                Console.Error.WriteLine($"  Modality:       {upperMod}");
+                Console.Error.WriteLine($"  Output folder:  {outputFolder}");
+                Console.Error.WriteLine($"  Slices written: {outputPaths.Count}");
+
+                Console.Out.WriteLine("# rt_mask_validation image-reverse");
+                foreach (var p in outputPaths)
+                    Console.Out.WriteLine(p);
+                return 0;
+            }
+            finally
+            {
+                TryCleanupStaging(stage);
+            }
+        }
+
+        // -----------------------------------------------------------------
         //  Helpers
         // -----------------------------------------------------------------
 
@@ -491,6 +590,11 @@ namespace Dicom_RT_images_Csharp.Cli
             Console.Error.WriteLine("                       [--image-nifti PATH]         (default: <masks-folder>/image.nii.gz)");
             Console.Error.WriteLine("                       [--metadata PATH]            (default: <masks-folder>/metadata.json)");
             Console.Error.WriteLine("                       [--output-image-folder PATH] (persist generated DICOM image series)");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Image-reverse (NIfTI image volume -> DICOM image series):");
+            Console.Error.WriteLine("  --headless --image-reverse --nifti-image PATH --output-folder PATH");
+            Console.Error.WriteLine("                       [--modality CT|MR|PT]         (default: CT)");
+            Console.Error.WriteLine("                       [--ref-dicom-folder PATH]     (currently ignored; metadata auto-synthesized)");
         }
     }
 }
