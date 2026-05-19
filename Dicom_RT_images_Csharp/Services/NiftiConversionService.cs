@@ -43,18 +43,7 @@ namespace Dicom_RT_images_Csharp.Services
             // Sort files by ImagePositionPatient z-coordinate
             var sortedFiles = SortFilesBySlicePosition(series.FilePaths);
 
-            var fileNames = new VectorString();
-            foreach (var f in sortedFiles)
-            {
-                fileNames.Add(f);
-            }
-
-            var reader = new ImageSeriesReader();
-            reader.SetFileNames(fileNames);
-            reader.MetaDataDictionaryArrayUpdateOn();
-            reader.LoadPrivateTagsOn();
-
-            Image image = reader.Execute();
+            Image image = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
 
             if (targetSpacing != null)
             {
@@ -81,15 +70,7 @@ namespace Dicom_RT_images_Csharp.Services
         public double[] GetImageSpacing(DicomSeriesGroup series)
         {
             var sortedFiles = SortFilesBySlicePosition(series.FilePaths);
-            var fileNames = new VectorString();
-            foreach (var f in sortedFiles)
-                fileNames.Add(f);
-
-            var reader = new ImageSeriesReader();
-            reader.SetFileNames(fileNames);
-            reader.MetaDataDictionaryArrayUpdateOn();
-            reader.LoadPrivateTagsOn();
-            Image image = reader.Execute();
+            Image image = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
 
             var spacing = image.GetSpacing();
             double[] result = new double[] { spacing[0], spacing[1], spacing[2] };
@@ -98,7 +79,10 @@ namespace Dicom_RT_images_Csharp.Services
         }
 
         /// <summary>
-        /// Converts an RT Dose file to dose.nii.gz, applying DoseGridScaling if present.
+        /// Converts an RT Dose file to <paramref name="outputDir"/>/doses/&lt;safe-series-description&gt;.nii.gz,
+        /// applying DoseGridScaling if present. The series description from the
+        /// RT-DOSE file is sanitized for filesystem use; an empty description
+        /// falls back to "dose".
         /// </summary>
         public void ConvertDoseToNifti(
             DicomSeriesGroup doseSeries,
@@ -142,7 +126,14 @@ namespace Dicom_RT_images_Csharp.Services
                 progress?.Report($"  Resampled dose to {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
             }
 
-            string outputPath = Path.Combine(outputDir, "dose.nii.gz");
+            string dosesDir = Path.Combine(outputDir, "doses");
+            Directory.CreateDirectory(dosesDir);
+
+            string baseName = string.IsNullOrWhiteSpace(doseSeries.SeriesDescription)
+                ? "dose"
+                : doseSeries.SeriesDescription.Trim();
+            string outputPath = Path.Combine(dosesDir, SanitizeFileName(baseName) + ".nii.gz");
+
             SimpleITK.WriteImage(doseImage, outputPath);
             doseImage.Dispose();
 
@@ -173,17 +164,7 @@ namespace Dicom_RT_images_Csharp.Services
 
             // Load reference image for geometry
             var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths);
-            var fileNames = new VectorString();
-            foreach (var f in sortedFiles)
-            {
-                fileNames.Add(f);
-            }
-
-            var reader = new ImageSeriesReader();
-            reader.SetFileNames(fileNames);
-            reader.MetaDataDictionaryArrayUpdateOn();
-            reader.LoadPrivateTagsOn();
-            Image referenceImage = reader.Execute();
+            Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
 
             var spacing = referenceImage.GetSpacing();
             double voxelVolume = spacing[0] * spacing[1] * spacing[2];
@@ -278,17 +259,7 @@ namespace Dicom_RT_images_Csharp.Services
 
             // Load reference image for geometry
             var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths);
-            var fileNames = new VectorString();
-            foreach (var f in sortedFiles)
-            {
-                fileNames.Add(f);
-            }
-
-            var reader = new ImageSeriesReader();
-            reader.SetFileNames(fileNames);
-            reader.MetaDataDictionaryArrayUpdateOn();
-            reader.LoadPrivateTagsOn();
-            Image referenceImage = reader.Execute();
+            Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
 
             var spacing = referenceImage.GetSpacing();
             double voxelVolume = spacing[0] * spacing[1] * spacing[2];
@@ -426,35 +397,75 @@ namespace Dicom_RT_images_Csharp.Services
         }
 
         /// <summary>
-        /// Sorts DICOM files by the z-component of ImagePositionPatient.
+        /// Sorts DICOM files along the slice-normal axis derived from
+        /// ImageOrientationPatient. For an axial scan the sort axis reduces to
+        /// IPP.Z, but the projection IPP · (row × col) is correct for any IOP
+        /// (axial / coronal / sagittal / oblique). Falls back to IPP.Z if IOP
+        /// can't be read from the first file.
         /// </summary>
         private List<string> SortFilesBySlicePosition(List<string> filePaths)
         {
-            var filePositions = new List<Tuple<string, double>>();
+            if (filePaths == null || filePaths.Count == 0)
+                return new List<string>();
 
+            double[] normal = ReadSliceNormalFromIop(filePaths[0])
+                              ?? new[] { 0.0, 0.0, 1.0 };
+
+            var filePositions = new List<Tuple<string, double>>(filePaths.Count);
             foreach (var path in filePaths)
             {
-                double zPos = 0;
+                double projection = 0;
                 try
                 {
                     var dcm = DicomFile.Open(path, FileReadOption.SkipLargeTags);
                     if (dcm.Dataset.Contains(DicomTag.ImagePositionPatient))
                     {
-                        var positions = dcm.Dataset.GetValues<double>(DicomTag.ImagePositionPatient);
-                        if (positions.Length >= 3)
+                        var ipp = dcm.Dataset.GetValues<double>(DicomTag.ImagePositionPatient);
+                        if (ipp != null && ipp.Length >= 3)
                         {
-                            zPos = positions[2];
+                            projection = ipp[0] * normal[0]
+                                       + ipp[1] * normal[1]
+                                       + ipp[2] * normal[2];
                         }
                     }
                 }
                 catch (Exception)
                 {
-                    // Use 0 if position can't be read
+                    // Projection stays 0 if the file is unreadable.
                 }
-                filePositions.Add(Tuple.Create(path, zPos));
+                filePositions.Add(Tuple.Create(path, projection));
             }
 
             return filePositions.OrderBy(t => t.Item2).Select(t => t.Item1).ToList();
+        }
+
+        /// <summary>
+        /// Reads ImageOrientationPatient (0020,0037) from <paramref name="path"/>
+        /// and returns the slice-normal unit vector (row × col). Returns null
+        /// if IOP cannot be read.
+        /// </summary>
+        private static double[] ReadSliceNormalFromIop(string path)
+        {
+            try
+            {
+                var dcm = DicomFile.Open(path, FileReadOption.SkipLargeTags);
+                if (!dcm.Dataset.Contains(DicomTag.ImageOrientationPatient)) return null;
+                var iop = dcm.Dataset.GetValues<double>(DicomTag.ImageOrientationPatient);
+                if (iop == null || iop.Length < 6) return null;
+
+                double rx = iop[0], ry = iop[1], rz = iop[2];
+                double cx = iop[3], cy = iop[4], cz = iop[5];
+                double nx = ry * cz - rz * cy;
+                double ny = rz * cx - rx * cz;
+                double nz = rx * cy - ry * cx;
+                double norm = Math.Sqrt(nx * nx + ny * ny + nz * nz);
+                if (norm < 1e-9) return null;
+                return new[] { nx / norm, ny / norm, nz / norm };
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>

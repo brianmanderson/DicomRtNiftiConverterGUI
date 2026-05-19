@@ -19,12 +19,13 @@ namespace Dicom_RT_images_Csharp.Cli
     ///
     /// Usage:
     ///
-    ///   Forward (RTSTRUCT -> per-ROI binary masks; optionally also image.nii.gz):
+    ///   Forward (RTSTRUCT -> per-ROI binary masks; optionally also image.nii.gz and doses/):
     ///       Dicom_RT_images_Csharp.exe --headless --forward
     ///           --rtstruct PATH
     ///           --image-folder PATH
     ///           --output-folder PATH
     ///           [--include-image]    (also write image.nii.gz alongside masks)
+    ///           [--rtdose PATH]      (also write doses/&lt;series description&gt;.nii.gz)
     ///
     ///   Reverse (per-ROI binary masks -> RTSTRUCT):
     ///       Dicom_RT_images_Csharp.exe --headless --reverse
@@ -109,6 +110,21 @@ namespace Dicom_RT_images_Csharp.Cli
             {
                 conversionService.ConvertImageSeriesToNifti(
                     series: imageSeries,
+                    outputDir: outputFolder,
+                    progress: progress,
+                    ct: CancellationToken.None,
+                    targetSpacing: null);
+            }
+
+            string rtdosePath = OptionalArg(args, "--rtdose");
+            if (!string.IsNullOrEmpty(rtdosePath))
+            {
+                if (!File.Exists(rtdosePath))
+                    throw new FileNotFoundException($"RT-DOSE file not found: {rtdosePath}");
+                var doseSeries = BuildRtDoseSeriesFromFile(rtdosePath);
+                Console.Error.WriteLine($"  RTDOSE:       {rtdosePath} (\"{doseSeries.SeriesDescription}\")");
+                conversionService.ConvertDoseToNifti(
+                    doseSeries: doseSeries,
                     outputDir: outputFolder,
                     progress: progress,
                     ct: CancellationToken.None,
@@ -364,6 +380,20 @@ namespace Dicom_RT_images_Csharp.Cli
                 SeriesDate           = GetStringOrEmpty(firstImage, DicomTag.SeriesDate),
                 FrameOfReferenceUID  = GetStringOrEmpty(firstImage, DicomTag.FrameOfReferenceUID),
                 FilePaths            = imageFiles,
+            };
+        }
+
+        private static DicomSeriesGroup BuildRtDoseSeriesFromFile(string rtdosePath)
+        {
+            var dcm = DicomFile.Open(rtdosePath).Dataset;
+            return new DicomSeriesGroup
+            {
+                SeriesInstanceUID   = GetStringOrEmpty(dcm, DicomTag.SeriesInstanceUID),
+                SeriesDescription   = GetStringOrEmpty(dcm, DicomTag.SeriesDescription),
+                Modality            = GetStringOrEmpty(dcm, DicomTag.Modality),
+                SeriesDate          = GetStringOrEmpty(dcm, DicomTag.SeriesDate),
+                FrameOfReferenceUID = GetStringOrEmpty(dcm, DicomTag.FrameOfReferenceUID),
+                FilePaths           = new List<string> { rtdosePath },
             };
         }
 

@@ -10,7 +10,7 @@ Methodology borrows from [Dicom_RT_and_Images_to_Mask](https://github.com/brianm
 
 Running `Dicom_RT_images_Csharp.exe` with no arguments opens a 480×320 launcher with two buttons:
 
-- **DICOM → NIfTI** — opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and `dose.nii.gz`).
+- **DICOM → NIfTI** — opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`).
 - **NIfTI → DICOM** — opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE).
 
 Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The CLI below is the alternative when scripting batch / benchmark runs.
@@ -21,7 +21,7 @@ Each directional window has a **Help** button (top right) with the full workflow
 - CT/MR image series export to `image.nii.gz` via SimpleITK
 - RT Struct contour rasterization to per-ROI binary mask `.nii.gz` files, supporting the five clinically-used `ContourGeometricType` values: `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT`. Hollow shapes are handled via the multi-contour `CLOSED_PLANAR` convention with even-odd XOR fill, the dominant clinical encoding; the explicit `CLOSED_PLANAR_XOR` type tag is not dispatched separately
 - Reverse direction: mask → RTSTRUCT writer (`RtStructWriterService.cs`)
-- RT Dose export to `dose.nii.gz` with DoseGridScaling applied
+- RT Dose export to `doses/{SeriesDescription}.nii.gz` (one file per dose, filename sanitized) with DoseGridScaling applied
 - ROI Association editor for mapping canonical names to DICOM structure aliases
 - Configurable settings with JSON persistence
 - **Headless CLI** for batch and benchmark integration (see Headless mode below)
@@ -96,10 +96,11 @@ Non-anonymized (one folder per patient, one subfolder per series):
 {OutputFolder}/
   {PatientID}/
     {SeriesDate}_{SeriesDescription}/
-      image.nii.gz          # if Export Images is ON
-      dose.nii.gz           # if Include Dose is ON and a dose is linked
+      image.nii.gz                          # if Export Images is ON
+      doses/
+        {SeriesDescription}.nii.gz          # if Include Dose is ON and a dose is linked
       masks/
-        {ROI_Name}.nii.gz   # if Include Structures is ON
+        {ROI_Name}.nii.gz                   # if Include Structures is ON
   export_manifest.csv       # at the output root (or export_manifest_meta.csv for Export MetaData)
 ```
 
@@ -109,7 +110,8 @@ Anonymized (one flat folder per series, named by integer Export ID; no `{Patient
 {OutputFolder}/
   {ExportID}/
     image.nii.gz
-    dose.nii.gz
+    doses/
+      {SeriesDescription}.nii.gz
     masks/
       {ROI_Name}.nii.gz
   export_manifest.csv

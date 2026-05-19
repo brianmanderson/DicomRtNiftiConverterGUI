@@ -98,7 +98,8 @@
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.13.0.4\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
-    <Reference Include="SimpleITKCSharpManaged">
+    <Reference Include="SimpleITKCSharpManaged, Version=3.0.50.0, Culture=neutral, processorArchitecture=AMD64">
+      <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\SimpleITK\SimpleITKCSharpManaged.dll</HintPath>
     </Reference>
     <Reference Include="System" />
@@ -257,6 +258,7 @@
     <Compile Include="ViewModels\RoiSelectionViewModel.cs" />
     <Compile Include="ViewModels\NiftiToDicomViewModel.cs" />
     <Compile Include="ViewModels\LauncherViewModel.cs" />
+    <Compile Include="Services\DicomImageSeriesLoader.cs" />
     <Compile Include="Services\DicomScannerService.cs" />
     <Compile Include="Services\NiftiConversionService.cs" />
     <Compile Include="Services\RtStructMaskService.cs" />

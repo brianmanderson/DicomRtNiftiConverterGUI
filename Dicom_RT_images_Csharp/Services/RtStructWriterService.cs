@@ -231,18 +231,12 @@ namespace Dicom_RT_images_Csharp.Services
         // ---------- Internals ----------
 
         /// <summary>
-        /// Reads a sorted list of DICOM image files into a single 3D SimpleITK image.
+        /// Reads a sorted list of DICOM image files into a single 3D SimpleITK image
+        /// with a corrected direction matrix (see DicomImageSeriesLoader).
         /// </summary>
         private static Image LoadImageSeries(List<string> sortedDicomFiles)
         {
-            var fileNames = new VectorString();
-            foreach (var f in sortedDicomFiles) fileNames.Add(f);
-
-            var reader = new ImageSeriesReader();
-            reader.SetFileNames(fileNames);
-            reader.MetaDataDictionaryArrayUpdateOn();
-            reader.LoadPrivateTagsOn();
-            return reader.Execute();
+            return DicomImageSeriesLoader.LoadCorrected(sortedDicomFiles);
         }
 
         /// <summary>

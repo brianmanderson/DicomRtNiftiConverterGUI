@@ -222,6 +222,15 @@
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                     </Expander>
+                                    <!-- Linked RT-DOSE indicator -->
+                                    <StackPanel Orientation="Horizontal" Margin="20,2,0,0"
+                                                Visibility="{Binding HasLinkedRtDose, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="[RTDOSE]" FontSize="11" FontWeight="Bold"
+                                                   Foreground="#1976D2" Margin="0,0,6,0"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding LinkedRtDoseLabel}" FontSize="11"
+                                                   Foreground="#555555" VerticalAlignment="Center"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </DataTemplate>
                         </TreeView.Resources>

@@ -74,8 +74,8 @@
                         <Run FontFamily="Consolas">image.nii.gz</Run>),
                         <Run FontWeight="SemiBold">Include Structures</Run> (RT-STRUCT → per-ROI masks under
                         <Run FontFamily="Consolas">masks/</Run>),
-                        <Run FontWeight="SemiBold">Include Dose</Run> (RT-DOSE →
-                        <Run FontFamily="Consolas">dose.nii.gz</Run>).
+                        <Run FontWeight="SemiBold">Include Dose</Run> (RT-DOSE → one file per dose under
+                        <Run FontFamily="Consolas">doses/{SeriesDescription}.nii.gz</Run>).
                     </TextBlock>
                     <TextBlock Style="{StaticResource Body}">
                         <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert Selected</Run>.
@@ -216,8 +216,10 @@
                         per-ROI binary masks under <Run FontFamily="Consolas">masks/{ROI_Name}.nii.gz</Run>.
                         <LineBreak/>
                         <Run FontWeight="SemiBold">Include Dose</Run> writes the linked RT-DOSE as
-                        <Run FontFamily="Consolas">dose.nii.gz</Run>, applying any
-                        <Run FontFamily="Consolas">DoseGridScaling</Run> so the stored values are in physical units.
+                        <Run FontFamily="Consolas">doses/{SeriesDescription}.nii.gz</Run> (one file per dose,
+                        named for the RT-DOSE Series Description with filesystem-invalid characters replaced),
+                        applying any <Run FontFamily="Consolas">DoseGridScaling</Run> so the stored values are
+                        in physical units.
                     </TextBlock>
 
                     <TextBlock Style="{StaticResource H2}" Text="Modality scope"/>
@@ -308,7 +310,7 @@
                     <TextBlock Style="{StaticResource Body}">
                         Runs the full export for every selected series with the current Export Options applied.
                         Writes <Run FontFamily="Consolas">image.nii.gz</Run>,
-                        <Run FontFamily="Consolas">dose.nii.gz</Run>, and per-ROI
+                        <Run FontFamily="Consolas">doses/{SeriesDescription}.nii.gz</Run>, and per-ROI
                         <Run FontFamily="Consolas">masks/*.nii.gz</Run> per series, plus
                         <Run FontFamily="Consolas">export_manifest.csv</Run> at the output root summarizing
                         every exported series and its per-ROI volumes.
@@ -350,7 +352,8 @@
 ├─ {PatientID}/
 │   └─ {SeriesDate}_{SeriesDescription}/
 │       ├─ image.nii.gz            → CT/MR/PT volume        <Run Foreground="#888888">(if Export Images is ON)</Run>
-│       ├─ dose.nii.gz             → RT-DOSE volume         <Run Foreground="#888888">(if Include Dose is ON and a dose is linked)</Run>
+│       ├─ doses/
+│       │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume  <Run Foreground="#888888">(if Include Dose is ON and a dose is linked)</Run>
 │       └─ masks/
 │           └─ {ROI_Name}.nii.gz   → per-ROI binary mask    <Run Foreground="#888888">(if Include Structures is ON)</Run>
 │
@@ -364,7 +367,8 @@
 │
 ├─ {ExportID}/                                              <Run Foreground="#888888">(flat — no {PatientID}/{Date}_... nesting)</Run>
 │   ├─ image.nii.gz                → CT/MR/PT volume
-│   ├─ dose.nii.gz                 → RT-DOSE volume
+│   ├─ doses/
+│   │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume
 │   └─ masks/
 │       └─ {ROI_Name}.nii.gz       → per-ROI binary mask
 │

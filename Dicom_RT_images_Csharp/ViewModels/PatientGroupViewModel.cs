@@ -177,6 +177,17 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     RoiNames.Add(name);
                 }
             }
+
+            if (model.LinkedRtDose != null)
+            {
+                string desc = string.IsNullOrWhiteSpace(model.LinkedRtDose.SeriesDescription)
+                    ? "(no description)"
+                    : model.LinkedRtDose.SeriesDescription.Trim();
+                int frames = model.LinkedRtDose.FilePaths != null ? model.LinkedRtDose.FilePaths.Count : 0;
+                LinkedRtDoseLabel = frames > 1
+                    ? $"{desc} ({frames} files)"
+                    : desc;
+            }
         }
 
         /// <summary>
@@ -198,6 +209,13 @@ namespace Dicom_RT_images_Csharp.ViewModels
         /// Whether an RTDOSE is linked to this image series.
         /// </summary>
         public bool HasLinkedRtDose { get; }
+
+        /// <summary>
+        /// Display label for the linked RT-DOSE, e.g. "Plan Dose" or the series
+        /// description with a file-count suffix when multiple files are present.
+        /// Null when no dose is linked.
+        /// </summary>
+        public string LinkedRtDoseLabel { get; }
 
         /// <summary>
         /// ROI names from the linked RTSTRUCT.
