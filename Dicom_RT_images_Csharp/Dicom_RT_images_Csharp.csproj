@@ -270,6 +270,7 @@
     <Compile Include="Services\AnonymizationService.cs" />
     <Compile Include="Services\NiftiMetadataService.cs" />
     <Compile Include="Services\NiftiImageWriterService.cs" />
+    <Compile Include="Services\NiftiFileNaming.cs" />
     <Compile Include="Converters\BoolToVisibilityConverter.cs" />
     <Compile Include="Converters\InverseBoolConverter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">
