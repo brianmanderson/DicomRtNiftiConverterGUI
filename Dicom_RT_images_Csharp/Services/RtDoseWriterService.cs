@@ -49,9 +49,12 @@ namespace Dicom_RT_images_Csharp.Services
             if (!Directory.Exists(dosesDir))
                 return written;
 
-            var doseFiles = Directory.EnumerateFiles(dosesDir, "*.nii.gz", SearchOption.TopDirectoryOnly)
-                                     .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
-                                     .ToList();
+            var dupeWarnings = new List<string>();
+            var doseFiles = NiftiFileNaming.EnumerateNiftiFiles(dosesDir, dupeWarnings)
+                                           .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
+                                           .ToList();
+            foreach (var dup in dupeWarnings)
+                progress?.Report($"  Skipping {Path.GetFileName(dup)} — gzipped variant present.");
             if (doseFiles.Count == 0)
                 return written;
 
@@ -83,11 +86,7 @@ namespace Dicom_RT_images_Csharp.Services
             {
                 ct.ThrowIfCancellationRequested();
 
-                string baseName = Path.GetFileName(dosePath);
-                if (baseName.EndsWith(".nii.gz", StringComparison.OrdinalIgnoreCase))
-                    baseName = baseName.Substring(0, baseName.Length - ".nii.gz".Length);
-                else
-                    baseName = Path.GetFileNameWithoutExtension(baseName);
+                string baseName = NiftiFileNaming.StripNiftiExtension(dosePath);
 
                 // Compute the output path up-front so we can skip if it already exists.
                 string outName = useStableHashNames

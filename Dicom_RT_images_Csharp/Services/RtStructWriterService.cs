@@ -57,11 +57,14 @@ namespace Dicom_RT_images_Csharp.Services
             if (!Directory.Exists(masksDir))
                 throw new InvalidOperationException($"Required subfolder not found: {masksDir}");
 
-            var maskFiles = Directory.EnumerateFiles(masksDir, "*.nii.gz", SearchOption.TopDirectoryOnly)
-                                     .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
-                                     .ToList();
+            var dupeWarnings = new List<string>();
+            var maskFiles = NiftiFileNaming.EnumerateNiftiFiles(masksDir, dupeWarnings)
+                                           .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
+                                           .ToList();
+            foreach (var dup in dupeWarnings)
+                progress?.Report($"  Skipping {Path.GetFileName(dup)} — gzipped variant present.");
             if (maskFiles.Count == 0)
-                throw new InvalidOperationException($"No .nii.gz files found in {masksDir}");
+                throw new InvalidOperationException($"No .nii or .nii.gz files found in {masksDir}");
 
             bool hasReferenceSeries = referenceSeries != null
                 && referenceSeries.FilePaths != null
@@ -125,11 +128,7 @@ namespace Dicom_RT_images_Csharp.Services
                 ct.ThrowIfCancellationRequested();
                 roiNumber++;
 
-                string roiName = Path.GetFileName(maskPath);
-                if (roiName.EndsWith(".nii.gz", StringComparison.OrdinalIgnoreCase))
-                    roiName = roiName.Substring(0, roiName.Length - ".nii.gz".Length);
-                else
-                    roiName = Path.GetFileNameWithoutExtension(roiName);
+                string roiName = NiftiFileNaming.StripNiftiExtension(maskPath);
 
                 progress?.Report($"Processing ROI '{roiName}'...");
 

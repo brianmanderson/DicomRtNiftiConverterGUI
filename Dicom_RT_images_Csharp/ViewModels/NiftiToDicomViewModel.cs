@@ -229,29 +229,22 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
         private static List<string> GetMaskFiles(string folder)
         {
-            string masksDir = Path.Combine(folder, "masks");
-            if (!Directory.Exists(masksDir)) return new List<string>();
-            return Directory.EnumerateFiles(masksDir, "*.nii.gz", SearchOption.TopDirectoryOnly).ToList();
+            return NiftiFileNaming.EnumerateNiftiFiles(Path.Combine(folder, "masks")).ToList();
         }
 
         private static List<string> GetDoseFiles(string folder)
         {
-            string dosesDir = Path.Combine(folder, "doses");
-            if (!Directory.Exists(dosesDir)) return new List<string>();
-            return Directory.EnumerateFiles(dosesDir, "*.nii.gz", SearchOption.TopDirectoryOnly).ToList();
+            return NiftiFileNaming.EnumerateNiftiFiles(Path.Combine(folder, "doses")).ToList();
         }
 
         private static bool HasImageNifti(string folder)
         {
-            return File.Exists(Path.Combine(folder, "image.nii.gz"));
+            return NiftiFileNaming.TryGetImageNiftiPath(folder, out _);
         }
 
         private static string StripNiiGz(string fileName)
         {
-            string name = Path.GetFileName(fileName);
-            if (name.EndsWith(".nii.gz", StringComparison.OrdinalIgnoreCase))
-                return name.Substring(0, name.Length - ".nii.gz".Length);
-            return Path.GetFileNameWithoutExtension(name);
+            return NiftiFileNaming.StripNiftiExtension(fileName);
         }
 
         private void AddJobIfValid(string dicomFolder)
@@ -586,8 +579,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private static string ComputeFolderSignature(string dicomFolder)
         {
             string sigDicom = SignatureForDir(dicomFolder, "*", SearchOption.TopDirectoryOnly);
-            string sigMasks = SignatureForDir(Path.Combine(dicomFolder, "masks"), "*.nii.gz", SearchOption.TopDirectoryOnly);
-            string sigDoses = SignatureForDir(Path.Combine(dicomFolder, "doses"), "*.nii.gz", SearchOption.TopDirectoryOnly);
+            // Use "*.nii*" so both .nii and .nii.gz contribute to the signature; otherwise a
+            // user dropping in a plain .nii would never trigger the "folder is settled" check.
+            string sigMasks = SignatureForDir(Path.Combine(dicomFolder, "masks"), "*.nii*", SearchOption.TopDirectoryOnly);
+            string sigDoses = SignatureForDir(Path.Combine(dicomFolder, "doses"), "*.nii*", SearchOption.TopDirectoryOnly);
             return $"D[{sigDicom}]M[{sigMasks}]X[{sigDoses}]";
         }
 

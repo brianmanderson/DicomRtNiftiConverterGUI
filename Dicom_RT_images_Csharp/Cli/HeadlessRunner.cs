@@ -251,13 +251,17 @@ namespace Dicom_RT_images_Csharp.Cli
 
             try
             {
-                // Resolve image.nii.gz first so we can exclude it from the mask staging
-                // sweep -- otherwise it would be picked up as an "image" ROI.
-                string imageNifti = OptionalArg(args, "--image-nifti")
-                    ?? Path.Combine(masksFolder, "image.nii.gz");
+                // Resolve image.nii.gz / image.nii first so we can exclude it from the mask
+                // staging sweep -- otherwise it would be picked up as an "image" ROI.
+                string imageNiftiArg = OptionalArg(args, "--image-nifti");
+                string imageNifti;
+                if (!string.IsNullOrEmpty(imageNiftiArg))
+                    imageNifti = imageNiftiArg;
+                else if (!NiftiFileNaming.TryGetImageNiftiPath(masksFolder, out imageNifti))
+                    imageNifti = Path.Combine(masksFolder, NiftiFileNaming.ImageNiiGz);
                 string imageNiftiFull = File.Exists(imageNifti) ? Path.GetFullPath(imageNifti) : null;
 
-                foreach (var src in Directory.EnumerateFiles(masksFolder, "*.nii.gz", SearchOption.TopDirectoryOnly))
+                foreach (var src in NiftiFileNaming.EnumerateNiftiFiles(masksFolder))
                 {
                     // Skip the image volume; it must not be staged as a mask.
                     if (imageNiftiFull != null &&
@@ -265,18 +269,22 @@ namespace Dicom_RT_images_Csharp.Cli
                     {
                         continue;
                     }
-                    // Also skip any dose.nii.gz that happens to share the folder.
-                    if (string.Equals(Path.GetFileName(src), "dose.nii.gz", StringComparison.OrdinalIgnoreCase))
+                    // Also skip any dose.nii / dose.nii.gz that happens to share the folder.
+                    string srcName = Path.GetFileName(src);
+                    if (string.Equals(srcName, "dose.nii.gz", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(srcName, "dose.nii",   StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
-                    string dst = Path.Combine(stagedMasks, Path.GetFileName(src));
+                    string dst = Path.Combine(stagedMasks, srcName);
                     if (!CreateHardLink(dst, src, IntPtr.Zero)) File.Copy(src, dst);
                 }
 
                 if (imageNiftiFull != null)
                 {
-                    string stagedImage = Path.Combine(stage, "image.nii.gz");
+                    // Preserve the source extension so the downstream writer sees the same
+                    // file kind the user supplied (SimpleITK reads either form).
+                    string stagedImage = Path.Combine(stage, Path.GetFileName(imageNiftiFull));
                     if (!CreateHardLink(stagedImage, imageNiftiFull, IntPtr.Zero))
                         File.Copy(imageNiftiFull, stagedImage);
                 }
@@ -549,7 +557,7 @@ namespace Dicom_RT_images_Csharp.Cli
                 if (!CreateHardLink(dst, src, IntPtr.Zero))
                     File.Copy(src, dst);
             }
-            foreach (var src in Directory.EnumerateFiles(masksFolder, "*.nii.gz", SearchOption.TopDirectoryOnly))
+            foreach (var src in NiftiFileNaming.EnumerateNiftiFiles(masksFolder))
             {
                 string dst = Path.Combine(masksDir, Path.GetFileName(src));
                 if (!CreateHardLink(dst, src, IntPtr.Zero))

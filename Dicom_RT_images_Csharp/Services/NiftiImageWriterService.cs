@@ -12,16 +12,14 @@ using itk.simple;
 namespace Dicom_RT_images_Csharp.Services
 {
     /// <summary>
-    /// Writes <c>&lt;dicomFolder&gt;/image.nii.gz</c> as a single-series, multi-slice DICOM
-    /// image set (CT/MR/PT). One DICOM file per Nifti z-slice, all sharing the patient/study
-    /// metadata and FrameOfReferenceUID from <see cref="NiftiPatientMetadata"/>. After a
-    /// successful run, the generated SeriesInstanceUID and per-slice SOPInstanceUIDs are
+    /// Writes <c>&lt;dicomFolder&gt;/image.nii.gz</c> (or <c>image.nii</c>) as a single-series,
+    /// multi-slice DICOM image set (CT/MR/PT). One DICOM file per Nifti z-slice, all sharing
+    /// the patient/study metadata and FrameOfReferenceUID from <see cref="NiftiPatientMetadata"/>.
+    /// After a successful run, the generated SeriesInstanceUID and per-slice SOPInstanceUIDs are
     /// recorded back into the metadata so downstream RT-STRUCT/RT-DOSE writers reference them.
     /// </summary>
     public class NiftiImageWriterService
     {
-        private const string ImageFileName = "image.nii.gz";
-
         // SOP Class UIDs for the supported modalities.
         private const string CtImageStorage = "1.2.840.10008.5.1.4.1.1.2";
         private const string MrImageStorage = "1.2.840.10008.5.1.4.1.1.4";
@@ -35,10 +33,11 @@ namespace Dicom_RT_images_Csharp.Services
         }
 
         /// <summary>
-        /// If <paramref name="dicomFolder"/>/image.nii.gz exists and the folder does not already
-        /// contain a DICOM with the SeriesInstanceUID recorded in <paramref name="metadata"/>,
-        /// converts the Nifti volume to one DICOM per slice. Returns the list of written paths
-        /// (empty if no image was present or conversion was skipped).
+        /// If <paramref name="dicomFolder"/>/image.nii.gz (or image.nii) exists and the folder
+        /// does not already contain a DICOM with the SeriesInstanceUID recorded in
+        /// <paramref name="metadata"/>, converts the Nifti volume to one DICOM per slice.
+        /// Returns the list of written paths (empty if no image was present or conversion was
+        /// skipped).
         /// </summary>
         public List<string> ConvertImageNiftiToDicomSeries(
             string dicomFolder,
@@ -52,22 +51,22 @@ namespace Dicom_RT_images_Csharp.Services
             if (metadata == null) throw new ArgumentNullException(nameof(metadata));
 
             var written = new List<string>();
-            string imagePath = Path.Combine(dicomFolder, ImageFileName);
-            if (!File.Exists(imagePath))
+            if (!NiftiFileNaming.TryGetImageNiftiPath(dicomFolder, out string imagePath))
             {
                 return written;
             }
+            string imageFileName = Path.GetFileName(imagePath);
 
             // Idempotency: if the folder already contains a DICOM whose SeriesInstanceUID
             // matches the one recorded in metadata, skip regeneration.
             if (!string.IsNullOrEmpty(metadata.ImageSeriesInstanceUid)
                 && FolderContainsSeries(dicomFolder, metadata.ImageSeriesInstanceUid))
             {
-                progress?.Report($"  image.nii.gz already converted (series {ShortUid(metadata.ImageSeriesInstanceUid)} present) — skipping.");
+                progress?.Report($"  {imageFileName} already converted (series {ShortUid(metadata.ImageSeriesInstanceUid)} present) — skipping.");
                 return written;
             }
 
-            progress?.Report("Reading image.nii.gz...");
+            progress?.Report($"Reading {imageFileName}...");
             Image niftiImage;
             try
             {
@@ -101,7 +100,7 @@ namespace Dicom_RT_images_Csharp.Services
             var size = niftiImage.GetSize();
             if (size.Count < 3)
                 throw new InvalidOperationException(
-                    $"image.nii.gz must be a 3D volume (got {size.Count} dimensions).");
+                    $"Image NIfTI must be a 3D volume (got {size.Count} dimensions).");
             int cols = (int)size[0];
             int rows = (int)size[1];
             int depth = (int)size[2];
@@ -346,7 +345,7 @@ namespace Dicom_RT_images_Csharp.Services
             ds.AddOrUpdate(DicomTag.SeriesInstanceUID, seriesInstanceUid);
             ds.AddOrUpdate(DicomTag.SeriesNumber, 1);
             ds.AddOrUpdate(DicomTag.Modality, modality);
-            ds.AddOrUpdate(DicomTag.SeriesDescription, "Generated from image.nii.gz");
+            ds.AddOrUpdate(DicomTag.SeriesDescription, "Generated from NIfTI image");
 
             // Frame of reference
             ds.AddOrUpdate(DicomTag.FrameOfReferenceUID, metadata.FrameOfReferenceUid ?? "");
