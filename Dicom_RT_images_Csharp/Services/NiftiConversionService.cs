@@ -165,6 +165,15 @@ namespace Dicom_RT_images_Csharp.Services
             // Load reference image for geometry
             var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths);
             Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
+            // Per-slice ImagePositionPatient[2] (mm) for the RTSTRUCT-to-slice
+            // mapping. Required for correct rasterization on non-uniform-Z
+            // CT acquisitions (mixed 3 mm / 6 mm slice gaps, e.g. NSCLC-Radiomics
+            // LUNG1-014): ITK's TransformPhysicalPointToContinuousIndex assumes
+            // uniform spacing and shifts every contour plane by 1-2 slices in
+            // the non-uniform region, missing 11-14 of the RTSTRUCT-stated
+            // contour z-positions. The mask service does a nearest-slice
+            // lookup against this array instead.
+            double[] sliceZsMm = DicomImageSeriesLoader.ReadPerSliceZ(sortedFiles);
 
             var spacing = referenceImage.GetSpacing();
             double voxelVolume = spacing[0] * spacing[1] * spacing[2];
@@ -181,7 +190,7 @@ namespace Dicom_RT_images_Csharp.Services
 
             // Rasterize on the original reference grid (preserves contour fidelity)
             var masks = _maskService.RasterizeRois(
-                rtStructFilePath, referenceImage, roiNamesToExport, progress, ct);
+                rtStructFilePath, referenceImage, roiNamesToExport, progress, ct, sliceZsMm);
 
             // Compute volumes and write mask files (per-ROI work is independent;
             // resampling + StatisticsImageFilter + WriteImage are all thread-safe
@@ -260,6 +269,9 @@ namespace Dicom_RT_images_Csharp.Services
             // Load reference image for geometry
             var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths);
             Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
+            // Per-slice IPP[2] for nearest-slice rasterization on
+            // non-uniform-Z CTs; see ConvertRtStructToNifti for rationale.
+            double[] sliceZsMm = DicomImageSeriesLoader.ReadPerSliceZ(sortedFiles);
 
             var spacing = referenceImage.GetSpacing();
             double voxelVolume = spacing[0] * spacing[1] * spacing[2];
@@ -276,7 +288,7 @@ namespace Dicom_RT_images_Csharp.Services
 
             // Rasterize on the original reference grid (preserves contour fidelity)
             var masks = _maskService.RasterizeRois(
-                rtStructFilePath, referenceImage, roiNamesToExport, progress, ct);
+                rtStructFilePath, referenceImage, roiNamesToExport, progress, ct, sliceZsMm);
 
             // Compute volumes only (no file writing)
             var roiVolumes = new Dictionary<string, double>();

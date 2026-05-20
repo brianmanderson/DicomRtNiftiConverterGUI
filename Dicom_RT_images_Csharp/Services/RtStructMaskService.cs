@@ -31,8 +31,19 @@ namespace Dicom_RT_images_Csharp.Services
             Image referenceImage,
             Dictionary<string, string> roiNamesToExport,
             IProgress<string> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            IReadOnlyList<double> sliceZsMm = null)
         {
+            // <paramref name="sliceZsMm"/> is the per-slice
+            // ImagePositionPatient[2] (Z in patient coordinates, mm) for every
+            // CT slice, in the same order as <paramref name="referenceImage"/>'s
+            // Z axis. When supplied, the planar rasterizers map each contour
+            // plane's z-mm to a slice index by nearest-neighbour lookup against
+            // this array -- which is correct even on non-uniform-Z CTs (mixed
+            // 3 mm / 6 mm slice gaps, common on NSCLC-Radiomics). When null,
+            // the legacy code path falls back to ITK's uniform-spacing
+            // TransformPhysicalPointToContinuousIndex, which is fine for
+            // uniform-Z series but off by 1-2 slices on the non-uniform case.
             // ConcurrentDictionary because the per-ROI loop below is parallelized
             // (Parallel.ForEach). Each ROI gets its own private maskData buffer,
             // so writes never alias; the only shared state is this output map.
@@ -163,10 +174,14 @@ namespace Dicom_RT_images_Csharp.Services
                     switch (geoType)
                     {
                         case "CLOSED_PLANAR":
-                            handled = RasterizeClosedPlanar(contourData, referenceImage, maskData, rows, cols, slices);
+                            handled = RasterizeClosedPlanar(
+                                contourData, referenceImage, maskData,
+                                rows, cols, slices, sliceZsMm);
                             break;
                         case "OPEN_PLANAR":
-                            handled = RasterizeOpenPlanar(contourData, referenceImage, maskData, rows, cols, slices);
+                            handled = RasterizeOpenPlanar(
+                                contourData, referenceImage, maskData,
+                                rows, cols, slices, sliceZsMm);
                             break;
                         case "OPEN_NONPLANAR":
                             handled = RasterizeOpenNonplanar(contourData, referenceImage, maskData, rows, cols, slices);
@@ -207,14 +222,16 @@ namespace Dicom_RT_images_Csharp.Services
 
         private bool RasterizeClosedPlanar(
             double[] contourData, Image referenceImage,
-            byte[] maskData, int rows, int cols, int slices)
+            byte[] maskData, int rows, int cols, int slices,
+            IReadOnlyList<double> sliceZsMm)
         {
             if (contourData.Length < 9) return false; // need >= 3 points
 
             int pointCount = contourData.Length / 3;
             double[] polyX = new double[pointCount];
             double[] polyY = new double[pointCount];
-            double sliceZSum = 0;
+            double sliceZSumIndex = 0;
+            double sliceZSumMm = 0;
 
             for (int i = 0; i < pointCount; i++)
             {
@@ -222,10 +239,15 @@ namespace Dicom_RT_images_Csharp.Services
                 if (idx == null) return false;
                 polyX[i] = idx[0];
                 polyY[i] = idx[1];
-                sliceZSum += idx[2];
+                sliceZSumIndex += idx[2];
+                // contourData layout: [x0, y0, z0, x1, y1, z1, ...] in physical mm
+                sliceZSumMm += contourData[i * 3 + 2];
             }
 
-            int sliceIdx = (int)Math.Round(sliceZSum / pointCount);
+            int sliceIdx = ResolveSliceIndex(
+                avgZIndex: sliceZSumIndex / pointCount,
+                avgZMm: sliceZSumMm / pointCount,
+                sliceZsMm: sliceZsMm);
             if (sliceIdx < 0 || sliceIdx >= slices) return false;
 
             ScanlineFillPolygon(maskData, polyX, polyY, pointCount, sliceIdx, rows, cols);
@@ -238,14 +260,16 @@ namespace Dicom_RT_images_Csharp.Services
 
         private bool RasterizeOpenPlanar(
             double[] contourData, Image referenceImage,
-            byte[] maskData, int rows, int cols, int slices)
+            byte[] maskData, int rows, int cols, int slices,
+            IReadOnlyList<double> sliceZsMm)
         {
             if (contourData.Length < 6) return false; // need >= 2 points
 
             int pointCount = contourData.Length / 3;
             double[] polyX = new double[pointCount];
             double[] polyY = new double[pointCount];
-            double sliceZSum = 0;
+            double sliceZSumIndex = 0;
+            double sliceZSumMm = 0;
 
             for (int i = 0; i < pointCount; i++)
             {
@@ -253,10 +277,14 @@ namespace Dicom_RT_images_Csharp.Services
                 if (idx == null) return false;
                 polyX[i] = idx[0];
                 polyY[i] = idx[1];
-                sliceZSum += idx[2];
+                sliceZSumIndex += idx[2];
+                sliceZSumMm += contourData[i * 3 + 2];
             }
 
-            int sliceIdx = (int)Math.Round(sliceZSum / pointCount);
+            int sliceIdx = ResolveSliceIndex(
+                avgZIndex: sliceZSumIndex / pointCount,
+                avgZMm: sliceZSumMm / pointCount,
+                sliceZsMm: sliceZsMm);
             if (sliceIdx < 0 || sliceIdx >= slices) return false;
 
             // Draw line segments between consecutive points (not closed)
@@ -459,6 +487,46 @@ namespace Dicom_RT_images_Csharp.Services
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Map a contour plane's average Z to the CT slice index. Prefers the
+        /// per-slice <c>ImagePositionPatient[2]</c> lookup when available
+        /// (<paramref name="sliceZsMm"/> non-null and non-empty), which is
+        /// correct on non-uniform-Z CT acquisitions; falls back to rounding
+        /// the SimpleITK continuous-index Z when the caller didn't supply
+        /// the per-slice positions, preserving the original uniform-spacing
+        /// behaviour for backwards compatibility.
+        /// </summary>
+        /// <param name="avgZIndex">Mean of the contour points' SimpleITK
+        /// continuous-index Z (from <c>PhysicalToIndex</c>).</param>
+        /// <param name="avgZMm">Mean of the contour points' physical Z
+        /// (mm, in patient coordinates).</param>
+        /// <param name="sliceZsMm">Per-slice <c>ImagePositionPatient[2]</c>
+        /// in the same order as the reference image's Z axis, or null.</param>
+        private static int ResolveSliceIndex(
+            double avgZIndex,
+            double avgZMm,
+            IReadOnlyList<double> sliceZsMm)
+        {
+            if (sliceZsMm == null || sliceZsMm.Count == 0)
+            {
+                // Backward-compatible path: existing uniform-spacing rounding.
+                return (int)Math.Round(avgZIndex);
+            }
+            // Nearest-slice lookup against the actual per-slice Z positions.
+            int bestIdx = 0;
+            double bestDist = Math.Abs(sliceZsMm[0] - avgZMm);
+            for (int i = 1; i < sliceZsMm.Count; i++)
+            {
+                double d = Math.Abs(sliceZsMm[i] - avgZMm);
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    bestIdx = i;
+                }
+            }
+            return bestIdx;
         }
 
         /// <summary>
