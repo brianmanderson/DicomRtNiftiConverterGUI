@@ -113,5 +113,39 @@ namespace Dicom_RT_images_Csharp.Services
                 return false;
             }
         }
+
+        /// <summary>
+        /// Reads the per-slice ``ImagePositionPatient[2]`` (Z in patient
+        /// coordinates, mm) for every DICOM file in <paramref name="sortedDicomFiles"/>,
+        /// preserving the input file order. Used by RtStructMaskService to map
+        /// each RTSTRUCT contour plane's z-mm to the exact slice index, instead
+        /// of going through SimpleITK's <c>TransformPhysicalPointToContinuousIndex</c>
+        /// which assumes uniform Z spacing.
+        ///
+        /// On a non-uniform CT acquisition (mixed 3 mm / 6 mm gaps -- common
+        /// on NSCLC-Radiomics), the ITK-averaged spacing differs from any
+        /// individual slice's true Z position; rounding the
+        /// continuous-index Z then lands on the wrong slice for several
+        /// contour planes. Building the index from the per-DICOM
+        /// <c>ImagePositionPatient[2]</c> directly avoids this.
+        ///
+        /// Returns <c>null</c> if any file is unreadable; the caller can fall
+        /// back to the uniform-spacing path in that case.
+        /// </summary>
+        internal static double[] ReadPerSliceZ(List<string> sortedDicomFiles)
+        {
+            if (sortedDicomFiles == null || sortedDicomFiles.Count == 0)
+                return null;
+            var zs = new double[sortedDicomFiles.Count];
+            for (int i = 0; i < sortedDicomFiles.Count; i++)
+            {
+                if (!TryReadIpp(sortedDicomFiles[i], out double[] ipp))
+                {
+                    return null;
+                }
+                zs[i] = ipp[2];
+            }
+            return zs;
+        }
     }
 }
