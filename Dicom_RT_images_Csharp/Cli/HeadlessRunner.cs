@@ -40,6 +40,12 @@ namespace Dicom_RT_images_Csharp.Cli
     ///           [--modality {CT|MR|PT}]   (default: CT)
     ///           [--ref-dicom-folder PATH] (template for patient/study metadata)
     ///
+    ///   Image-forward (DICOM image series -> NIfTI image volume):
+    ///       Dicom_RT_images_Csharp.exe --headless --image-forward
+    ///           --image-folder PATH
+    ///           --output PATH             (.nii.gz output file)
+    ///           [--target-spacing X,Y,Z]  (optional resample, mm)
+    ///
     /// stdout: machine-readable lines describing every output file written.
     /// stderr: human-readable progress / error messages.
     /// Exit code: 0 on success, non-zero on failure.
@@ -74,8 +80,12 @@ namespace Dicom_RT_images_Csharp.Cli
                 {
                     return RunImageReverse(args);
                 }
+                if (HasFlag(args, "--image-forward"))
+                {
+                    return RunImageForward(args);
+                }
                 Console.Error.WriteLine(
-                    "Headless mode requires --forward, --reverse, or --image-reverse.");
+                    "Headless mode requires --forward, --reverse, --image-reverse, or --image-forward.");
                 PrintUsage();
                 return 2;
             }
@@ -442,6 +452,100 @@ namespace Dicom_RT_images_Csharp.Cli
         }
 
         // -----------------------------------------------------------------
+        //  Image-forward: DICOM image series -> NIfTI image volume
+        // -----------------------------------------------------------------
+
+        /// <summary>
+        /// Standalone DICOM image series -> NIfTI conversion. Wraps the existing
+        /// <see cref="NiftiConversionService.ConvertImageSeriesToNifti"/> service
+        /// so callers can produce a clean NIfTI from a folder of DICOM image
+        /// slices without supplying an RT-STRUCT (unlike <c>--forward
+        /// --include-image</c>, which requires one).
+        /// </summary>
+        private static int RunImageForward(string[] args)
+        {
+            string imageFolder = RequireArg(args, "--image-folder");
+            string outputPath  = RequireArg(args, "--output");
+            string spacingArg  = OptionalArg(args, "--target-spacing");
+
+            if (!Directory.Exists(imageFolder))
+                throw new DirectoryNotFoundException($"Image folder not found: {imageFolder}");
+
+            double[] targetSpacing = null;
+            if (!string.IsNullOrEmpty(spacingArg))
+            {
+                var parts = spacingArg.Split(',');
+                if (parts.Length != 3)
+                    throw new ArgumentException(
+                        $"--target-spacing expects 'X,Y,Z'; got '{spacingArg}'.");
+                targetSpacing = new double[3];
+                for (int i = 0; i < 3; i++)
+                {
+                    if (!double.TryParse(
+                            parts[i].Trim(),
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out targetSpacing[i]) || targetSpacing[i] <= 0)
+                    {
+                        throw new ArgumentException(
+                            $"--target-spacing component '{parts[i]}' is not a positive number.");
+                    }
+                }
+            }
+
+            // ConvertImageSeriesToNifti writes to <outputDir>/image.nii.gz with a
+            // hardcoded filename, so stage into a temp dir and move/rename to the
+            // caller-specified path. This mirrors the --image-reverse pattern.
+            string outputDir = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+            if (!string.IsNullOrEmpty(outputDir))
+                Directory.CreateDirectory(outputDir);
+
+            string stage = Path.Combine(
+                Path.GetTempPath(),
+                "rt_mask_validation_imfwd_" + Path.GetRandomFileName());
+            Directory.CreateDirectory(stage);
+            try
+            {
+                var imageSeries = BuildImageSeriesFromFolder(imageFolder);
+
+                Console.Error.WriteLine($"  Image series: {imageSeries.FilePaths.Count} files in {imageFolder}");
+                Console.Error.WriteLine($"  Modality:     {imageSeries.Modality}");
+                if (targetSpacing != null)
+                    Console.Error.WriteLine($"  Target spacing: {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
+                Console.Error.WriteLine($"  Output:       {outputPath}");
+
+                var maskService = new RtStructMaskService();
+                var conversionService = new NiftiConversionService(maskService);
+                var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
+
+                conversionService.ConvertImageSeriesToNifti(
+                    series: imageSeries,
+                    outputDir: stage,
+                    progress: progress,
+                    ct: CancellationToken.None,
+                    targetSpacing: targetSpacing);
+
+                string staged = Path.Combine(stage, "image.nii.gz");
+                if (!File.Exists(staged))
+                {
+                    Console.Error.WriteLine($"Conversion produced no NIfTI at {staged}.");
+                    return 1;
+                }
+
+                if (File.Exists(outputPath)) File.Delete(outputPath);
+                File.Move(staged, outputPath);
+
+                Console.Out.WriteLine("# rt_mask_validation image-forward");
+                Console.Out.WriteLine(Path.GetFullPath(outputPath));
+                return 0;
+            }
+            finally
+            {
+                TryCleanupStaging(stage);
+            }
+        }
+
+        // -----------------------------------------------------------------
         //  Helpers
         // -----------------------------------------------------------------
 
@@ -633,6 +737,10 @@ namespace Dicom_RT_images_Csharp.Cli
             Console.Error.WriteLine("  --headless --image-reverse --nifti-image PATH --output-folder PATH");
             Console.Error.WriteLine("                       [--modality CT|MR|PT]         (default: CT)");
             Console.Error.WriteLine("                       [--ref-dicom-folder PATH]     (currently ignored; metadata auto-synthesized)");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Image-forward (DICOM image series -> NIfTI image volume):");
+            Console.Error.WriteLine("  --headless --image-forward --image-folder PATH --output PATH");
+            Console.Error.WriteLine("                       [--target-spacing X,Y,Z]      (optional resample, mm)");
         }
     }
 }
