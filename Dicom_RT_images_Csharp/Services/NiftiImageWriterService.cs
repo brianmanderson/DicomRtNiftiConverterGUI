@@ -323,9 +323,13 @@ namespace Dicom_RT_images_Csharp.Services
             ds.AddOrUpdate(DicomTag.SpecificCharacterSet, "ISO_IR 192");
 
             // ImageType is Type 1 (required, non-empty) in the CT / MR / PT Image Module
-            // (DICOM PS3.3 C.7.6.1). DERIVED/SECONDARY because we regenerated the pixel
-            // data from a NIfTI volume rather than directly from the modality.
-            ds.AddOrUpdate(DicomTag.ImageType, "DERIVED", "SECONDARY", "AXIAL");
+            // (DICOM PS3.3 C.7.6.1). We mark these as ORIGINAL/PRIMARY/AXIAL even though
+            // the pixel data was regenerated from a NIfTI volume: Eclipse (and several
+            // other TPSes) refuse to accept an RT-STRUCT whose referenced image series
+            // is tagged SECONDARY -- the planning workflow only associates structure
+            // sets with PRIMARY image sets. The provenance is still recorded via
+            // SeriesDescription ("Generated from NIfTI image") and Manufacturer.
+            ds.AddOrUpdate(DicomTag.ImageType, "ORIGINAL", "PRIMARY", "AXIAL");
 
             // Patient
             ds.AddOrUpdate(DicomTag.PatientID, metadata.PatientId ?? "");
@@ -397,6 +401,11 @@ namespace Dicom_RT_images_Csharp.Services
             {
                 case "CT":
                     ds.AddOrUpdate(DicomTag.KVP, "120");
+                    // RescaleType (0028,1054) is Type 3 in the CT Image Module but de
+                    // facto required by Eclipse: without it, ARIA treats RescaleSlope/
+                    // Intercept as opaque scaling and refuses to associate an RT-STRUCT
+                    // with the series (planning workflows need an HU-calibrated CT).
+                    ds.AddOrUpdate(DicomTag.RescaleType, "HU");
                     break;
                 case "PT":
                     ds.AddOrUpdate(DicomTag.Units, "BQML");
