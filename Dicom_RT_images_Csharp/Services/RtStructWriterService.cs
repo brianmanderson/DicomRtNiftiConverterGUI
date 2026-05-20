@@ -737,13 +737,16 @@ namespace Dicom_RT_images_Csharp.Services
             if (string.IsNullOrEmpty(studyUid))
                 studyUid = DicomUIDGenerator.GenerateDerivedFromUUID().UID;
 
-            // ReferencedSOPClassUID in RTReferencedStudySequence: although the formally
-            // conformant choice is 1.2.840.10008.3.1.2.3.1 (Detached Study Management,
-            // retired), Eclipse / ARIA expect the RT Structure Set Storage SOP Class UID
-            // here (matching what Varian's own writer emits) and reject imports otherwise.
+            // ReferencedSOPClassUID inside RTReferencedStudySequence identifies the SOP
+            // Class of the referenced *study*, not the RT-Struct itself. The conventional
+            // value (used by pydicom's reference rtstruct, every TPS-emitted RT-Struct
+            // we've seen, and accepted by Eclipse / Aria / RayStation / MIM) is the
+            // retired Detached Study Management SOP Class 1.2.840.10008.3.1.2.3.1.
+            // Putting the RT Structure Set Storage SOP Class UID here caused Eclipse
+            // to flag the structure with a red X on import.
             var rtRefStudyItem = new DicomDataset
             {
-                { DicomTag.ReferencedSOPClassUID, RtStructSopClassUid },
+                { DicomTag.ReferencedSOPClassUID, "1.2.840.10008.3.1.2.3.1" },
                 { DicomTag.ReferencedSOPInstanceUID, studyUid }
             };
             rtRefStudyItem.Add(rtRefSeriesSeq);
