@@ -363,6 +363,11 @@ namespace Dicom_RT_images_Csharp.Services
 
             // General image / instance creation
             ds.AddOrUpdate(DicomTag.InstanceNumber, instanceNumber);
+            // AcquisitionNumber (0020,0012) is Type 3 in the General Image Module but
+            // Eclipse warns on import when it is absent. A single-acquisition CT/MR/PT
+            // series shares one AcquisitionNumber across all slices; the value itself is
+            // unconstrained beyond being an IS.
+            ds.AddOrUpdate(DicomTag.AcquisitionNumber, 1);
             ds.AddOrUpdate(DicomTag.InstanceCreationDate, nowDate);
             ds.AddOrUpdate(DicomTag.InstanceCreationTime, nowTime);
             ds.AddOrUpdate(DicomTag.ContentDate, nowDate);
