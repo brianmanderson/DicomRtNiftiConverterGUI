@@ -7,6 +7,7 @@ using System.Threading;
 using Dicom_RT_images_Csharp.Models;
 using Dicom_RT_images_Csharp.Services;
 using FellowOakDicom;
+using itk.simple;
 
 namespace Dicom_RT_images_Csharp.Cli
 {
@@ -37,7 +38,10 @@ namespace Dicom_RT_images_Csharp.Cli
     ///       Dicom_RT_images_Csharp.exe --headless --image-reverse
     ///           --nifti-image PATH
     ///           --output-folder PATH
-    ///           [--modality {CT|MR|PT}]   (default: CT)
+    ///           [--modality {CT|MR|PT|auto}]  (default: auto -- infers from
+    ///                                          the NIfTI's pixel type and
+    ///                                          value range; CT/MR/PT pin it
+    ///                                          explicitly)
     ///           [--ref-dicom-folder PATH] (template for patient/study metadata)
     ///
     ///   Image-forward (DICOM image series -> NIfTI image volume):
@@ -378,16 +382,34 @@ namespace Dicom_RT_images_Csharp.Cli
         {
             string niftiImage     = RequireArg(args, "--nifti-image");
             string outputFolder   = RequireArg(args, "--output-folder");
-            string modality       = OptionalArg(args, "--modality") ?? "CT";
+            // Default to "auto": infer CT/MR/PT from the NIfTI's pixel values
+            // unless the caller pins it explicitly. Keeps backward compat for
+            // callers that pass --modality CT|MR|PT.
+            string modality       = OptionalArg(args, "--modality") ?? "auto";
             string refDicomFolder = OptionalArg(args, "--ref-dicom-folder");
 
             if (!File.Exists(niftiImage))
                 throw new FileNotFoundException($"NIfTI image not found: {niftiImage}");
 
             string upperMod = modality.ToUpperInvariant();
-            if (upperMod != "CT" && upperMod != "MR" && upperMod != "PT")
+            if (upperMod != "CT" && upperMod != "MR" && upperMod != "PT"
+                && upperMod != "AUTO")
+            {
                 throw new ArgumentException(
-                    $"Unsupported modality '{modality}'; expected CT, MR, or PT.");
+                    $"Unsupported modality '{modality}'; expected CT, MR, PT, or auto.");
+            }
+
+            // Auto-infer when requested. Cheap (samples up to 100K voxels) so
+            // we just read the NIfTI here -- NiftiImageWriterService re-reads
+            // it later via the staging folder; the duplicate read costs ~ms.
+            if (upperMod == "AUTO")
+            {
+                using (var probeImage = SimpleITK.ReadImage(niftiImage))
+                {
+                    upperMod = NiftiModalityInferenceService.Infer(probeImage);
+                }
+                Console.Error.WriteLine($"  Modality auto-inferred as: {upperMod}");
+            }
 
             Directory.CreateDirectory(outputFolder);
 
@@ -735,7 +757,7 @@ namespace Dicom_RT_images_Csharp.Cli
             Console.Error.WriteLine();
             Console.Error.WriteLine("Image-reverse (NIfTI image volume -> DICOM image series):");
             Console.Error.WriteLine("  --headless --image-reverse --nifti-image PATH --output-folder PATH");
-            Console.Error.WriteLine("                       [--modality CT|MR|PT]         (default: CT)");
+            Console.Error.WriteLine("                       [--modality CT|MR|PT|auto]    (default: auto -- inferred from pixel values)");
             Console.Error.WriteLine("                       [--ref-dicom-folder PATH]     (currently ignored; metadata auto-synthesized)");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Image-forward (DICOM image series -> NIfTI image volume):");
