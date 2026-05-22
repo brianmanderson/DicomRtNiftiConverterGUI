@@ -105,26 +105,26 @@ namespace Dicom_RT_images_Csharp.Views
                     return;
             }
 
-            var dialog = new Microsoft.Win32.OpenFileDialog();
-            dialog.Title = "Select folder for AnonymizationKey.json";
-            dialog.ValidateNames = false;
-            dialog.CheckFileExists = false;
-            dialog.CheckPathExists = true;
-            dialog.FileName = "Select Folder";
-
-            string currentDir = Path.GetDirectoryName(_keyFilePath);
-            if (!string.IsNullOrEmpty(currentDir) && Directory.Exists(currentDir))
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
-                dialog.InitialDirectory = currentDir;
-            }
+                dialog.Description = "Select folder for AnonymizationKey.json";
+                dialog.UseDescriptionForTitle = true;
+                dialog.ShowNewFolderButton = true;
 
-            if (dialog.ShowDialog() == true)
-            {
-                string folder = Path.GetDirectoryName(dialog.FileName);
-                if (!string.IsNullOrEmpty(folder))
+                string currentDir = Path.GetDirectoryName(_keyFilePath);
+                if (!string.IsNullOrEmpty(currentDir) && Directory.Exists(currentDir))
                 {
-                    SetKeyFilePath(Path.Combine(folder, "AnonymizationKey.json"));
-                    LoadMappings();
+                    dialog.SelectedPath = currentDir;
+                }
+
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    string folder = dialog.SelectedPath;
+                    if (!string.IsNullOrEmpty(folder))
+                    {
+                        SetKeyFilePath(Path.Combine(folder, "AnonymizationKey.json"));
+                        LoadMappings();
+                    }
                 }
             }
         }

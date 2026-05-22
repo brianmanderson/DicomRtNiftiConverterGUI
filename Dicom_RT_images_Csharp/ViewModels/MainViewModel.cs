@@ -295,37 +295,37 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
         private void BrowseInput()
         {
-            var dialog = new Microsoft.Win32.OpenFileDialog();
-            dialog.Title = "Select DICOM input folder";
-            dialog.ValidateNames = false;
-            dialog.CheckFileExists = false;
-            dialog.CheckPathExists = true;
-            dialog.FileName = "Select Folder";
-            if (!string.IsNullOrEmpty(InputFolder) && Directory.Exists(InputFolder))
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
-                dialog.InitialDirectory = InputFolder;
-            }
-            if (dialog.ShowDialog() == true)
-            {
-                InputFolder = Path.GetDirectoryName(dialog.FileName);
+                dialog.Description = "Select DICOM input folder";
+                dialog.UseDescriptionForTitle = true;
+                dialog.ShowNewFolderButton = false;
+                if (!string.IsNullOrEmpty(InputFolder) && Directory.Exists(InputFolder))
+                {
+                    dialog.SelectedPath = InputFolder;
+                }
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    InputFolder = dialog.SelectedPath;
+                }
             }
         }
 
         private void BrowseOutput()
         {
-            var dialog = new Microsoft.Win32.OpenFileDialog();
-            dialog.Title = "Select output folder for NIfTI files";
-            dialog.ValidateNames = false;
-            dialog.CheckFileExists = false;
-            dialog.CheckPathExists = true;
-            dialog.FileName = "Select Folder";
-            if (!string.IsNullOrEmpty(OutputFolder) && Directory.Exists(OutputFolder))
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
-                dialog.InitialDirectory = OutputFolder;
-            }
-            if (dialog.ShowDialog() == true)
-            {
-                OutputFolder = Path.GetDirectoryName(dialog.FileName);
+                dialog.Description = "Select output folder for NIfTI files";
+                dialog.UseDescriptionForTitle = true;
+                dialog.ShowNewFolderButton = true;
+                if (!string.IsNullOrEmpty(OutputFolder) && Directory.Exists(OutputFolder))
+                {
+                    dialog.SelectedPath = OutputFolder;
+                }
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    OutputFolder = dialog.SelectedPath;
+                }
             }
         }
 

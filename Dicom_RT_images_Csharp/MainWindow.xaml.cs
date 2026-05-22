@@ -20,9 +20,27 @@ namespace Dicom_RT_images_Csharp
     /// </summary>
     public partial class MainWindow : Window
     {
+        private bool _autoScrollLog = true;
+
         public MainWindow()
         {
             InitializeComponent();
+        }
+
+        private void LogTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_autoScrollLog)
+            {
+                LogTextBox.ScrollToEnd();
+            }
+        }
+
+        private void LogTextBox_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            // Ignore scroll events caused by appended content; only react to user-driven scrolls.
+            if (e.ExtentHeightChange != 0) return;
+
+            _autoScrollLog = e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 1.0;
         }
     }
 }

@@ -342,10 +342,12 @@
                             Style="{StaticResource ActionButtonStyle}"/>
                 </Grid>
 
-                <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                <TextBox x:Name="LogTextBox" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
                          VerticalScrollBarVisibility="Auto" Height="120"
                          FontFamily="Consolas" FontSize="11"
                          TextWrapping="Wrap" AcceptsReturn="True"
+                         TextChanged="LogTextBox_TextChanged"
+                         ScrollViewer.ScrollChanged="LogTextBox_ScrollChanged"
                          Background="#FAFAFA" BorderBrush="#E0E0E0" Padding="8"/>
             </StackPanel>
         </Border>

@@ -152,24 +152,21 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
         private void BrowseRootFolder()
         {
-            // Match the MainWindow folder-picker convention.
-            var dialog = new Microsoft.Win32.OpenFileDialog
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
-                Title = "Select a DICOM folder (or parent folder containing several DICOM folders)",
-                ValidateNames = false,
-                CheckFileExists = false,
-                CheckPathExists = true,
-                FileName = "Select Folder"
-            };
-            if (!string.IsNullOrEmpty(RootFolder) && Directory.Exists(RootFolder))
-                dialog.InitialDirectory = RootFolder;
+                dialog.Description = "Select a DICOM folder (or parent folder containing several DICOM folders)";
+                dialog.UseDescriptionForTitle = true;
+                dialog.ShowNewFolderButton = false;
+                if (!string.IsNullOrEmpty(RootFolder) && Directory.Exists(RootFolder))
+                    dialog.SelectedPath = RootFolder;
 
-            if (dialog.ShowDialog() != true) return;
+                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
 
-            RootFolder = Path.GetDirectoryName(dialog.FileName) ?? "";
-            // Folder selection no longer auto-scans — the user clicks the separate Scan button
-            // (mirrors the DICOM → NIfTI window's Browse + Scan pattern).
-            StatusText = "Folder set. Click 'Scan' to discover convertible folders.";
+                RootFolder = dialog.SelectedPath;
+                // Folder selection no longer auto-scans — the user clicks the separate Scan button
+                // (mirrors the DICOM → NIfTI window's Browse + Scan pattern).
+                StatusText = "Folder set. Click 'Scan' to discover convertible folders.";
+            }
         }
 
         /// <summary>
