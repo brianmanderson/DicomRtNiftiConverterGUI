@@ -108,7 +108,6 @@ namespace Dicom_RT_images_Csharp.Views
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
                 dialog.Description = "Select folder for AnonymizationKey.json";
-                dialog.UseDescriptionForTitle = true;
                 dialog.ShowNewFolderButton = true;
 
                 string currentDir = Path.GetDirectoryName(_keyFilePath);
