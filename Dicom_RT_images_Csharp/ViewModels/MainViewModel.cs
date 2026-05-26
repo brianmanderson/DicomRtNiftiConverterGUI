@@ -298,7 +298,6 @@ namespace Dicom_RT_images_Csharp.ViewModels
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
                 dialog.Description = "Select DICOM input folder";
-                dialog.UseDescriptionForTitle = true;
                 dialog.ShowNewFolderButton = false;
                 if (!string.IsNullOrEmpty(InputFolder) && Directory.Exists(InputFolder))
                 {
@@ -316,7 +315,6 @@ namespace Dicom_RT_images_Csharp.ViewModels
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
                 dialog.Description = "Select output folder for NIfTI files";
-                dialog.UseDescriptionForTitle = true;
                 dialog.ShowNewFolderButton = true;
                 if (!string.IsNullOrEmpty(OutputFolder) && Directory.Exists(OutputFolder))
                 {

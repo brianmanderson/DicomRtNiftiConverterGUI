@@ -171,7 +171,7 @@ jobs:
               --report-json conformance-report.json
 
       - name: Upload conformance report + artifacts
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: conformance-report

@@ -155,7 +155,6 @@ namespace Dicom_RT_images_Csharp.ViewModels
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
                 dialog.Description = "Select a DICOM folder (or parent folder containing several DICOM folders)";
-                dialog.UseDescriptionForTitle = true;
                 dialog.ShowNewFolderButton = false;
                 if (!string.IsNullOrEmpty(RootFolder) && Directory.Exists(RootFolder))
                     dialog.SelectedPath = RootFolder;
