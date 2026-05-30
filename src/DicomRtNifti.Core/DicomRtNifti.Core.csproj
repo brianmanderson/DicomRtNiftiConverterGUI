@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\SimpleITK.props" />
+
+  <PropertyGroup>
+    <AssemblyName>DicomRtNifti.Core</AssemblyName>
+    <!-- Keep the original namespace so the linked service/model files resolve unchanged. -->
+    <RootNamespace>Dicom_RT_images_Csharp</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <!-- Some service helpers (e.g. NiftiFileNaming) are `internal`; they were accessible when
+       everything was one assembly. The CLI and (later) the Avalonia app are separate
+       assemblies, so grant them access rather than widening the legacy types' visibility. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="DicomRtNifti.Cli" />
+    <InternalsVisibleTo Include="DicomRtNifti.App" />
+  </ItemGroup>
+
+  <!--
+    The shared business logic still physically lives in the legacy project tree during the
+    migration; we LINK it here rather than move it, so the legacy net48 WPF build stays intact.
+    These files move into this project when the WPF project is retired (Phases 3-4).
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\Dicom_RT_images_Csharp\Services\**\*.cs" LinkBase="Services" />
+    <Compile Include="..\..\Dicom_RT_images_Csharp\Models\**\*.cs" LinkBase="Models" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="fo-dicom" Version="5.2.5" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
+  </ItemGroup>
+
+</Project>
