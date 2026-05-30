@@ -773,7 +773,13 @@ namespace Dicom_RT_images_Csharp.Cli
             }
             catch (Exception ex)
             {
-                return $"SimpleITK native: FAILED TO LOAD -- {ex.GetType().Name}: {ex.Message}";
+                // Walk the inner-exception chain: the outer TypeInitializationException
+                // hides the real dlopen / DllNotFound detail that pins down a native load
+                // failure (missing dependency, code-signature rejection, arch mismatch).
+                string detail = "";
+                for (var e = ex; e != null; e = e.InnerException)
+                    detail += (detail.Length > 0 ? " <- " : "") + e.GetType().Name + ": " + e.Message;
+                return "SimpleITK native: FAILED TO LOAD -- " + detail;
             }
         }
 
