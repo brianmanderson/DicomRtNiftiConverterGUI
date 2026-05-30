@@ -50,7 +50,7 @@
     </None>
   </ItemGroup>
 
-  <!-- macOS native (x86_64; Apple Silicon runs under Rosetta until a native arm64 build is staged) -->
+  <!-- macOS native (libSimpleITKCSharpNative.dylib; arch follows the staged SimpleITK build) -->
   <ItemGroup Condition="Exists('$(SitkDir)/libSimpleITKCSharpNative.dylib')">
     <None Include="$(SitkDir)/libSimpleITKCSharpNative.dylib">
       <Link>libSimpleITKCSharpNative.dylib</Link>

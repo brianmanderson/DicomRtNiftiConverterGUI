@@ -29,7 +29,7 @@ jobs:
     # The macOS x86_64 SimpleITK native load is still being worked out, so keep that
     # lane non-blocking: green Windows/Linux gate the workflow while macOS reports
     # best-effort. Remove once the macOS native loads reliably.
-    continue-on-error: ${{ matrix.os == 'macos-15-intel' }}
+    continue-on-error: ${{ startsWith(matrix.rid, 'osx') }}
     strategy:
       # Report every platform independently; a macOS-only failure must not mask
       # green Windows/Linux results.
@@ -42,12 +42,12 @@ jobs:
           - os: ubuntu-latest
             rid: linux-x64
             sitk_zip: SimpleITK-2.5.0-CSharp-linux_x86_64.zip
-          # macOS C# native is x86_64. GitHub retired the macos-13 (Intel) image
-          # in Dec 2025, so use macos-15-intel -- the x86_64 label on macOS 15,
-          # available until Aug 2027. Apple Silicon (arm64) waits on a native
-          # arm64 SimpleITK build or a Rosetta lane.
-          - os: macos-15-intel
-            rid: osx-x64
+          # SimpleITK's macosx-11.0 C# build is arm64 (macosx-10.9 is the x86_64
+          # one), so target Apple Silicon directly: macos-latest is arm64 and
+          # setup-dotnet installs the matching arm64 SDK. Native M-series support
+          # rather than a legacy Intel/Rosetta lane.
+          - os: macos-latest
+            rid: osx-arm64
             sitk_zip: SimpleITK-2.5.0-CSharp-macosx-11.0-anycpu.zip
 
     steps:
