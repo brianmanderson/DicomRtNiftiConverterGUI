@@ -43,6 +43,15 @@ namespace Dicom_RT_images_Csharp.Services
             var studyLookup = new ConcurrentDictionary<string, DicomStudyGroup>();
             var seriesLookup = new ConcurrentDictionary<string, DicomSeriesGroup>();
 
+            // Per-series modality tally (SeriesUID -> Modality -> file count). DICOM
+            // Modality (0008,0060) is a series-level attribute, but non-conformant exports
+            // occasionally carry a stray value on one instance (a localizer, a derived/
+            // secondary-capture object). We reconcile each series to the majority after the
+            // scan rather than letting whichever file wins the parallel GetOrAdd race decide
+            // — the latter is non-deterministic and was the cause of an MR series being
+            // badged [CT].
+            var modalityCounts = new ConcurrentDictionary<string, ConcurrentDictionary<string, int>>();
+
             // Process files in parallel with bounded concurrency
             var semaphore = new SemaphoreSlim(Environment.ProcessorCount * 2);
 
@@ -52,7 +61,7 @@ namespace Dicom_RT_images_Csharp.Services
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await ProcessFileAsync(filePath, patients, studyLookup, seriesLookup).ConfigureAwait(false);
+                    await ProcessFileAsync(filePath, patients, studyLookup, seriesLookup, modalityCounts).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -84,6 +93,10 @@ namespace Dicom_RT_images_Csharp.Services
             await Task.WhenAll(tasks).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
+            // Reconcile each series' modality to the majority across its files. Must run
+            // before linking, since LinkRtDataToImageSeries filters series by modality.
+            ReconcileSeriesModalities(seriesLookup, modalityCounts);
+
             // Link RTSTRUCT and RTDOSE to their parent image series
             progress?.Report("Linking RT data to image series...");
             LinkRtDataToImageSeries(patients.Values.ToList(), seriesLookup);
@@ -108,7 +121,8 @@ namespace Dicom_RT_images_Csharp.Services
             string filePath,
             ConcurrentDictionary<string, DicomPatientGroup> patients,
             ConcurrentDictionary<string, DicomStudyGroup> studyLookup,
-            ConcurrentDictionary<string, DicomSeriesGroup> seriesLookup)
+            ConcurrentDictionary<string, DicomSeriesGroup> seriesLookup,
+            ConcurrentDictionary<string, ConcurrentDictionary<string, int>> modalityCounts)
         {
             DicomFile dcmFile;
             try
@@ -143,6 +157,15 @@ namespace Dicom_RT_images_Csharp.Services
 
             if (string.IsNullOrEmpty(studyUid) || string.IsNullOrEmpty(seriesUid))
                 return;
+
+            // Tally this file's modality so the series modality can be reconciled to the
+            // majority after the scan (see ReconcileSeriesModalities).
+            if (!string.IsNullOrEmpty(modality))
+            {
+                modalityCounts
+                    .GetOrAdd(seriesUid, _ => new ConcurrentDictionary<string, int>())
+                    .AddOrUpdate(modality, 1, (_, c) => c + 1);
+            }
 
             // Get or create patient
             var patient = patients.GetOrAdd(patientId, id => new DicomPatientGroup
@@ -374,6 +397,45 @@ namespace Dicom_RT_images_Csharp.Services
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Image modalities, used to break modality-tally ties toward a real image series.
+        /// </summary>
+        private static readonly HashSet<string> ImageModalities =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CT", "MR", "PT", "PET", "NM" };
+
+        /// <summary>
+        /// Sets each series' Modality to the most common value seen across its files.
+        /// Without this the series modality was whichever file happened to win the parallel
+        /// GetOrAdd race — non-deterministic, and the cause of an MR series occasionally
+        /// being badged [CT] when a stray instance carried a different Modality tag.
+        /// </summary>
+        private static void ReconcileSeriesModalities(
+            ConcurrentDictionary<string, DicomSeriesGroup> seriesLookup,
+            ConcurrentDictionary<string, ConcurrentDictionary<string, int>> modalityCounts)
+        {
+            foreach (var kvp in seriesLookup)
+            {
+                if (modalityCounts.TryGetValue(kvp.Key, out var counts) && counts.Count > 0)
+                {
+                    kvp.Value.Modality = PickDominantModality(counts);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Picks the dominant modality: highest file count wins; ties break toward an image
+        /// modality (CT/MR/PT/...), then by ordinal name so the result is deterministic.
+        /// </summary>
+        private static string PickDominantModality(ConcurrentDictionary<string, int> counts)
+        {
+            return counts
+                .OrderByDescending(c => c.Value)
+                .ThenByDescending(c => ImageModalities.Contains(c.Key))
+                .ThenBy(c => c.Key, StringComparer.Ordinal)
+                .First()
+                .Key;
         }
 
         /// <summary>
