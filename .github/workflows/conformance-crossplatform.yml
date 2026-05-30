@@ -38,9 +38,11 @@ jobs:
           - os: ubuntu-latest
             rid: linux-x64
             sitk_zip: SimpleITK-2.5.0-CSharp-linux_x86_64.zip
-          # macOS C# native is x86_64, so use an Intel runner (macos-13). Apple
-          # Silicon support waits on a native arm64 build or a Rosetta lane.
-          - os: macos-13
+          # macOS C# native is x86_64. GitHub retired the macos-13 (Intel) image
+          # in Dec 2025, so use macos-15-intel -- the x86_64 label on macOS 15,
+          # available until Aug 2027. Apple Silicon (arm64) waits on a native
+          # arm64 SimpleITK build or a Rosetta lane.
+          - os: macos-15-intel
             rid: osx-x64
             sitk_zip: SimpleITK-2.5.0-CSharp-macosx-11.0-anycpu.zip
 
