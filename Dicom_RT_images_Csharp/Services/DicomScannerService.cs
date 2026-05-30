@@ -392,7 +392,13 @@ namespace Dicom_RT_images_Csharp.Services
 
                         if (matchedImage != null)
                         {
-                            matchedImage.LinkedRtDose = rtDose;
+                            // Capture every dose; a study can carry more than one (per-beam,
+                            // plan-sum, multiple plans). The legacy singular reference is kept
+                            // pointing at the first for back-compat with consumers not yet
+                            // updated to iterate the list.
+                            matchedImage.LinkedRtDoses.Add(rtDose);
+                            if (matchedImage.LinkedRtDose == null)
+                                matchedImage.LinkedRtDose = rtDose;
                         }
                     }
                 }

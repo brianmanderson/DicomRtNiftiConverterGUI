@@ -48,9 +48,18 @@ namespace Dicom_RT_images_Csharp.Models
         public DicomSeriesGroup LinkedRtStruct { get; set; }
 
         /// <summary>
-        /// The RTDOSE series linked to this image series (null if none found).
+        /// The first RTDOSE series linked to this image series (null if none found).
+        /// Retained for backward compatibility; prefer <see cref="LinkedRtDoses"/>, which
+        /// captures every linked dose.
         /// </summary>
         public DicomSeriesGroup LinkedRtDose { get; set; }
+
+        /// <summary>
+        /// All RTDOSE series linked to this image series. A study can contain more than one
+        /// dose (per-beam, plan-sum, or multiple plans), so a single reference silently
+        /// dropped all but the last. This list captures every linked dose.
+        /// </summary>
+        public List<DicomSeriesGroup> LinkedRtDoses { get; set; } = new List<DicomSeriesGroup>();
 
         /// <summary>
         /// The referenced image SeriesInstanceUID extracted from RTSTRUCT/RTDOSE (used during linking).
