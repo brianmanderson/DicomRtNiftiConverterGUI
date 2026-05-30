@@ -15,6 +15,10 @@ name: Release (cross-platform CLI)
 on:
   push:
     branches: [main]
+  # TEMPORARY: validate the cross-platform build + packaging on the PR (the publish
+  # job is main-guarded, so no release is created). Removed before merge.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
