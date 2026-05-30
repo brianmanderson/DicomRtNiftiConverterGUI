@@ -1,0 +1,108 @@
+name: Conformance (cross-platform)
+
+# Multi-OS analytical accuracy gate for the .NET 8 cross-platform CLI
+# (DicomRtNifti.Cli), the successor to the Windows-only WPF exe exercised by
+# conformance.yml. A platform is only claimed as "supported" once this gate is
+# green on it. Runs alongside the legacy Windows conformance during the
+# migration; the legacy workflow is removed once the Avalonia port lands.
+#
+# The fixture (synthetic CT + RTSTRUCT + analytic per-ROI ground-truth NIfTIs)
+# is generated at job time by rtmask-conformance -- no test data is committed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SIMPLEITK_BASE_URL: "https://github.com/SimpleITK/SimpleITK/releases/download/v2.5.0"
+  # rtmask-conformance pin (SHA, not branch/tag) so the gate is reproducible.
+  RTMASK_CONFORMANCE_REF: "f1080dfdbbcf04c37499234e68e6c4970233e2dc"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  conformance:
+    name: ${{ matrix.rid }} conformance (.NET 8 CLI)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report every platform independently; a macOS-only failure must not mask
+      # green Windows/Linux results.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            sitk_zip: SimpleITK-2.5.0-CSharp-win64-x64.zip
+          - os: ubuntu-latest
+            rid: linux-x64
+            sitk_zip: SimpleITK-2.5.0-CSharp-linux_x86_64.zip
+          # macOS C# native is x86_64, so use an Intel runner (macos-13). Apple
+          # Silicon support waits on a native arm64 build or a Rosetta lane.
+          - os: macos-13
+            rid: osx-x64
+            sitk_zip: SimpleITK-2.5.0-CSharp-macosx-11.0-anycpu.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install rtmask-conformance from pinned commit
+        run: python -m pip install "git+https://github.com/brianmanderson/RTMaskConformanceTest@${{ env.RTMASK_CONFORMANCE_REF }}"
+
+      - name: Stage SimpleITK C# binaries (per-OS) one level above the workspace
+        run: python .github/scripts/stage_simpleitk.py "${{ env.SIMPLEITK_BASE_URL }}/${{ matrix.sitk_zip }}" "${{ github.workspace }}"
+
+      - name: Build cross-platform solution (Release)
+        run: dotnet build DicomRtNifti.sln -c Release
+
+      - name: Unit tests (Core)
+        run: dotnet test tests/DicomRtNifti.Core.Tests/DicomRtNifti.Core.Tests.csproj -c Release --no-build --verbosity normal
+
+      - name: SimpleITK native load probe
+        # --version constructs a 1x1x1 SimpleITK image; fails loudly if the
+        # per-platform native didn't resolve.
+        run: dotnet run --project src/DicomRtNifti.Cli -c Release --no-build -- --version
+
+      - name: Generate conformance fixture
+        run: rtmask-conformance generate ./fixture --n-quadrature 2
+
+      - name: Run forward conversion (.NET 8 CLI)
+        run: >
+          dotnet run --project src/DicomRtNifti.Cli -c Release --no-build --
+          --forward
+          --rtstruct ./fixture/rtstruct/primitives_planar.dcm
+          --image-folder ./fixture/refct
+          --output-folder ./predictions
+
+      - name: Verify predictions against analytic ground truth
+        run: >
+          rtmask-conformance verify
+          --predictions ./predictions
+          --groundtruth ./fixture/groundtruth
+          --config ./conformance.yaml
+          --report-json conformance-report.json
+
+      - name: Upload conformance report + predictions on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report-${{ matrix.rid }}
+          path: |
+            conformance-report.json
+            predictions/
+            fixture/groundtruth/
+            fixture/manifest.json
+          retention-days: 30
+          if-no-files-found: warn
