@@ -1,0 +1,160 @@
+name: Release (cross-platform CLI)
+
+# Publishes self-contained builds of the .NET 8 headless CLI (DicomRtNifti.Cli)
+# for win-x64, linux-x64, and osx-arm64 to a rolling `latest-cli` GitHub Release.
+# No .NET install required on the user's machine.
+#
+# Runs alongside the legacy release.yml (which publishes the Windows WPF GUI to
+# the `latest-build` tag) -- a SEPARATE tag, so the two never clobber each
+# other's assets. When the Avalonia GUI lands (cross-platform), the GUI folds
+# into this workflow and the legacy one is retired.
+#
+# Tagged stable (v*) cross-platform releases are deferred to that unification;
+# this workflow is rolling-only for now.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-cli-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
+env:
+  SIMPLEITK_BASE_URL: "https://github.com/SimpleITK/SimpleITK/releases/download/v2.5.0"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build:
+    name: Publish CLI (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            sitk_zip: SimpleITK-2.5.0-CSharp-win64-x64.zip
+          - os: ubuntu-latest
+            rid: linux-x64
+            sitk_zip: SimpleITK-2.5.0-CSharp-linux_x86_64.zip
+          - os: macos-latest
+            rid: osx-arm64
+            sitk_zip: SimpleITK-2.5.0-CSharp-macosx-11.0-anycpu.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stage SimpleITK C# binaries (per-OS) one level above the workspace
+        run: python .github/scripts/stage_simpleitk.py "${{ env.SIMPLEITK_BASE_URL }}/${{ matrix.sitk_zip }}" "${{ github.workspace }}"
+
+      - name: Ad-hoc sign the SimpleITK native (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          dylib="$(dirname "$GITHUB_WORKSPACE")/SimpleITK/libSimpleITKCSharpNative.dylib"
+          xattr -cr "$dylib" || true
+          codesign --force --sign - "$dylib" || true
+
+      - name: Publish self-contained CLI
+        run: dotnet publish src/DicomRtNifti.Cli/DicomRtNifti.Cli.csproj -c Release -r ${{ matrix.rid }} --self-contained -o publish
+
+      - name: Verify publish output (exe + native present)
+        shell: bash
+        run: |
+          set -e
+          ls -la publish
+          case "${{ matrix.rid }}" in
+            win-x64)   exe=DicomRtNifti.Cli.exe; nat=SimpleITKCSharpNative.dll;;
+            linux-x64) exe=DicomRtNifti.Cli;     nat=libSimpleITKCSharpNative.so;;
+            osx-arm64) exe=DicomRtNifti.Cli;     nat=libSimpleITKCSharpNative.dylib;;
+          esac
+          test -f "publish/$exe" || { echo "::error::missing $exe in publish output"; exit 1; }
+          test -f "publish/$nat" || { echo "::error::missing native $nat in publish output"; exit 1; }
+          echo "OK: $exe + $nat present"
+
+      - name: Package (zip, Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path publish/* -DestinationPath "DicomRtNifti-cli-${{ matrix.rid }}.zip" -CompressionLevel Optimal
+
+      - name: Package (tar.gz, Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: tar -czf "DicomRtNifti-cli-${{ matrix.rid }}.tar.gz" -C publish .
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.rid }}
+          path: |
+            DicomRtNifti-cli-${{ matrix.rid }}.zip
+            DicomRtNifti-cli-${{ matrix.rid }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish rolling CLI release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only publish a real release from main. A workflow_dispatch on a feature
+    # branch still runs the build matrix above (validating the cross-platform
+    # publish + packaging) but skips this step, so no stray release is created.
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Compute version + tag
+        id: meta
+        shell: bash
+        run: |
+          sha="$(echo "${{ github.sha }}" | cut -c1-7)"
+          stamp="$(date -u +%Y%m%d)"
+          echo "version=latest-$stamp-$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=latest-cli" >> "$GITHUB_OUTPUT"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: find artifacts -type f
+
+      - name: Delete previous rolling CLI release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete "${{ steps.meta.outputs.tag }}" --yes --cleanup-tag \
+            --repo "${{ github.repository }}" || echo "No prior ${{ steps.meta.outputs.tag }} release (first run)."
+
+      - name: Publish rolling pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "Cross-platform CLI (${{ steps.meta.outputs.version }})"
+          body: |
+            Rolling pre-release of the cross-platform headless CLI (`DicomRtNifti.Cli`),
+            self-contained for **win-x64**, **linux-x64**, and **osx-arm64** (Apple Silicon).
+            No .NET runtime install required.
+
+            - Built from commit ${{ github.sha }}
+            - Unzip/untar the archive for your platform and run `DicomRtNifti.Cli --help`
+            - The Windows GUI is published separately at the `latest-build` tag.
+          prerelease: true
+          make_latest: false
+          files: artifacts/**/*
+          fail_on_unmatched_files: true

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\SimpleITK.props" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>DicomRtNifti.Cli</AssemblyName>
+    <RootNamespace>Dicom_RT_images_Csharp.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DicomRtNifti.Core\DicomRtNifti.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Used directly by HeadlessRunner (fo-dicom types, code-page registration). -->
+    <PackageReference Include="fo-dicom" Version="5.2.5" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,62 @@
+<Project>
+
+  <!--
+    SimpleITK C# bindings wiring, shared by every src/ project that touches itk.simple.
+
+    The managed wrapper (SimpleITKCSharpManaged.dll) is platform-agnostic and referenced
+    directly. The native library is per-OS/arch and is loaded by the managed wrapper via
+    DllImport, so it must sit in the application base directory (next to the output exe/dll).
+    .NET's native-library probe includes the app base dir on every OS, so a flat copy there
+    is what makes the DllImport resolve.
+
+    Native file names already differ per platform, so all three can live side by side in
+    SitkDir; the Exists() guards copy whichever the current runner staged. Paths use forward
+    slashes so MSBuild resolves them on Windows, Linux, and macOS alike.
+
+    CI stages SitkDir per-OS via .github/scripts/stage_simpleitk.py; local Windows dev uses
+    the SimpleITK distribution unzipped at ../SimpleITK (one level above the repo).
+  -->
+  <PropertyGroup>
+    <!-- Override on the command line with -p:SitkDir=... . Default resolves to
+         <repoRoot>/../SimpleITK (one level above the repo), matching the legacy
+         ..\..\SimpleITK HintPath and the CI staging convention. -->
+    <SitkDir Condition="'$(SitkDir)' == ''">$(MSBuildThisFileDirectory)../../SimpleITK</SitkDir>
+    <SitkManagedDll Condition="'$(SitkManagedDll)' == ''">$(SitkDir)/SimpleITKCSharpManaged.dll</SitkManagedDll>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="SimpleITKCSharpManaged">
+      <HintPath>$(SitkManagedDll)</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Windows x64 native -->
+  <ItemGroup Condition="Exists('$(SitkDir)/SimpleITKCSharpNative.dll')">
+    <None Include="$(SitkDir)/SimpleITKCSharpNative.dll">
+      <Link>SimpleITKCSharpNative.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
+  <!-- Linux x64 native -->
+  <ItemGroup Condition="Exists('$(SitkDir)/libSimpleITKCSharpNative.so')">
+    <None Include="$(SitkDir)/libSimpleITKCSharpNative.so">
+      <Link>libSimpleITKCSharpNative.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
+  <!-- macOS native (libSimpleITKCSharpNative.dylib; arch follows the staged SimpleITK build) -->
+  <ItemGroup Condition="Exists('$(SitkDir)/libSimpleITKCSharpNative.dylib')">
+    <None Include="$(SitkDir)/libSimpleITKCSharpNative.dylib">
+      <Link>libSimpleITKCSharpNative.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
+</Project>
