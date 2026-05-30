@@ -26,10 +26,6 @@ jobs:
   conformance:
     name: ${{ matrix.rid }} conformance (.NET 8 CLI)
     runs-on: ${{ matrix.os }}
-    # The macOS x86_64 SimpleITK native load is still being worked out, so keep that
-    # lane non-blocking: green Windows/Linux gate the workflow while macOS reports
-    # best-effort. Remove once the macOS native loads reliably.
-    continue-on-error: ${{ startsWith(matrix.rid, 'osx') }}
     strategy:
       # Report every platform independently; a macOS-only failure must not mask
       # green Windows/Linux results.
