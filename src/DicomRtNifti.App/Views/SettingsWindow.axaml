@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Dicom_RT_images_Csharp.Views.SettingsWindow"
+        Title="Settings" Width="500" Height="280"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="#F5F5F5">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,10">
+      <TextBlock Text="Settings" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+    </Border>
+
+    <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD"
+            BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="16">
+      <StackPanel>
+        <TextBlock Text="Default Output Directory:" Margin="0,0,0,4" FontWeight="Medium" Foreground="#555555"/>
+        <DockPanel Margin="0,0,0,12">
+          <Button DockPanel.Dock="Right" Content="Browse..." Click="BrowseOutput_Click"
+                  Width="80" Margin="8,0,0,0" Padding="8,4"/>
+          <TextBox x:Name="OutputDirTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="#CCCCCC"/>
+        </DockPanel>
+
+        <CheckBox x:Name="AutoOpenCheckBox" Content="Open output folder after conversion" Margin="0,0,0,8" FontSize="13"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+            BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Save" Click="SaveButton_Click" Width="90" Padding="12,6"
+                IsDefault="True" Margin="0,0,8,0"
+                Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
+        <Button Content="Cancel" Click="CancelButton_Click" Width="90" Padding="12,6" IsCancel="True"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

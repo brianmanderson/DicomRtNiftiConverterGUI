@@ -1,0 +1,93 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Dicom_RT_images_Csharp.Views.RoiSelectionWindow"
+        Title="Select ROIs for Export" Width="700" Height="600"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5">
+
+  <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+    <Border Grid.Row="0" Background="#2196F3" Padding="16,12">
+      <StackPanel>
+        <TextBlock Text="Select ROIs for Export" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Text="Choose which ROIs to include. Patients missing all selected ROIs will be de-selected."
+                   FontSize="11" Foreground="#BBDEFB" Margin="0,4,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="12,12,12,0" ColumnDefinitions="*,250">
+
+      <!-- Left: ROI checklist with search -->
+      <Border Grid.Column="0" Background="White" BorderBrush="#DDDDDD"
+              BorderThickness="1" CornerRadius="4" Margin="0,0,8,0">
+        <Grid RowDefinitions="Auto,Auto,*">
+          <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
+                  BorderThickness="0,0,0,1" Padding="12,8" CornerRadius="4,4,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+              <CheckBox Grid.Column="0" Content="Select All" IsChecked="{Binding AllSelected}"
+                        FontWeight="SemiBold" FontSize="13" Foreground="#333333"/>
+              <TextBlock Grid.Column="1" Text="Patients" FontWeight="Medium" FontSize="11"
+                         Foreground="#999999" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            </Grid>
+          </Border>
+
+          <TextBox Grid.Row="1" Text="{Binding SearchText}" Watermark="Search ROIs..."
+                   Margin="8,8,8,4" Padding="6,4" BorderBrush="#CCCCCC" VerticalContentAlignment="Center"/>
+
+          <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="4">
+            <ItemsControl ItemsSource="{Binding FilteredRoiItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <CheckBox IsChecked="{Binding IsSelected}" Margin="12,4">
+                    <TextBlock Text="{Binding DisplayText}" FontSize="12" Foreground="#333333"/>
+                  </CheckBox>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+
+      <!-- Right: selected summary -->
+      <Border Grid.Column="1" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+        <Grid RowDefinitions="Auto,*">
+          <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
+                  BorderThickness="0,0,0,1" Padding="10,8" CornerRadius="4,4,0,0">
+            <TextBlock Text="Selected ROIs" FontWeight="SemiBold" FontSize="13" Foreground="#333333"/>
+          </Border>
+
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="4">
+            <ItemsControl ItemsSource="{Binding SelectedSummaryItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="1"
+                          CornerRadius="3" Margin="4,2" Padding="8,5">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="{Binding CanonicalName}" FontWeight="Medium"
+                                 FontSize="12" Foreground="#333333" VerticalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DisplayText}" FontSize="11"
+                                 Foreground="#888888" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="16,8,16,0"
+               Text="ROI names are shown after resolving aliases through your ROI Associations. Patients that do not contain any of the selected ROIs will be automatically de-selected for export."/>
+
+    <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#CCCCCC"
+            BorderThickness="0,1,0,0" Padding="12,8" Margin="0,8,0,0">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Cancel" Click="CancelButton_Click" MinWidth="70" Padding="12,6" Margin="4,0" FontSize="12"/>
+        <Button Content="Confirm" Click="ConfirmButton_Click" MinWidth="70" Padding="12,6" Margin="4,0"
+                FontSize="12" Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
