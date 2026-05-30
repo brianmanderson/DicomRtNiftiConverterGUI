@@ -141,6 +141,14 @@ namespace Dicom_RT_images_Csharp.Services
                 // This buffer is private to the current task -- no cross-thread aliasing.
                 byte[] maskData = new byte[slices * rows * cols];
                 int contourCount = 0;
+                // Per-ROI diagnostics so a dropped ROI is actionable rather than a bare
+                // "no valid contours" (KW saw most structures silently fail while a few
+                // worked in the same RTSTRUCT).
+                int contoursTotal = 0;
+                int parseFailed = 0;
+                int tooFewPoints = 0;
+                int unhandled = 0;
+                var geoTypesSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var contour in contourSeq)
                 {
@@ -157,6 +165,8 @@ namespace Dicom_RT_images_Csharp.Services
                     }
 
                     geoType = (geoType ?? "CLOSED_PLANAR").Trim().ToUpperInvariant();
+                    contoursTotal++;
+                    geoTypesSeen.Add(geoType);
 
                     double[] contourData;
                     try
@@ -165,10 +175,11 @@ namespace Dicom_RT_images_Csharp.Services
                     }
                     catch (Exception)
                     {
+                        parseFailed++;
                         continue;
                     }
 
-                    if (contourData == null || contourData.Length < 3) continue;
+                    if (contourData == null || contourData.Length < 3) { tooFewPoints++; continue; }
 
                     bool handled;
                     switch (geoType)
@@ -199,12 +210,20 @@ namespace Dicom_RT_images_Csharp.Services
                     }
 
                     if (handled) contourCount++;
+                    else unhandled++;
                 }
 
                 if (contourCount == 0)
                 {
-                    progress?.Report($"    Skipping ROI '{dicomRoiName}': no valid contours");
+                    progress?.Report(BuildNoContoursMessage(
+                        dicomRoiName, contoursTotal, parseFailed, tooFewPoints, unhandled, geoTypesSeen));
                     return;
+                }
+
+                if (unhandled > 0)
+                {
+                    progress?.Report(BuildPartialSkipMessage(
+                        dicomRoiName, contourCount, contoursTotal, unhandled, geoTypesSeen));
                 }
 
                 // CreateMaskImage allocates a fresh SimpleITK Image; thread-safe to
@@ -682,6 +701,48 @@ namespace Dicom_RT_images_Csharp.Services
                     maskData[z * rows * cols + y * cols + x] = 1;
                 }
             }
+        }
+
+        /// <summary>
+        /// Builds the actionable message logged when an ROI produced no mask. Surfaces the
+        /// per-contour breakdown and the most likely cause, instead of the bare
+        /// "no valid contours". Internal + static so it can be unit-tested without SimpleITK.
+        /// </summary>
+        internal static string BuildNoContoursMessage(
+            string roiName, int total, int parseFailed, int tooFewPoints, int unhandled,
+            IEnumerable<string> geoTypes)
+        {
+            string types = string.Join(", ", geoTypes ?? Enumerable.Empty<string>());
+            if (string.IsNullOrEmpty(types)) types = "none";
+
+            string msg =
+                $"    Skipping ROI '{roiName}': 0 of {total} contour(s) rasterized " +
+                $"[types: {types}] (outside-grid/transform-failed={unhandled}, " +
+                $"parse-failed={parseFailed}, too-few-points={tooFewPoints}).";
+
+            // Only hint at a wrong reference series when the dominant failure is contours
+            // that dispatched but landed off the image grid — that's the wrong-series /
+            // outside-extent signature, not a malformed-data one.
+            if (unhandled > 0 && unhandled >= parseFailed && unhandled >= tooFewPoints)
+            {
+                msg += " Contours did not intersect the reference image grid — the RTSTRUCT may be "
+                     + "matched to the wrong image series, or its contours lie outside the image extent.";
+            }
+            return msg;
+        }
+
+        /// <summary>
+        /// Builds the warning logged when an ROI rasterized but some of its contours were
+        /// dropped (e.g. a few slices fell outside the reference grid). Internal + static for
+        /// unit testing.
+        /// </summary>
+        internal static string BuildPartialSkipMessage(
+            string roiName, int rasterized, int total, int unhandled, IEnumerable<string> geoTypes)
+        {
+            string types = string.Join(", ", geoTypes ?? Enumerable.Empty<string>());
+            return
+                $"    ROI '{roiName}': {unhandled} of {total} contour(s) skipped "
+                + $"(outside grid / transform failed) [types: {types}]; {rasterized} rasterized.";
         }
 
         /// <summary>
