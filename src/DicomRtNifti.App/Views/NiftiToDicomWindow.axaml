@@ -1,0 +1,11 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Dicom_RT_images_Csharp.Views.NiftiToDicomWindow"
+        Title="NIfTI → DICOM" Width="960" Height="640"
+        WindowStartupLocation="CenterScreen">
+  <StackPanel Margin="24" Spacing="8">
+    <TextBlock Text="NIfTI → DICOM" FontSize="18" FontWeight="Bold"/>
+    <TextBlock TextWrapping="Wrap" Foreground="#555"
+               Text="Avalonia port of the reverse workflow is in progress (Phase 4). The conversion logic already runs cross-platform via the headless CLI (DicomRtNifti.Cli --reverse / --image-reverse)."/>
+  </StackPanel>
+</Window>
