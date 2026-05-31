@@ -1,11 +1,76 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dicom_RT_images_Csharp.Views.NiftiToDicomWindow"
-        Title="NIfTI → DICOM" Width="960" Height="640"
-        WindowStartupLocation="CenterScreen">
-  <StackPanel Margin="24" Spacing="8">
-    <TextBlock Text="NIfTI → DICOM" FontSize="18" FontWeight="Bold"/>
-    <TextBlock TextWrapping="Wrap" Foreground="#555"
-               Text="Avalonia port of the reverse workflow is in progress (Phase 4). The conversion logic already runs cross-platform via the headless CLI (DicomRtNifti.Cli --reverse / --image-reverse)."/>
-  </StackPanel>
+        Title="NIfTI to DICOM" Width="820" Height="640"
+        MinWidth="640" MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- Header -->
+    <Border Grid.Row="0" Background="#3F51B5" Padding="16,10">
+      <StackPanel>
+        <TextBlock Text="NIfTI to DICOM (Batch)" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                   Text="Select a folder. Each folder with an image.nii.gz, a masks/ subdir, or a doses/ subdir (the folder itself or any first-level subfolder) is a job: image.nii.gz → a DICOM image series, masks/ → one RT-STRUCT, doses/ → one RT-DOSE per file. With no reference DICOM, patient/study UIDs come from metadata.json in the folder (auto-created on first run)."/>
+      </StackPanel>
+    </Border>
+
+    <!-- Content -->
+    <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD"
+            BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="16">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+        <TextBlock Grid.Row="0" Text="Folder:" Margin="0,0,0,4" FontWeight="Medium" Foreground="#555555"/>
+        <DockPanel Grid.Row="1" Margin="0,0,0,8">
+          <Button DockPanel.Dock="Right" Content="Scan" Command="{Binding ScanRootFolderCommand}"
+                  Width="80" Margin="8,0,0,0" Padding="8,4"
+                  Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+          <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowseRootFolderCommand}"
+                  Width="80" Margin="8,0,0,0" Padding="8,4"/>
+          <TextBox Text="{Binding RootFolder}" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="#CCCCCC"/>
+        </DockPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
+          <CheckBox Content="Convert Image?" IsChecked="{Binding ConvertImage}" FontSize="13" Margin="0,0,20,0"/>
+          <CheckBox Content="Convert Structures?" IsChecked="{Binding ConvertStructures}" FontSize="13" Margin="0,0,20,0"/>
+          <CheckBox Content="Convert Doses?" IsChecked="{Binding ConvertDoses}" FontSize="13"/>
+        </StackPanel>
+
+        <Border Grid.Row="3" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="2" Background="#FAFAFA">
+          <DataGrid ItemsSource="{Binding DiscoveredJobs}" AutoGenerateColumns="False"
+                    IsReadOnly="True" CanUserResizeColumns="True"
+                    GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                    Background="Transparent" FontSize="12">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Folder" Binding="{Binding FolderDisplayName}" Width="150"/>
+              <DataGridTextColumn Header="Image" Binding="{Binding ImageDisplay}" Width="55"/>
+              <DataGridTextColumn Header="Masks" Binding="{Binding MaskCount}" Width="60"/>
+              <DataGridTextColumn Header="ROI Names" Binding="{Binding MaskNames}" Width="*"/>
+              <DataGridTextColumn Header="Doses" Binding="{Binding DoseCount}" Width="60"/>
+              <DataGridTextColumn Header="Dose Files" Binding="{Binding DoseNames}" Width="*"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="220"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </Border>
+
+        <Border Grid.Row="4" Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="1"
+                CornerRadius="2" Padding="10,8" Margin="0,12,0,0">
+          <TextBlock Text="{Binding StatusText}" Foreground="#444444" FontSize="12" TextWrapping="Wrap"/>
+        </Border>
+      </Grid>
+    </Border>
+
+    <!-- Buttons -->
+    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+            BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Convert All" Command="{Binding ConvertCommand}" Width="120" Padding="12,6"
+                Margin="0,0,8,0" Background="#3F51B5" Foreground="White" FontWeight="SemiBold"/>
+        <Button Content="Cancel" Command="{Binding CancelCommand}" Width="90" Padding="12,6" Margin="0,0,8,0"/>
+        <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>
+      </StackPanel>
+    </Border>
+  </Grid>
 </Window>

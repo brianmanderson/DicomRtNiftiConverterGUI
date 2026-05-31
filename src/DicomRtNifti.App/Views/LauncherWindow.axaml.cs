@@ -5,10 +5,10 @@ using Dicom_RT_images_Csharp.ViewModels;
 namespace Dicom_RT_images_Csharp.Views
 {
     /// <summary>
-    /// Launcher window: top-level chooser between the DICOM->NIfTI and NIfTI->DICOM
-    /// workflows. For now it simply opens the (stub) workflow windows; the legacy
-    /// cache + hide-on-close state-preservation is re-added in Phase 4 once the real
-    /// workflow windows exist.
+    /// Launcher window: top-level chooser. Opens the NIfTI->DICOM workflow window (wired to a
+    /// real view-model built from the launcher's services); the DICOM->NIfTI window is still a
+    /// stub pending its Phase 4 port. The legacy cache + hide-on-close behaviour is re-added
+    /// in a later increment.
     /// </summary>
     public partial class LauncherWindow : Window
     {
@@ -38,6 +38,14 @@ namespace Dicom_RT_images_Csharp.Views
 
         private void OnOpenDicomToNifti(object sender, EventArgs e) => new DicomToNiftiWindow().Show();
 
-        private void OnOpenNiftiToDicom(object sender, EventArgs e) => new NiftiToDicomWindow().Show();
+        private void OnOpenNiftiToDicom(object sender, EventArgs e)
+        {
+            if (_vm == null) { new NiftiToDicomWindow().Show(); return; }
+
+            var vm = new NiftiToDicomViewModel(
+                _vm.ScannerService, _vm.RtStructWriter, _vm.RtDoseWriter,
+                _vm.NiftiMetadataService, _vm.NiftiImageWriter, _vm.FolderPicker);
+            new NiftiToDicomWindow { DataContext = vm }.Show();
+        }
     }
 }
