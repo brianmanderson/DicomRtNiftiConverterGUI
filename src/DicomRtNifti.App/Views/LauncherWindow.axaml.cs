@@ -36,7 +36,14 @@ namespace Dicom_RT_images_Csharp.Views
             }
         }
 
-        private void OnOpenDicomToNifti(object sender, EventArgs e) => new DicomToNiftiWindow().Show();
+        private void OnOpenDicomToNifti(object sender, EventArgs e)
+        {
+            if (_vm == null) { new DicomToNiftiWindow().Show(); return; }
+
+            var vm = new MainViewModel(
+                _vm.ScannerService, _vm.ConversionService, _vm.MaskService, _vm.SettingsService, _vm.FolderPicker);
+            new DicomToNiftiWindow { DataContext = vm }.Show();
+        }
 
         private void OnOpenNiftiToDicom(object sender, EventArgs e)
         {
