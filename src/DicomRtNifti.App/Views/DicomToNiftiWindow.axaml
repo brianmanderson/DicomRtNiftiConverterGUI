@@ -1,11 +1,193 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Dicom_RT_images_Csharp.ViewModels"
         x:Class="Dicom_RT_images_Csharp.Views.DicomToNiftiWindow"
-        Title="DICOM → NIfTI" Width="960" Height="640"
-        WindowStartupLocation="CenterScreen">
-  <StackPanel Margin="24" Spacing="8">
-    <TextBlock Text="DICOM → NIfTI" FontSize="18" FontWeight="Bold"/>
-    <TextBlock TextWrapping="Wrap" Foreground="#555"
-               Text="Avalonia port of the forward workflow is in progress (Phase 4). The conversion logic already runs cross-platform via the headless CLI (DicomRtNifti.Cli --forward)."/>
-  </StackPanel>
+        Title="DICOM to NIfTI Converter" Width="1100" Height="850"
+        MinWidth="820" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+
+    <!-- Header -->
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Help" Command="{Binding OpenHelpCommand}"
+                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="#1976D2"
+                FontWeight="SemiBold" FontSize="13" MinWidth="80" BorderThickness="0"/>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="DICOM to NIfTI Converter" FontSize="20" FontWeight="Bold" Foreground="White"/>
+          <TextBlock Text="Scan DICOM directories, select patients and series, convert to NIfTI format"
+                     FontSize="12" Foreground="#BBDEFB" Margin="0,4,0,0"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Input/Output/Scan toolbar -->
+    <Border Grid.Row="1" Background="#F0F0F0" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1" Padding="12,10">
+      <Grid RowDefinitions="Auto,Auto,Auto">
+        <Grid Grid.Row="0" Margin="0,0,0,6" ColumnDefinitions="55,*,Auto">
+          <TextBlock Grid.Column="0" Text="Input:" VerticalAlignment="Center" FontWeight="Medium" Foreground="#555555"/>
+          <TextBox Grid.Column="1" Text="{Binding InputFolder}" VerticalContentAlignment="Center" Padding="6,4"/>
+          <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseInputCommand}"
+                  Padding="12,6" MinWidth="80" FontSize="13" Margin="8,0,0,0"/>
+        </Grid>
+        <Grid Grid.Row="1" Margin="0,0,0,6" ColumnDefinitions="55,*,Auto">
+          <TextBlock Grid.Column="0" Text="Output:" VerticalAlignment="Center" FontWeight="Medium" Foreground="#555555"/>
+          <TextBox Grid.Column="1" Text="{Binding OutputFolder}" VerticalContentAlignment="Center" Padding="6,4"/>
+          <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseOutputCommand}"
+                  Padding="12,6" MinWidth="80" FontSize="13" Margin="8,0,0,0"/>
+        </Grid>
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*,Auto">
+          <Button Grid.Column="0" Content="Scan" Command="{Binding ScanCommand}"
+                  Padding="12,6" MinWidth="100" FontSize="13" Margin="0,0,5,0"
+                  Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+          <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelCommand}"
+                  Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"/>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0">
+            <ProgressBar Value="{Binding ProgressValue}" Minimum="0" Maximum="100"
+                         Height="18" Width="400" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Margin="10,0,0,0"
+                       TextTrimming="CharacterEllipsis" Foreground="#666666"/>
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <!-- Tree + options -->
+    <Grid Grid.Row="2" Margin="12" ColumnDefinitions="*,260">
+
+      <Border Grid.Column="0" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
+              CornerRadius="4" Margin="0,0,12,0">
+        <Grid RowDefinitions="Auto,*">
+          <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE" BorderThickness="0,0,0,1"
+                  Padding="12,8" CornerRadius="4,4,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0" Text="Patient / Study / Series" FontWeight="SemiBold"
+                         FontSize="13" Foreground="#333333" VerticalAlignment="Center"/>
+              <CheckBox Grid.Column="1" Content="Select All?" IsChecked="{Binding AllPatientsSelected}"
+                        VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
+            </Grid>
+          </Border>
+
+          <TreeView Grid.Row="1" ItemsSource="{Binding Patients}" Background="Transparent" Padding="8">
+            <TreeView.DataTemplates>
+              <TreeDataTemplate DataType="vm:PatientGroupViewModel" ItemsSource="{Binding Studies}">
+                <StackPanel Orientation="Horizontal">
+                  <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                  <TextBlock Text="[P]" Margin="0,0,6,0" FontSize="12" Foreground="#1976D2"
+                             FontWeight="Bold" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
+                </StackPanel>
+              </TreeDataTemplate>
+
+              <TreeDataTemplate DataType="vm:StudyGroupViewModel" ItemsSource="{Binding ImageSeries}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="[S]" Margin="0,0,6,0" FontSize="11" Foreground="#FF9800"
+                             FontWeight="Bold" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding DisplayName}" FontStyle="Italic" VerticalAlignment="Center"/>
+                </StackPanel>
+              </TreeDataTemplate>
+
+              <DataTemplate DataType="vm:SeriesGroupViewModel">
+                <StackPanel Margin="0,2">
+                  <StackPanel Orientation="Horizontal">
+                    <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Model.Modality, StringFormat='[{0}]'}" Margin="0,0,6,0"
+                               FontSize="11" Foreground="#4CAF50" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  </StackPanel>
+                  <Expander Header="ROI Names" Margin="20,2,0,0"
+                            IsVisible="{Binding HasLinkedRtStruct}" IsExpanded="{Binding IsExpanded}">
+                    <ItemsControl ItemsSource="{Binding RoiNames}" Margin="16,0,0,0">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding}" Foreground="#555555" FontSize="11"/>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Expander>
+                  <StackPanel Orientation="Horizontal" Margin="20,2,0,0" IsVisible="{Binding HasLinkedRtDose}">
+                    <TextBlock Text="[RTDOSE]" FontSize="11" FontWeight="Bold" Foreground="#1976D2"
+                               Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding LinkedRtDoseLabel}" FontSize="11" Foreground="#555555" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </StackPanel>
+              </DataTemplate>
+            </TreeView.DataTemplates>
+          </TreeView>
+        </Grid>
+      </Border>
+
+      <!-- Options -->
+      <Border Grid.Column="1" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="16">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <TextBlock Text="Export Options" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#333333"/>
+            <TextBlock Text="Data to Export:" FontWeight="Medium" Margin="0,0,0,8" Foreground="#555555"/>
+
+            <CheckBox Content="Export Images" IsChecked="{Binding ExportImages}" Margin="4,4" FontSize="13"/>
+            <CheckBox Content="Include Structures" IsChecked="{Binding IncludeStructures}" Margin="4,4" FontSize="13"/>
+            <CheckBox Content="Include Dose" IsChecked="{Binding IncludeDose}" Margin="4,4" FontSize="13"/>
+
+            <Separator Margin="0,12"/>
+
+            <CheckBox Content="Only export specific ROIs?" IsChecked="{Binding OnlyExportSpecificRois}" Margin="4,8" FontSize="13"/>
+            <Button Content="Edit ROI Associations..." Command="{Binding ManageAssociationsCommand}"
+                    Padding="12,8" Margin="4" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+            <Button Content="Select ROIs for Export..." Command="{Binding SelectRoisCommand}"
+                    IsEnabled="{Binding OnlyExportSpecificRois}"
+                    Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#FF9800" Foreground="White" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4"
+                       Text="ROI Associations always apply — matching ROIs are renamed to their canonical names during export."/>
+            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
+                       Text="When checked, only ROIs matching associations are exported. Use 'Select ROIs for Export' to choose which to include. Patients missing all selected ROIs are automatically de-selected."/>
+
+            <Separator Margin="0,12"/>
+
+            <CheckBox Content="Specify Output Spacing" IsChecked="{Binding SpecifyOutputSpacing}" Margin="4,8" FontSize="13"/>
+            <Button Content="Specify Output..." Command="{Binding OpenOutputSpacingCommand}"
+                    IsEnabled="{Binding SpecifyOutputSpacing}"
+                    Padding="12,8" Margin="4" FontSize="13" Background="#9C27B0" Foreground="White" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,4,4,0"
+                       Text="When enabled, all exports (image, dose, masks) are resampled to the specified X/Y/Z voxel size. Image and dose use linear interpolation; structure masks use nearest-neighbor."/>
+
+            <Separator Margin="0,12"/>
+
+            <CheckBox Content="Anonymize export?" IsChecked="{Binding AnonymizeExport}" Margin="4,8" FontSize="13"/>
+            <Button Content="Edit Anonymization Key..." Command="{Binding OpenAnonymizationKeyEditorCommand}"
+                    IsEnabled="{Binding AnonymizeExport}"
+                    Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
+                       Text="When checked, exports use integer folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions."/>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+
+    <!-- Action bar + log -->
+    <Border Grid.Row="3" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Margin="12,0" Padding="12">
+      <StackPanel>
+        <Grid Margin="0,0,0,8" ColumnDefinitions="Auto,Auto,Auto,*">
+          <Button Grid.Column="0" Content="Convert Selected" Command="{Binding ConvertSelectedCommand}"
+                  Padding="12,6" MinWidth="140" FontSize="13" Margin="0,0,5,0"
+                  Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
+          <Button Grid.Column="1" Content="Export MetaData" Command="{Binding ExportMetaDataCommand}"
+                  Padding="12,6" MinWidth="140" FontSize="13" Margin="5,0"
+                  Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+          <Button Grid.Column="2" Content="Settings..." Command="{Binding OpenSettingsCommand}"
+                  Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"/>
+        </Grid>
+        <TextBox x:Name="LogTextBox" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" Height="120" FontFamily="Consolas" FontSize="11"
+                 TextWrapping="Wrap" AcceptsReturn="True" TextChanged="LogTextBox_TextChanged"
+                 Background="#FAFAFA" BorderBrush="#E0E0E0" Padding="8"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Status bar -->
+    <Border Grid.Row="4" Background="#E8E8E8" BorderBrush="#CCCCCC" BorderThickness="0,1,0,0" Padding="12,6">
+      <TextBlock Text="{Binding StatusText}" Foreground="#555555" FontSize="11"/>
+    </Border>
+  </Grid>
 </Window>
