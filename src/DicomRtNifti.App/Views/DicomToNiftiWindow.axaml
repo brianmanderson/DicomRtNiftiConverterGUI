@@ -179,7 +179,7 @@
                   Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"/>
         </Grid>
         <TextBox x:Name="LogTextBox" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
-                 VerticalScrollBarVisibility="Auto" Height="120" FontFamily="Consolas" FontSize="11"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" Height="120" FontFamily="Consolas" FontSize="11"
                  TextWrapping="Wrap" AcceptsReturn="True" TextChanged="LogTextBox_TextChanged"
                  Background="#FAFAFA" BorderBrush="#E0E0E0" Padding="8"/>
       </StackPanel>
