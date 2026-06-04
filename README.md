@@ -104,21 +104,23 @@ Non-anonymized (one folder per patient, one subfolder per series):
   export_manifest.csv       # at the output root (or export_manifest_meta.csv for Export MetaData)
 ```
 
-Anonymized (one flat folder per series, named by integer Export ID; no `{PatientID}/{Date}_...` nesting):
+Anonymized (folders named by deterministic per-identifier hashes; a patient's datasets all nest under one patient hash, each study groups its series):
 
 ```
 {OutputFolder}/
-  {ExportID}/
-    image.nii.gz
-    doses/
-      {SeriesDescription}.nii.gz
-    masks/
-      {ROI_Name}.nii.gz
+  {PatientHash}/                # e.g. P1a2b3c4d5e6f  (stable per MRN)
+    {StudyHash}/                # e.g. ST9a8b7c6d5e4f (stable per StudyInstanceUID)
+      {SeriesHash}/             # e.g. SE0011223344ff (stable per SeriesInstanceUID)
+        image.nii.gz
+        doses/
+          {SeriesDescription}.nii.gz
+        masks/
+          {ROI_Name}.nii.gz
   export_manifest.csv
-  AnonymizationKey.json     # deterministic ExportID ↔ MRN/StudyUID/SeriesUID mapping
+  AnonymizationKey.json     # three reverse-lookup maps: MRN→PatientHash, StudyUID→StudyHash, SeriesUID→SeriesHash
 ```
 
-The CSV manifest columns are `MRN, StudyUID, SeriesUID, ExportID, SpacingX, SpacingY, SpacingZ` followed by one column per unique canonical ROI name (volume in cc; `-1` where the row's series did not contain that ROI). `ExportID` is `-1` for non-anonymized rows. See the in-app **Help** in the DICOM → NIfTI window for the full per-control reference.
+The CSV manifest columns are `PatientID, StudyUID, SeriesUID, SpacingX, SpacingY, SpacingZ` followed by one column per unique canonical ROI name (volume in cc; `-1` where the row's series did not contain that ROI). When anonymizing, the `PatientID`/`StudyUID`/`SeriesUID` cells hold the hashes; otherwise they hold the real identifiers. Every exported folder/file segment is sanitized to be valid on Windows (forbidden characters, reserved device names, trailing dots/spaces), anonymized or not. See the in-app **Help** in the DICOM → NIfTI window for the full per-control reference.
 
 ## Reverse-mode folder layout (NIfTI → DICOM)
 
@@ -144,7 +146,7 @@ Stored in `%AppData%\DicomToNifti\`:
 - `settings.json` — default output directory, auto-open after conversion, global Export Images / Include Structures / Include Dose toggles, output spacing, anonymization salt (`HashSalt`), and the persisted state of the "Only export specific ROIs" / "Anonymize export" / "Specify Output Spacing" checkboxes.
 - `roi_associations.json` — ROI canonical-name ↔ alias-set mappings used to rename DICOM ROIs to canonical names on export.
 
-`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-series subfolders, not in `%AppData%`. If the **Edit Anonymization Key...** window is opened without an output folder set, it falls back to `%AppData%\DicomToNifti\AnonymizationKey.json` for inspection only.
+`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds three reverse-lookup maps — MRN→PatientHash, StudyUID→StudyHash, SeriesUID→SeriesHash — so anonymized exports can be traced back to their original identifiers. Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
 
 ## History
 

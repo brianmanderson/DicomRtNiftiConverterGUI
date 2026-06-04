@@ -411,9 +411,7 @@ namespace Dicom_RT_images_Csharp.Services
 
         private static string SanitizeFileName(string name)
         {
-            char[] invalid = Path.GetInvalidFileNameChars();
-            foreach (char c in invalid) name = name.Replace(c, '_');
-            return name;
+            return WindowsPathSanitizer.SanitizeName(name);
         }
     }
 }

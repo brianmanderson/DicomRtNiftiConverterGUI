@@ -347,34 +347,31 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     _cts.Token.ThrowIfCancellationRequested();
                     var model = seriesVm.Model;
 
-                    string patientId = "Unknown";
-                    string studyUid = "";
+                    var (patientId, studyUid) = ResolveIds(seriesVm);
                     string seriesUid = model.SeriesInstanceUID;
-
-                    foreach (var p in Patients)
-                        foreach (var s in p.Studies)
-                            if (s.ImageSeries.Contains(seriesVm))
-                            {
-                                patientId = p.Model.PatientID;
-                                studyUid = s.Model.StudyInstanceUID;
-                                break;
-                            }
 
                     string outputDir;
                     string displayLabel;
                     if (AnonymizeExport && anonService != null)
                     {
-                        int exportId = anonService.GetOrAssignExportId(patientId, studyUid, seriesUid);
-                        outputDir = Path.Combine(OutputFolder, exportId.ToString());
-                        displayLabel = exportId.ToString();
+                        // Per-identifier hashes: a patient's datasets all nest under one patient-hash
+                        // folder; each study/series gets its own hash. Hashes are already safe, but
+                        // sanitize defensively so every exported segment is valid on Windows.
+                        string pHash = WindowsPathSanitizer.SanitizeName(anonService.GetPatientHash(patientId));
+                        string stHash = WindowsPathSanitizer.SanitizeName(anonService.GetStudyHash(studyUid));
+                        string seHash = WindowsPathSanitizer.SanitizeName(anonService.GetSeriesHash(seriesUid));
+                        outputDir = Path.Combine(OutputFolder, pHash, stHash, seHash);
+                        displayLabel = $"{pHash}/{stHash}/{seHash}";
                     }
                     else
                     {
                         string seriesLabel = string.IsNullOrEmpty(model.SeriesDescription)
                             ? model.SeriesInstanceUID.Substring(0, Math.Min(8, model.SeriesInstanceUID.Length))
-                            : SanitizePath(model.SeriesDescription);
+                            : model.SeriesDescription;
                         string dateLabel = string.IsNullOrEmpty(model.SeriesDate) ? "" : model.SeriesDate + "_";
-                        outputDir = Path.Combine(OutputFolder, SanitizePath(patientId), dateLabel + seriesLabel);
+                        outputDir = Path.Combine(OutputFolder,
+                            WindowsPathSanitizer.SanitizeName(patientId),
+                            WindowsPathSanitizer.SanitizeName(dateLabel + seriesLabel));
                         displayLabel = patientId + "/" + seriesLabel;
                     }
 
@@ -461,42 +458,14 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     ProgressValue = (double)completed / total * 100;
                 }
 
-                List<ManifestRow> manifestRows;
-                if (AnonymizeExport && anonService != null)
-                {
-                    anonService.Save();
-                    manifestRows = anonService.GetAllManifestRows();
-                }
-                else
-                {
-                    manifestRows = new List<ManifestRow>();
-                    foreach (var seriesVm in selectedSeries)
-                    {
-                        var m = seriesVm.Model;
-                        string pid = "Unknown", suid = "";
-                        foreach (var p in Patients)
-                            foreach (var st in p.Studies)
-                                if (st.ImageSeries.Contains(seriesVm))
-                                {
-                                    pid = p.Model.PatientID;
-                                    suid = st.Model.StudyInstanceUID;
-                                    break;
-                                }
-                        manifestRows.Add(new ManifestRow { MRN = pid, StudyUID = suid, SeriesUID = m.SeriesInstanceUID, ExportID = -1 });
-                    }
-                }
+                var manifestRows = BuildManifestRows(
+                    selectedSeries,
+                    AnonymizeExport ? anonService : null,
+                    spacingPerSeries,
+                    roiVolumesPerSeries);
 
-                foreach (var row in manifestRows)
-                {
-                    if (spacingPerSeries.TryGetValue(row.SeriesUID, out double[] spacing))
-                    {
-                        row.SpacingX = spacing[0];
-                        row.SpacingY = spacing[1];
-                        row.SpacingZ = spacing[2];
-                    }
-                    if (roiVolumesPerSeries.TryGetValue(row.SeriesUID, out Dictionary<string, double> volumes))
-                        row.RoiVolumes = volumes;
-                }
+                if (AnonymizeExport && anonService != null)
+                    anonService.Save();
 
                 var allExportedRoiNames = new List<string>();
                 if (IncludeStructures)
@@ -602,16 +571,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 {
                     _cts.Token.ThrowIfCancellationRequested();
                     var model = seriesVm.Model;
-                    string patientId = "Unknown", studyUid = "", seriesUid = model.SeriesInstanceUID;
-
-                    foreach (var p in Patients)
-                        foreach (var s in p.Studies)
-                            if (s.ImageSeries.Contains(seriesVm))
-                            {
-                                patientId = p.Model.PatientID;
-                                studyUid = s.Model.StudyInstanceUID;
-                                break;
-                            }
+                    var (patientId, _) = ResolveIds(seriesVm);
+                    string seriesUid = model.SeriesInstanceUID;
 
                     string displayLabel = $"{patientId}/{seriesUid.Substring(0, Math.Min(8, seriesUid.Length))}";
 
@@ -641,31 +602,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     ProgressValue = (int)(100.0 * completed / total);
                 }
 
-                var manifestRows = new List<ManifestRow>();
-                foreach (var seriesVm in selectedSeries)
-                {
-                    var m = seriesVm.Model;
-                    string pid = "Unknown", suid = "";
-                    foreach (var p in Patients)
-                        foreach (var st in p.Studies)
-                            if (st.ImageSeries.Contains(seriesVm))
-                            {
-                                pid = p.Model.PatientID;
-                                suid = st.Model.StudyInstanceUID;
-                                break;
-                            }
-
-                    var row = new ManifestRow { MRN = pid, StudyUID = suid, SeriesUID = m.SeriesInstanceUID, ExportID = -1 };
-                    if (spacingPerSeries.TryGetValue(row.SeriesUID, out double[] spacing))
-                    {
-                        row.SpacingX = spacing[0];
-                        row.SpacingY = spacing[1];
-                        row.SpacingZ = spacing[2];
-                    }
-                    if (roiVolumesPerSeries.TryGetValue(row.SeriesUID, out Dictionary<string, double> volumes))
-                        row.RoiVolumes = volumes;
-                    manifestRows.Add(row);
-                }
+                // Metadata export is never anonymized; pass null so real identifiers are written.
+                var manifestRows = BuildManifestRows(selectedSeries, null, spacingPerSeries, roiVolumesPerSeries);
 
                 var allExportedRoiNames = new List<string>();
                 var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -839,7 +777,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             string csvPath = Path.Combine(outputFolder, fileName);
             using (var writer = new StreamWriter(csvPath))
             {
-                var header = "MRN,StudyUID,SeriesUID,ExportID,SpacingX,SpacingY,SpacingZ";
+                var header = "PatientID,StudyUID,SeriesUID,SpacingX,SpacingY,SpacingZ";
                 if (roiColumnNames != null && roiColumnNames.Count > 0)
                     foreach (var roiName in roiColumnNames)
                         header += ",\"" + roiName.Replace("\"", "\"\"") + "\"";
@@ -847,8 +785,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
                 foreach (var row in rows)
                 {
-                    var line = string.Format("\"{0}\",\"{1}\",\"{2}\",{3},{4},{5},{6}",
-                        row.MRN, row.StudyUID, row.SeriesUID, row.ExportID, row.SpacingX, row.SpacingY, row.SpacingZ);
+                    var line = string.Format("\"{0}\",\"{1}\",\"{2}\",{3},{4},{5}",
+                        row.PatientID, row.StudyUID, row.SeriesUID, row.SpacingX, row.SpacingY, row.SpacingZ);
                     if (roiColumnNames != null && roiColumnNames.Count > 0)
                         foreach (var roiName in roiColumnNames)
                             line += (row.RoiVolumes != null && row.RoiVolumes.TryGetValue(roiName, out double volume)) ? "," + volume : ",-1";
@@ -864,11 +802,55 @@ namespace Dicom_RT_images_Csharp.ViewModels
             LogText += $"[{timestamp}] {message}\n";
         }
 
-        private static string SanitizePath(string name)
+        /// <summary>
+        /// Finds the owning patient ID and study UID for a series by walking the patient hierarchy.
+        /// Returns ("Unknown", "") if the series is not found under any loaded patient.
+        /// </summary>
+        private (string patientId, string studyUid) ResolveIds(SeriesGroupViewModel seriesVm)
         {
-            char[] invalid = Path.GetInvalidFileNameChars();
-            foreach (char c in invalid) name = name.Replace(c, '_');
-            return name;
+            foreach (var p in Patients)
+                foreach (var s in p.Studies)
+                    if (s.ImageSeries.Contains(seriesVm))
+                        return (p.Model.PatientID, s.Model.StudyInstanceUID);
+            return ("Unknown", "");
+        }
+
+        /// <summary>
+        /// Builds one manifest row per series. When <paramref name="anon"/> is non-null the
+        /// PatientID/StudyUID/SeriesUID columns carry the anonymization hashes; otherwise they carry
+        /// the real identifiers. Spacing and ROI volumes are attached by the raw SeriesInstanceUID.
+        /// </summary>
+        private List<ManifestRow> BuildManifestRows(
+            IEnumerable<SeriesGroupViewModel> series,
+            AnonymizationService anon,
+            Dictionary<string, double[]> spacingPerSeries,
+            Dictionary<string, Dictionary<string, double>> roiVolumesPerSeries)
+        {
+            var rows = new List<ManifestRow>();
+            foreach (var seriesVm in series)
+            {
+                var (pid, suid) = ResolveIds(seriesVm);
+                string seriesUid = seriesVm.Model.SeriesInstanceUID;
+
+                var row = new ManifestRow
+                {
+                    PatientID = anon != null ? anon.GetPatientHash(pid) : pid,
+                    StudyUID = anon != null ? anon.GetStudyHash(suid) : suid,
+                    SeriesUID = anon != null ? anon.GetSeriesHash(seriesUid) : seriesUid,
+                };
+
+                if (spacingPerSeries != null && spacingPerSeries.TryGetValue(seriesUid, out double[] spacing))
+                {
+                    row.SpacingX = spacing[0];
+                    row.SpacingY = spacing[1];
+                    row.SpacingZ = spacing[2];
+                }
+                if (roiVolumesPerSeries != null && roiVolumesPerSeries.TryGetValue(seriesUid, out Dictionary<string, double> volumes))
+                    row.RoiVolumes = volumes;
+
+                rows.Add(row);
+            }
+            return rows;
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
