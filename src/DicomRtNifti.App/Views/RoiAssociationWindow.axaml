@@ -135,7 +135,7 @@
                    BorderThickness="0" Background="Transparent" Margin="4,0,4,4">
             <ListBox.ItemTemplate>
               <DataTemplate>
-                <TextBlock Text="{Binding}" Padding="4,2" Foreground="#333333"/>
+                <TextBlock Text="{Binding Display}" Padding="4,2" Foreground="#333333"/>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>

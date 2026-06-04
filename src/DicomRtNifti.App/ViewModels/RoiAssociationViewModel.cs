@@ -20,19 +20,26 @@ namespace Dicom_RT_images_Csharp.ViewModels
     public class RoiAssociationViewModel : INotifyPropertyChanged
     {
         private readonly SettingsService _settingsService;
-        private readonly List<string> _allDiscoveredRoiNames;
+        private readonly List<DiscoveredRoiName> _allDiscoveredRoiNames;
         private RoiAssociationItemViewModel _selectedAssociation;
         private string _roiSearchText = "";
         private string _newAliasText = "";
         private string _statusText = "";
 
-        public RoiAssociationViewModel(SettingsService settingsService, List<string> discoveredRoiNames)
+        /// <param name="discoveredRoiCounts">
+        /// Unique discovered ROI name -> number of series it was found in. Shown in the browser as
+        /// "Name (count)"; double-clicking adds the bare Name (not the count) as an alias.
+        /// </param>
+        public RoiAssociationViewModel(SettingsService settingsService, IReadOnlyDictionary<string, int> discoveredRoiCounts)
         {
             _settingsService = settingsService;
-            _allDiscoveredRoiNames = discoveredRoiNames ?? new List<string>();
+            _allDiscoveredRoiNames = new List<DiscoveredRoiName>();
+            if (discoveredRoiCounts != null)
+                foreach (var kvp in discoveredRoiCounts.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+                    _allDiscoveredRoiNames.Add(new DiscoveredRoiName(kvp.Key, kvp.Value));
 
             Associations = new ObservableCollection<RoiAssociationItemViewModel>();
-            FilteredDiscoveredRoiNames = new ObservableCollection<string>();
+            FilteredDiscoveredRoiNames = new ObservableCollection<DiscoveredRoiName>();
 
             AddAssociationCommand = new RelayCommand(AddAssociation);
             RemoveAssociationCommand = new RelayCommand(RemoveAssociation);
@@ -50,8 +57,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
         /// <summary>All ROI associations being edited.</summary>
         public ObservableCollection<RoiAssociationItemViewModel> Associations { get; }
 
-        /// <summary>Discovered ROI names filtered by <see cref="RoiSearchText"/>.</summary>
-        public ObservableCollection<string> FilteredDiscoveredRoiNames { get; }
+        /// <summary>Discovered ROI names (with counts) filtered by <see cref="RoiSearchText"/>.</summary>
+        public ObservableCollection<DiscoveredRoiName> FilteredDiscoveredRoiNames { get; }
 
         public RoiAssociationItemViewModel SelectedAssociation
         {
@@ -118,11 +125,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
         {
             FilteredDiscoveredRoiNames.Clear();
             var filter = (_roiSearchText ?? "").Trim();
-            foreach (var name in _allDiscoveredRoiNames)
+            foreach (var item in _allDiscoveredRoiNames)
             {
                 if (string.IsNullOrEmpty(filter) ||
-                    name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
-                    FilteredDiscoveredRoiNames.Add(name);
+                    item.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                    FilteredDiscoveredRoiNames.Add(item);
             }
         }
 
@@ -212,5 +219,23 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    /// <summary>
+    /// One discovered ROI name in the browser, with the number of series it was found in.
+    /// <see cref="Display"/> ("Name (Count)") is what the list shows; <see cref="Name"/> is the bare
+    /// value added as an alias on double-click.
+    /// </summary>
+    public class DiscoveredRoiName
+    {
+        public DiscoveredRoiName(string name, int count)
+        {
+            Name = name;
+            Count = count;
+        }
+
+        public string Name { get; }
+        public int Count { get; }
+        public string Display => $"{Name} ({Count})";
     }
 }

@@ -255,6 +255,21 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 AllDiscoveredRoiNames.Add(name);
         }
 
+        /// <summary>
+        /// Counts how many series each discovered ROI name appears in (case-insensitive, keeping the
+        /// first-seen casing). Feeds the ROI Associations browser so it can show "Name (count)".
+        /// </summary>
+        private Dictionary<string, int> ComputeDiscoveredRoiCounts()
+        {
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var patient in Patients)
+                foreach (var study in patient.Studies)
+                    foreach (var series in study.ImageSeries)
+                        foreach (var roiName in series.RoiNames)
+                            counts[roiName] = counts.TryGetValue(roiName, out int c) ? c + 1 : 1;
+            return counts;
+        }
+
         private async Task ExecuteConvertAsync()
         {
             if (string.IsNullOrEmpty(OutputFolder))
@@ -704,9 +719,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
         private async Task OpenAssociationsAsync()
         {
-            // Seed the editor with every ROI name discovered in the current scan so the user can
-            // double-click discovered names straight into an alias set.
-            var vm = new RoiAssociationViewModel(_settingsService, AllDiscoveredRoiNames.ToList());
+            // Seed the editor with every ROI name discovered in the current scan (with how many
+            // series each was found in) so the user can double-click discovered names into an alias set.
+            var vm = new RoiAssociationViewModel(_settingsService, ComputeDiscoveredRoiCounts());
             var window = new RoiAssociationWindow { DataContext = vm };
             await window.ShowDialog<bool>(AppWindows.Active);
 

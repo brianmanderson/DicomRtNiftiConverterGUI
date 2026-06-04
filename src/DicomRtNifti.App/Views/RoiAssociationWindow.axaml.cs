@@ -22,11 +22,11 @@ namespace Dicom_RT_images_Csharp.Views
 
         private void DiscoveredRoiListBox_DoubleTapped(object sender, TappedEventArgs e)
         {
-            if (sender is ListBox { SelectedItem: string name } &&
+            if (sender is ListBox { SelectedItem: DiscoveredRoiName item } &&
                 DataContext is RoiAssociationViewModel vm &&
-                vm.AddDiscoveredNameAsAliasCommand.CanExecute(name))
+                vm.AddDiscoveredNameAsAliasCommand.CanExecute(item.Name))
             {
-                vm.AddDiscoveredNameAsAliasCommand.Execute(name);
+                vm.AddDiscoveredNameAsAliasCommand.Execute(item.Name);
             }
         }
 
