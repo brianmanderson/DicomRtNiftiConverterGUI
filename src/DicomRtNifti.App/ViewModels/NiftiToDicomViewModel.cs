@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Dicom_RT_images_Csharp.Models;
 using Dicom_RT_images_Csharp.Services;
@@ -16,14 +17,15 @@ using Dicom_RT_images_Csharp.Views;
 namespace Dicom_RT_images_Csharp.ViewModels
 {
     /// <summary>
-    /// ViewModel for the "NIfTI to DICOM" window. Pointed at a folder, it scans for DICOM
-    /// folders containing a "masks/"/"doses/" subdirectory or an image.nii.gz and converts
-    /// each in batch.
+    /// ViewModel for the "NIfTI to DICOM" window. Pointed at a folder, it scans (recursively,
+    /// to any depth) for DICOM folders containing a "masks/"/"doses/" subdirectory or an
+    /// image.nii.gz and converts each in batch.
     ///
-    /// Ported from WPF. The always-on server (file-watcher) mode and the Help window are
-    /// deferred to later Phase 4 increments; the conversion logic is unchanged. Commands use
+    /// Ported from WPF, including the always-on server (file-watcher) mode that periodically
+    /// re-scans the root and converts folders once their contents have settled. Commands use
     /// CommunityToolkit.Mvvm (Avalonia has no WPF CommandManager auto-requery, so
-    /// RefreshCommands() raises CanExecuteChanged explicitly).
+    /// RefreshCommands() raises CanExecuteChanged explicitly). The server timer uses Avalonia's
+    /// DispatcherTimer in place of WPF's.
     /// </summary>
     public class NiftiToDicomViewModel : INotifyPropertyChanged
     {
@@ -40,7 +42,15 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private bool _convertStructures = true;
         private bool _convertDoses = true;
         private bool _convertImage = true;
+        private bool _isServerMode;
         private CancellationTokenSource _cts;
+
+        // Server-mode state
+        private const int ServerIntervalSeconds = 10;
+        private DispatcherTimer _serverTimer;
+        private bool _tickInFlight;
+        private readonly Dictionary<string, FolderFingerprint> _fingerprints
+            = new Dictionary<string, FolderFingerprint>(StringComparer.OrdinalIgnoreCase);
 
         public NiftiToDicomViewModel(
             DicomScannerService scannerService,
@@ -59,12 +69,14 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
             DiscoveredJobs = new ObservableCollection<NiftiToDicomJob>();
 
-            BrowseRootFolderCommand = new AsyncRelayCommand(BrowseRootFolderAsync, () => !IsBusy);
+            BrowseRootFolderCommand = new AsyncRelayCommand(BrowseRootFolderAsync, () => !IsBusy && !IsServerMode);
             ScanRootFolderCommand = new RelayCommand(DiscoverJobs,
-                () => !IsBusy && !string.IsNullOrEmpty(RootFolder));
+                () => !IsBusy && !IsServerMode && !string.IsNullOrEmpty(RootFolder));
             ConvertCommand = new AsyncRelayCommand(ConvertAllAsync,
-                () => !IsBusy && DiscoveredJobs.Count > 0 && (ConvertStructures || ConvertDoses || ConvertImage));
+                () => !IsBusy && !IsServerMode && DiscoveredJobs.Count > 0 && (ConvertStructures || ConvertDoses || ConvertImage));
             CancelCommand = new RelayCommand(Cancel, () => IsBusy);
+            RunServerCommand = new RelayCommand(ToggleServer,
+                () => !IsBusy && (ConvertStructures || ConvertDoses || ConvertImage) && !string.IsNullOrEmpty(RootFolder));
             OpenHelpCommand = new RelayCommand(OpenHelp);
         }
 
@@ -117,6 +129,22 @@ namespace Dicom_RT_images_Csharp.ViewModels
             set { _convertImage = value; OnPropertyChanged(); RefreshCommands(); }
         }
 
+        /// <summary>True while the periodic watcher is active.</summary>
+        public bool IsServerMode
+        {
+            get { return _isServerMode; }
+            private set
+            {
+                _isServerMode = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ServerButtonText));
+                RefreshCommands();
+            }
+        }
+
+        /// <summary>"Run Server" / "Stop Server" — bound to the server toggle button.</summary>
+        public string ServerButtonText => IsServerMode ? "Stop Server" : "Run Server";
+
         /// <summary>One row per DICOM folder eligible for conversion.</summary>
         public ObservableCollection<NiftiToDicomJob> DiscoveredJobs { get; }
 
@@ -124,6 +152,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public IRelayCommand ScanRootFolderCommand { get; }
         public IAsyncRelayCommand ConvertCommand { get; }
         public IRelayCommand CancelCommand { get; }
+        public IRelayCommand RunServerCommand { get; }
         public IRelayCommand OpenHelpCommand { get; }
 
         private void RefreshCommands()
@@ -132,6 +161,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             ScanRootFolderCommand.NotifyCanExecuteChanged();
             ConvertCommand.NotifyCanExecuteChanged();
             CancelCommand.NotifyCanExecuteChanged();
+            RunServerCommand.NotifyCanExecuteChanged();
         }
 
         // ------- private helpers -------
@@ -148,8 +178,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
         }
 
         /// <summary>
-        /// Populates DiscoveredJobs by checking the root folder and its first-level subfolders
-        /// for a "masks/" and/or "doses/" subdirectory (or an image.nii.gz). Each match is a job.
+        /// Populates DiscoveredJobs by checking the root folder and every descendant subfolder
+        /// (to any depth) for a "masks/" and/or "doses/" subdirectory (or an image.nii.gz).
+        /// Each match is a job.
         /// </summary>
         private void DiscoverJobs()
         {
@@ -161,18 +192,12 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 return;
             }
 
-            if (HasConvertibleSubdir(RootFolder))
-                AddJobIfValid(RootFolder);
-
             try
             {
-                foreach (var sub in Directory.EnumerateDirectories(RootFolder))
+                foreach (var folder in EnumerateCandidateFolders(RootFolder))
                 {
-                    string leaf = Path.GetFileName(sub);
-                    if (string.Equals(leaf, "masks", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (string.Equals(leaf, "doses", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (HasConvertibleSubdir(sub))
-                        AddJobIfValid(sub);
+                    if (HasConvertibleSubdir(folder))
+                        AddJobIfValid(folder);
                 }
             }
             catch (Exception ex)
@@ -195,6 +220,42 @@ namespace Dicom_RT_images_Csharp.ViewModels
             }
 
             RefreshCommands();
+        }
+
+        /// <summary>
+        /// Yields the root folder and every descendant directory, recursing to any depth,
+        /// but never descending into (or yielding) a "masks/" or "doses/" subtree — those
+        /// hold the NIfTI inputs, not convertible DICOM folders. Unreadable directories are
+        /// skipped silently rather than aborting the whole scan.
+        /// </summary>
+        private static IEnumerable<string> EnumerateCandidateFolders(string root)
+        {
+            yield return root;
+
+            var stack = new Stack<string>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                string current = stack.Pop();
+                List<string> children;
+                try
+                {
+                    children = Directory.EnumerateDirectories(current).ToList();
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
+
+                foreach (var sub in children)
+                {
+                    string leaf = Path.GetFileName(sub);
+                    if (string.Equals(leaf, "masks", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (string.Equals(leaf, "doses", StringComparison.OrdinalIgnoreCase)) continue;
+                    yield return sub;
+                    stack.Push(sub);
+                }
+            }
         }
 
         private static bool HasConvertibleSubdir(string folder)
@@ -403,7 +464,302 @@ namespace Dicom_RT_images_Csharp.ViewModels
             return null;
         }
 
+        // ------- server (watcher) mode -------
+
+        private void ToggleServer()
+        {
+            if (IsServerMode) StopServer();
+            else StartServer();
+        }
+
+        private void StartServer()
+        {
+            if (string.IsNullOrEmpty(RootFolder) || !Directory.Exists(RootFolder))
+            {
+                StatusText = "Cannot start server: root folder not set.";
+                return;
+            }
+
+            _fingerprints.Clear();
+            IsServerMode = true;
+            _serverTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(ServerIntervalSeconds)
+            };
+            _serverTimer.Tick += async (s, e) => await OnServerTickAsync().ConfigureAwait(true);
+            _serverTimer.Start();
+
+            StatusText = $"Server running — watching '{RootFolder}' every {ServerIntervalSeconds}s.";
+            // Snapshot baseline immediately so the next tick can compare.
+            _ = OnServerTickAsync();
+        }
+
+        private void StopServer()
+        {
+            _serverTimer?.Stop();
+            _serverTimer = null;
+            _fingerprints.Clear();
+            IsServerMode = false;
+            StatusText = "Server stopped.";
+        }
+
+        private async Task OnServerTickAsync()
+        {
+            if (_tickInFlight) return;
+            _tickInFlight = true;
+            try
+            {
+                // 1. Re-discover jobs from the current root.
+                DiscoverJobs();
+                if (DiscoveredJobs.Count == 0)
+                {
+                    StatusText = $"Server running — no convertible folders under '{RootFolder}'.";
+                    return;
+                }
+
+                // 2. Compute per-job fingerprints, decide which are settled.
+                var nowFingerprints = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var settled = new List<NiftiToDicomJob>();
+                foreach (var job in DiscoveredJobs)
+                {
+                    string sig = ComputeFolderSignature(job.DicomFolder);
+                    nowFingerprints[job.DicomFolder] = sig;
+
+                    if (_fingerprints.TryGetValue(job.DicomFolder, out var prev) && prev.Signature == sig)
+                    {
+                        settled.Add(job);
+                    }
+                    else
+                    {
+                        job.Status = "Watching — files changed, waiting for stability.";
+                    }
+                }
+
+                // 3. Persist fingerprints for next tick (drop entries for folders that disappeared).
+                _fingerprints.Clear();
+                foreach (var kv in nowFingerprints)
+                    _fingerprints[kv.Key] = new FolderFingerprint { Signature = kv.Value };
+
+                if (settled.Count == 0)
+                {
+                    StatusText = $"Server running — {DiscoveredJobs.Count} folder(s), waiting for stability...";
+                    return;
+                }
+
+                // 4. Run conversions for settled folders, in sequence.
+                StatusText = $"Server running — {settled.Count} settled folder(s), running...";
+                int converted = 0, upToDate = 0, failed = 0;
+                foreach (var job in settled)
+                {
+                    var outcome = await RunSettledJobAsync(job).ConfigureAwait(true);
+                    if (outcome == JobOutcome.Converted) converted++;
+                    else if (outcome == JobOutcome.UpToDate) upToDate++;
+                    else if (outcome == JobOutcome.Failed) failed++;
+                }
+
+                StatusText = $"Server running — last tick: {converted} converted, {upToDate} up-to-date, {failed} failed. Watching '{RootFolder}'.";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Server tick error: {ex.Message}";
+            }
+            finally
+            {
+                _tickInFlight = false;
+            }
+        }
+
+        /// <summary>
+        /// Composite signature combining file count, total size and max LastWriteTimeUtc
+        /// for the DICOM folder + masks/ + doses/ subdirs. Two consecutive identical
+        /// signatures = the folder is "settled" for conversion.
+        /// </summary>
+        private static string ComputeFolderSignature(string dicomFolder)
+        {
+            string sigDicom = SignatureForDir(dicomFolder, "*", SearchOption.TopDirectoryOnly);
+            // Use "*.nii*" so both .nii and .nii.gz contribute to the signature; otherwise a
+            // user dropping in a plain .nii would never trigger the "folder is settled" check.
+            string sigMasks = SignatureForDir(Path.Combine(dicomFolder, "masks"), "*.nii*", SearchOption.TopDirectoryOnly);
+            string sigDoses = SignatureForDir(Path.Combine(dicomFolder, "doses"), "*.nii*", SearchOption.TopDirectoryOnly);
+            return $"D[{sigDicom}]M[{sigMasks}]X[{sigDoses}]";
+        }
+
+        private static string SignatureForDir(string dir, string pattern, SearchOption opt)
+        {
+            if (!Directory.Exists(dir)) return "0:0:0";
+            int count = 0;
+            long maxTicks = 0;
+            long totalBytes = 0;
+            try
+            {
+                foreach (var path in Directory.EnumerateFiles(dir, pattern, opt))
+                {
+                    var fi = new FileInfo(path);
+                    count++;
+                    totalBytes += fi.Length;
+                    long t = fi.LastWriteTimeUtc.Ticks;
+                    if (t > maxTicks) maxTicks = t;
+                }
+            }
+            catch (Exception)
+            {
+                return "err";
+            }
+            return $"{count}:{maxTicks}:{totalBytes}";
+        }
+
+        private async Task<JobOutcome> RunSettledJobAsync(NiftiToDicomJob job)
+        {
+            string folder = job.DicomFolder;
+            var summary = new List<string>();
+            bool jobFailed = false;
+            bool didAnything = false;
+
+            // Step 0: load metadata.json (creating one if needed). The same UIDs persist
+            // across the image / mask / dose passes.
+            NiftiPatientMetadata metadata = _metadataService.LoadOrSynthesize(folder);
+
+            // Step 1: convert image.nii.gz once. Subsequent ticks skip if the series UID
+            // recorded in metadata.json is already on disk.
+            if (job.HasImage && ConvertImage)
+            {
+                try
+                {
+                    var imageProgress = new Progress<string>(msg => StatusText = $"{job.FolderDisplayName}: {msg}");
+                    var imageWritten = await Task.Run(() =>
+                        _imageWriter.ConvertImageNiftiToDicomSeries(
+                            folder, metadata, imageProgress, CancellationToken.None))
+                        .ConfigureAwait(true);
+                    if (imageWritten.Count > 0)
+                    {
+                        summary.Add($"image series ({imageWritten.Count} slices)");
+                        didAnything = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    summary.Add($"image FAILED: {ex.Message}");
+                    jobFailed = true;
+                }
+            }
+
+            // Step 2: scan for a reference image series — possibly the one we just wrote.
+            DicomSeriesGroup refSeries;
+            try
+            {
+                refSeries = await Task.Run(async () =>
+                    await PickReferenceSeriesAsync(folder, CancellationToken.None).ConfigureAwait(false))
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                job.Status = $"FAILED — scan: {ex.Message}";
+                return JobOutcome.Failed;
+            }
+
+            // refSeries may be null if there's no image and no DICOMs — the writers handle
+            // that case via the metadata fallback.
+
+            // RT-STRUCT: hash from sorted mask basenames; skip if the resulting filename exists.
+            if (job.MaskCount > 0 && ConvertStructures)
+            {
+                var maskBasenames = (job.MaskNames ?? "")
+                    .Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
+                string structFileName = HashNaming.RtStructFileName(maskBasenames);
+                string structOutPath = Path.Combine(folder, structFileName);
+
+                if (File.Exists(structOutPath))
+                {
+                    summary.Add($"masks up-to-date ({structFileName})");
+                }
+                else
+                {
+                    didAnything = true;
+                    try
+                    {
+                        var progress = new Progress<string>(msg => StatusText = $"{job.FolderDisplayName}: {msg}");
+                        string written = await Task.Run(() =>
+                            _rtStructWriter.ConvertMasksFolderToRtStruct(
+                                folder, refSeries, structOutPath, progress, CancellationToken.None, metadata))
+                            .ConfigureAwait(true);
+                        summary.Add($"RT-STRUCT ({Path.GetFileName(written)})");
+                    }
+                    catch (Exception ex)
+                    {
+                        summary.Add($"masks FAILED: {ex.Message}");
+                        jobFailed = true;
+                    }
+                }
+            }
+
+            // RT-DOSE: per-file hash filename; skip-if-exists handled inside the writer.
+            if (job.DoseCount > 0 && ConvertDoses)
+            {
+                try
+                {
+                    var progress = new Progress<string>(msg => StatusText = $"{job.FolderDisplayName}: {msg}");
+                    var beforeCount = Directory
+                        .EnumerateFiles(folder, "RTDOSE_*.dcm", SearchOption.TopDirectoryOnly)
+                        .Count();
+
+                    var written = await Task.Run(() =>
+                        _rtDoseWriter.ConvertDoseFolderToRtDoses(
+                            folder, refSeries, progress, CancellationToken.None,
+                            useStableHashNames: true, skipIfExists: true,
+                            metadata: metadata))
+                        .ConfigureAwait(true);
+
+                    var afterCount = Directory
+                        .EnumerateFiles(folder, "RTDOSE_*.dcm", SearchOption.TopDirectoryOnly)
+                        .Count();
+                    int newDoses = afterCount - beforeCount;
+                    if (newDoses > 0) didAnything = true;
+
+                    summary.Add(newDoses > 0
+                        ? $"{newDoses} new RT-DOSE"
+                        : $"doses up-to-date ({written.Count})");
+                }
+                catch (Exception ex)
+                {
+                    summary.Add($"doses FAILED: {ex.Message}");
+                    jobFailed = true;
+                }
+            }
+
+            if (jobFailed)
+            {
+                job.Status = "FAILED — " + string.Join("; ", summary);
+                return JobOutcome.Failed;
+            }
+            if (!didAnything)
+            {
+                job.Status = summary.Count > 0
+                    ? "Up-to-date — " + string.Join(", ", summary)
+                    : "Up-to-date — nothing to do.";
+                return JobOutcome.UpToDate;
+            }
+            job.Status = "Converted — " + string.Join(", ", summary);
+            return JobOutcome.Converted;
+        }
+
+        private struct FolderFingerprint
+        {
+            public string Signature;
+        }
+
+        private enum JobOutcome { Converted, UpToDate, Failed }
+
         private void Cancel() => _cts?.Cancel();
+
+        /// <summary>
+        /// Called when the host window closes: stops the watcher timer so it doesn't keep
+        /// ticking after the window is gone, and cancels any in-flight conversion.
+        /// </summary>
+        public void OnWindowClosed()
+        {
+            if (IsServerMode) StopServer();
+            _cts?.Cancel();
+        }
 
         public event PropertyChangedEventHandler PropertyChanged;
 

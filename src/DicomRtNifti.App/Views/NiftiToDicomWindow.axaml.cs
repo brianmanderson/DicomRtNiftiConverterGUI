@@ -1,5 +1,7 @@
+using System;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Dicom_RT_images_Csharp.ViewModels;
 
 namespace Dicom_RT_images_Csharp.Views
 {
@@ -12,5 +14,13 @@ namespace Dicom_RT_images_Csharp.Views
         public NiftiToDicomWindow() => InitializeComponent();
 
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+        protected override void OnClosed(EventArgs e)
+        {
+            // Stop the server watcher timer (and cancel any in-flight conversion) so it
+            // doesn't keep ticking after the window is gone.
+            (DataContext as NiftiToDicomViewModel)?.OnWindowClosed();
+            base.OnClosed(e);
+        }
     }
 }
