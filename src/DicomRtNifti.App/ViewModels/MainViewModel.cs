@@ -19,10 +19,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
     /// Main ViewModel for the forward (DICOM -> NIfTI) workflow. Ported from WPF; the scan /
     /// convert / metadata logic is unchanged. Cross-platform changes: CommunityToolkit commands
     /// (RefreshCommands() raises CanExecuteChanged), IFolderPicker instead of WinForms dialogs,
-    /// async ShowDialog for the OutputSpacing / RoiSelection / Settings dialogs, and an
-    /// OS-switched folder reveal. The ROI-association editor, anonymization-key editor and Help
-    /// window are not ported yet (their buttons log a notice); the underlying association/anon
-    /// data still loads from disk and applies during export.
+    /// async ShowDialog for the OutputSpacing / RoiSelection / Settings / anonymization-key
+    /// dialogs, and an OS-switched folder reveal. The ROI-association editor and Help window are
+    /// not ported yet (their buttons log a notice); the underlying association data still loads
+    /// from disk and applies during export.
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
@@ -80,7 +80,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             CancelCommand = new RelayCommand(Cancel, () => IsScanning || IsConverting);
             ManageAssociationsCommand = new RelayCommand(OpenAssociationsStub);
             SelectRoisCommand = new AsyncRelayCommand(OpenRoiSelectionAsync);
-            OpenAnonymizationKeyEditorCommand = new RelayCommand(OpenAnonymizationKeyEditorStub);
+            OpenAnonymizationKeyEditorCommand = new AsyncRelayCommand(OpenAnonymizationKeyEditorAsync);
             OpenSettingsCommand = new AsyncRelayCommand(OpenSettingsAsync);
             SelectAllPatientsCommand = new RelayCommand(ToggleSelectAllPatients);
             ExportMetaDataCommand = new AsyncRelayCommand(ExecuteExportMetaDataAsync,
@@ -150,7 +150,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public IRelayCommand CancelCommand { get; }
         public IRelayCommand ManageAssociationsCommand { get; }
         public IAsyncRelayCommand SelectRoisCommand { get; }
-        public IRelayCommand OpenAnonymizationKeyEditorCommand { get; }
+        public IAsyncRelayCommand OpenAnonymizationKeyEditorCommand { get; }
         public IAsyncRelayCommand OpenSettingsCommand { get; }
         public IRelayCommand SelectAllPatientsCommand { get; }
         public IAsyncRelayCommand ExportMetaDataCommand { get; }
@@ -602,8 +602,19 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     ProgressValue = (int)(100.0 * completed / total);
                 }
 
-                // Metadata export is never anonymized; pass null so real identifiers are written.
-                var manifestRows = BuildManifestRows(selectedSeries, null, spacingPerSeries, roiVolumesPerSeries);
+                // Honor the Anonymize toggle for metadata export too: when on, the manifest's
+                // PatientID/StudyUID/SeriesUID columns carry hashes and the key file is written/extended.
+                AnonymizationService anonService = null;
+                if (AnonymizeExport)
+                {
+                    string keyFilePath = Path.Combine(OutputFolder, "AnonymizationKey.json");
+                    anonService = new AnonymizationService(keyFilePath, _settings.HashSalt);
+                }
+
+                var manifestRows = BuildManifestRows(selectedSeries, anonService, spacingPerSeries, roiVolumesPerSeries);
+
+                if (anonService != null)
+                    anonService.Save();
 
                 var allExportedRoiNames = new List<string>();
                 var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -745,11 +756,20 @@ namespace Dicom_RT_images_Csharp.ViewModels
                       "%AppData%/DicomToNifti/roi_associations.json still apply (renaming) during export.");
         }
 
-        private void OpenAnonymizationKeyEditorStub()
+        private async Task OpenAnonymizationKeyEditorAsync()
         {
-            StatusText = "Anonymization-key editor is not yet ported.";
-            AppendLog("The Anonymization-key editor is coming in a later increment. Anonymized exports still " +
-                      "work and write/extend AnonymizationKey.json in the output folder.");
+            // Edit the key file that an anonymized export to the current output folder would use;
+            // fall back to the %AppData% location (inspection only) when no output folder is set.
+            string keyFilePath = !string.IsNullOrEmpty(OutputFolder)
+                ? Path.Combine(OutputFolder, "AnonymizationKey.json")
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "DicomToNifti", "AnonymizationKey.json");
+
+            var vm = new AnonymizationKeyEditorViewModel(keyFilePath, _settings.HashSalt);
+            var window = new AnonymizationKeyEditorWindow { DataContext = vm };
+            if (await window.ShowDialog<bool>(AppWindows.Active))
+                AppendLog($"Anonymization key saved: {keyFilePath}");
         }
 
         private void OpenHelpStub()

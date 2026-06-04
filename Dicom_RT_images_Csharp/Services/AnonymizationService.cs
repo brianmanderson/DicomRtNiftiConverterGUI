@@ -66,32 +66,45 @@ namespace Dicom_RT_images_Csharp.Services
         }
 
         /// <summary>
-        /// Returns the stable patient hash for an MRN, recording the mrn -> hash mapping.
+        /// Returns the patient hash for an MRN. A mapping already present in the loaded key file
+        /// (e.g. a manual override set in the editor) is honored; otherwise a deterministic hash is
+        /// computed and recorded.
         /// </summary>
         public string GetPatientHash(string mrn)
         {
-            string hash = DeterministicHashString("PATIENT:" + (mrn ?? ""), _salt, "P");
-            _patients[mrn ?? ""] = hash;
+            string key = mrn ?? "";
+            if (_patients.TryGetValue(key, out string existing))
+                return existing;
+            string hash = DeterministicHashString("PATIENT:" + key, _salt, "P");
+            _patients[key] = hash;
             return hash;
         }
 
         /// <summary>
-        /// Returns the stable study hash for a StudyInstanceUID, recording the uid -> hash mapping.
+        /// Returns the study hash for a StudyInstanceUID. Honors an existing/overridden mapping;
+        /// otherwise computes and records a deterministic hash.
         /// </summary>
         public string GetStudyHash(string studyUid)
         {
-            string hash = DeterministicHashString("STUDY:" + (studyUid ?? ""), _salt, "ST");
-            _studies[studyUid ?? ""] = hash;
+            string key = studyUid ?? "";
+            if (_studies.TryGetValue(key, out string existing))
+                return existing;
+            string hash = DeterministicHashString("STUDY:" + key, _salt, "ST");
+            _studies[key] = hash;
             return hash;
         }
 
         /// <summary>
-        /// Returns the stable series hash for a SeriesInstanceUID, recording the uid -> hash mapping.
+        /// Returns the series hash for a SeriesInstanceUID. Honors an existing/overridden mapping;
+        /// otherwise computes and records a deterministic hash.
         /// </summary>
         public string GetSeriesHash(string seriesUid)
         {
-            string hash = DeterministicHashString("SERIES:" + (seriesUid ?? ""), _salt, "SE");
-            _series[seriesUid ?? ""] = hash;
+            string key = seriesUid ?? "";
+            if (_series.TryGetValue(key, out string existing))
+                return existing;
+            string hash = DeterministicHashString("SERIES:" + key, _salt, "SE");
+            _series[key] = hash;
             return hash;
         }
 
