@@ -75,7 +75,7 @@ namespace Dicom_RT_images_Csharp.Services
             string key = mrn ?? "";
             if (_patients.TryGetValue(key, out string existing))
                 return existing;
-            string hash = DeterministicHashString("PATIENT:" + key, _salt, "P");
+            string hash = DeterministicHashString("PATIENT:" + key, _salt, "P", 5);
             _patients[key] = hash;
             return hash;
         }
