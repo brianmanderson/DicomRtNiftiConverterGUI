@@ -114,25 +114,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
             return result;
         }
 
-        private string ResolveToCanonical(string rawName, List<RoiAssociation> associations)
-        {
-            if (associations == null || associations.Count == 0)
-                return rawName;
-
-            foreach (var assoc in associations)
-            {
-                if (string.Equals(assoc.CanonicalName, rawName, StringComparison.OrdinalIgnoreCase))
-                    return assoc.CanonicalName;
-
-                foreach (var alias in assoc.Aliases)
-                {
-                    if (string.Equals(alias, rawName, StringComparison.OrdinalIgnoreCase))
-                        return assoc.CanonicalName;
-                }
-            }
-
-            return rawName;
-        }
+        private static string ResolveToCanonical(string rawName, List<RoiAssociation> associations)
+            => RoiNameMatcher.ResolveToCanonical(rawName, associations);
 
         private void ApplyFilter()
         {

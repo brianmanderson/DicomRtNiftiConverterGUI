@@ -11,6 +11,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using Dicom_RT_images_Csharp.Models;
 using Dicom_RT_images_Csharp.Services;
+using Dicom_RT_images_Csharp.Views;
 
 namespace Dicom_RT_images_Csharp.ViewModels
 {
@@ -64,6 +65,17 @@ namespace Dicom_RT_images_Csharp.ViewModels
             ConvertCommand = new AsyncRelayCommand(ConvertAllAsync,
                 () => !IsBusy && DiscoveredJobs.Count > 0 && (ConvertStructures || ConvertDoses || ConvertImage));
             CancelCommand = new RelayCommand(Cancel, () => IsBusy);
+            OpenHelpCommand = new RelayCommand(OpenHelp);
+        }
+
+        private void OpenHelp()
+        {
+            var help = new NiftiToDicomHelpWindow();
+            var owner = AppWindows.Active;
+            if (owner != null)
+                help.Show(owner);
+            else
+                help.Show();
         }
 
         public string RootFolder
@@ -112,6 +124,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public IRelayCommand ScanRootFolderCommand { get; }
         public IAsyncRelayCommand ConvertCommand { get; }
         public IRelayCommand CancelCommand { get; }
+        public IRelayCommand OpenHelpCommand { get; }
 
         private void RefreshCommands()
         {

@@ -342,17 +342,15 @@ namespace Dicom_RT_images_Csharp.Services
 
             var matchedDicomNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // For each association, find the first matching DICOM ROI name
+            // For each association, find the first matching DICOM ROI name. Matching is forgiving
+            // (case- and punctuation-insensitive) via RoiNameMatcher so e.g. "Spinal-Cord" covers
+            // "SpinalCord"; an exact case-insensitive match still wins first.
             foreach (var assoc in associations)
             {
                 foreach (var dicomName in dicomRoiNames)
                 {
-                    bool matched = string.Equals(dicomName, assoc.CanonicalName, StringComparison.OrdinalIgnoreCase);
-                    if (!matched)
-                    {
-                        matched = assoc.Aliases.Any(alias =>
-                            string.Equals(dicomName, alias, StringComparison.OrdinalIgnoreCase));
-                    }
+                    bool matched = RoiNameMatcher.Matches(dicomName, assoc.CanonicalName)
+                        || assoc.Aliases.Any(alias => RoiNameMatcher.Matches(dicomName, alias));
 
                     if (matched)
                     {
