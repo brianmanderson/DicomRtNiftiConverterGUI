@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
@@ -9,134 +8,119 @@ using Newtonsoft.Json;
 namespace Dicom_RT_images_Csharp.Services
 {
     /// <summary>
-    /// Provides deterministic hashing for anonymized exports and
-    /// assigns incrementing integer export IDs to unique hash keys.
-    /// Persists mappings to AnonymizationKey.json for cross-session continuity.
+    /// Provides deterministic per-identifier hashing for anonymized exports.
+    /// Maintains three independent maps - MRN -> patient hash, StudyUID -> study hash,
+    /// SeriesUID -> series hash - so a patient always resolves to the same patient hash and
+    /// each new series gets its own series hash. The maps are persisted to AnonymizationKey.json
+    /// for cross-session continuity and reverse lookup (de-anonymization).
     /// </summary>
     public class AnonymizationService
     {
         private readonly string _salt;
         private readonly string _keyFilePath;
-        private readonly Dictionary<string, AnonymizationKeyEntry> _entries;
-        private int _nextExportId;
-        private readonly List<ManifestRow> _sessionManifestRows = new List<ManifestRow>();
+        private readonly Dictionary<string, string> _patients; // mrn       -> patient hash
+        private readonly Dictionary<string, string> _studies;  // studyUid  -> study hash
+        private readonly Dictionary<string, string> _series;   // seriesUid -> series hash
 
         /// <summary>
-        /// Creates a new AnonymizationService. If a key file exists at the given path,
-        /// loads it to resume numbering from the previous session.
+        /// Creates a new AnonymizationService. If a key file in the current schema exists at the
+        /// given path, loads it so previously assigned hashes are reused. Old-format key files
+        /// (composite ExportID entries) deserialize to empty maps and are treated as a fresh start.
         /// </summary>
         public AnonymizationService(string keyFilePath, string salt)
         {
             _keyFilePath = keyFilePath;
             _salt = salt ?? "DicomToNifti";
 
-            // Load existing key file if present
             var keyFile = LoadKeyFile(_keyFilePath);
             if (keyFile != null)
             {
-                _entries = keyFile.Entries ?? new Dictionary<string, AnonymizationKeyEntry>();
-                _nextExportId = keyFile.NextExportID;
+                _patients = keyFile.Patients ?? new Dictionary<string, string>();
+                _studies = keyFile.Studies ?? new Dictionary<string, string>();
+                _series = keyFile.Series ?? new Dictionary<string, string>();
             }
             else
             {
-                _entries = new Dictionary<string, AnonymizationKeyEntry>();
-                _nextExportId = 0;
+                _patients = new Dictionary<string, string>();
+                _studies = new Dictionary<string, string>();
+                _series = new Dictionary<string, string>();
             }
         }
 
         /// <summary>
-        /// Produces a deterministic 9-character string from the input + salt.
+        /// Produces a deterministic, filesystem-safe hash string from the input + salt.
         /// Same input and salt always produce the same output.
-        /// Format: "A" followed by 8 hex characters (first 4 bytes of SHA256).
+        /// Format: <paramref name="prefix"/> followed by the first <paramref name="bytes"/> bytes
+        /// of SHA256 rendered as lowercase hex (so 6 bytes -> 12 hex characters).
+        /// The prefix lets each identifier type (patient/study/series) be recognized at a glance and
+        /// namespacing the input keeps the three types from ever colliding on the same value.
         /// </summary>
-        public static string DeterministicHashString(string inputString, string salt)
+        public static string DeterministicHashString(string inputString, string salt, string prefix = "A", int bytes = 6)
         {
             string salted = string.Format("{0}:{1}", inputString, salt);
             using (SHA256 sha = SHA256.Create())
             {
                 byte[] hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(salted));
-                return "A" + BitConverter.ToString(hashBytes, 0, 4).Replace("-", "");
+                return prefix + BitConverter.ToString(hashBytes, 0, bytes).Replace("-", "").ToLowerInvariant();
             }
         }
 
         /// <summary>
-        /// Gets or assigns an integer export ID for the given MRN/StudyUID/SeriesUID combination.
-        /// The hash key is "{mrn}_{studyUid}_{seriesUid}".
-        /// If this combination was seen in a previous session (loaded from key file), returns the same ID.
-        /// Otherwise assigns the next available integer ID.
-        /// Also records a manifest row for CSV output.
+        /// Returns the patient hash for an MRN. A mapping already present in the loaded key file
+        /// (e.g. a manual override set in the editor) is honored; otherwise a deterministic hash is
+        /// computed and recorded.
         /// </summary>
-        public int GetOrAssignExportId(string mrn, string studyUid, string seriesUid)
+        public string GetPatientHash(string mrn)
         {
-            string hashKey = string.Format("{0}_{1}_{2}", mrn, studyUid, seriesUid);
-            string hashString = DeterministicHashString(hashKey, _salt);
-
-            int exportId;
-            AnonymizationKeyEntry entry;
-            if (_entries.TryGetValue(hashString, out entry))
-            {
-                exportId = entry.ExportID;
-            }
-            else
-            {
-                exportId = _nextExportId++;
-                _entries[hashString] = new AnonymizationKeyEntry
-                {
-                    ExportID = exportId,
-                    MRN = mrn,
-                    StudyUID = studyUid,
-                    SeriesUID = seriesUid
-                };
-            }
-
-            _sessionManifestRows.Add(new ManifestRow
-            {
-                MRN = mrn,
-                StudyUID = studyUid,
-                SeriesUID = seriesUid,
-                ExportID = exportId
-            });
-
-            return exportId;
+            string key = mrn ?? "";
+            if (_patients.TryGetValue(key, out string existing))
+                return existing;
+            string hash = DeterministicHashString("PATIENT:" + key, _salt, "P");
+            _patients[key] = hash;
+            return hash;
         }
 
         /// <summary>
-        /// Saves the current key file to disk with all entries (previous + new).
+        /// Returns the study hash for a StudyInstanceUID. Honors an existing/overridden mapping;
+        /// otherwise computes and records a deterministic hash.
+        /// </summary>
+        public string GetStudyHash(string studyUid)
+        {
+            string key = studyUid ?? "";
+            if (_studies.TryGetValue(key, out string existing))
+                return existing;
+            string hash = DeterministicHashString("STUDY:" + key, _salt, "ST");
+            _studies[key] = hash;
+            return hash;
+        }
+
+        /// <summary>
+        /// Returns the series hash for a SeriesInstanceUID. Honors an existing/overridden mapping;
+        /// otherwise computes and records a deterministic hash.
+        /// </summary>
+        public string GetSeriesHash(string seriesUid)
+        {
+            string key = seriesUid ?? "";
+            if (_series.TryGetValue(key, out string existing))
+                return existing;
+            string hash = DeterministicHashString("SERIES:" + key, _salt, "SE");
+            _series[key] = hash;
+            return hash;
+        }
+
+        /// <summary>
+        /// Saves the current key file to disk with all three maps (previous + new).
         /// </summary>
         public void Save()
         {
             var keyFile = new AnonymizationKeyFile
             {
-                NextExportID = _nextExportId,
                 Salt = _salt,
-                Entries = _entries
+                Patients = _patients,
+                Studies = _studies,
+                Series = _series
             };
             SaveKeyFile(_keyFilePath, keyFile);
-        }
-
-        /// <summary>
-        /// Returns all manifest rows accumulated during this session (for CSV output).
-        /// </summary>
-        public List<ManifestRow> GetSessionManifestRows()
-        {
-            return _sessionManifestRows;
-        }
-
-        /// <summary>
-        /// Returns ALL entries (previous + current session) for a full manifest CSV.
-        /// </summary>
-        public List<ManifestRow> GetAllManifestRows()
-        {
-            return _entries.Values
-                .OrderBy(e => e.ExportID)
-                .Select(e => new ManifestRow
-                {
-                    MRN = e.MRN,
-                    StudyUID = e.StudyUID,
-                    SeriesUID = e.SeriesUID,
-                    ExportID = e.ExportID
-                })
-                .ToList();
         }
 
         /// <summary>
@@ -180,36 +164,32 @@ namespace Dicom_RT_images_Csharp.Services
     }
 
     /// <summary>
-    /// Represents the persisted anonymization key file.
+    /// Represents the persisted anonymization key file: three reverse-lookup maps from original
+    /// identifier to its deterministic hash.
     /// </summary>
     public class AnonymizationKeyFile
     {
-        public int NextExportID { get; set; } = 0;
         public string Salt { get; set; } = "DicomToNifti";
-        public Dictionary<string, AnonymizationKeyEntry> Entries { get; set; }
-            = new Dictionary<string, AnonymizationKeyEntry>();
+
+        /// <summary>MRN -> patient hash.</summary>
+        public Dictionary<string, string> Patients { get; set; } = new Dictionary<string, string>();
+
+        /// <summary>StudyInstanceUID -> study hash.</summary>
+        public Dictionary<string, string> Studies { get; set; } = new Dictionary<string, string>();
+
+        /// <summary>SeriesInstanceUID -> series hash.</summary>
+        public Dictionary<string, string> Series { get; set; } = new Dictionary<string, string>();
     }
 
     /// <summary>
-    /// A single entry in the anonymization key file.
-    /// </summary>
-    public class AnonymizationKeyEntry
-    {
-        public int ExportID { get; set; }
-        public string MRN { get; set; }
-        public string StudyUID { get; set; }
-        public string SeriesUID { get; set; }
-    }
-
-    /// <summary>
-    /// Represents one row in the export manifest CSV.
+    /// Represents one row in the export manifest CSV. The PatientID/StudyUID/SeriesUID fields hold
+    /// the anonymization hashes when anonymizing and the real identifiers otherwise.
     /// </summary>
     public class ManifestRow
     {
-        public string MRN { get; set; }
+        public string PatientID { get; set; }
         public string StudyUID { get; set; }
         public string SeriesUID { get; set; }
-        public int ExportID { get; set; }
         public double SpacingX { get; set; }
         public double SpacingY { get; set; }
         public double SpacingZ { get; set; }
