@@ -10,11 +10,16 @@
 
     <!-- Header -->
     <Border Grid.Row="0" Background="#3F51B5" Padding="16,10">
-      <StackPanel>
-        <TextBlock Text="NIfTI to DICOM (Batch)" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
-        <TextBlock Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
-                   Text="Select a folder. Each folder with an image.nii.gz, a masks/ subdir, or a doses/ subdir (the folder itself or any first-level subfolder) is a job: image.nii.gz → a DICOM image series, masks/ → one RT-STRUCT, doses/ → one RT-DOSE per file. With no reference DICOM, patient/study UIDs come from metadata.json in the folder (auto-created on first run)."/>
-      </StackPanel>
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Help" Command="{Binding OpenHelpCommand}"
+                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="#3F51B5"
+                FontWeight="SemiBold" FontSize="13" MinWidth="80" BorderThickness="0"/>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="NIfTI to DICOM (Batch)" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+          <TextBlock Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                     Text="Select a folder. Each folder with an image.nii.gz, a masks/ subdir, or a doses/ subdir (the folder itself or any first-level subfolder) is a job: image.nii.gz → a DICOM image series, masks/ → one RT-STRUCT, doses/ → one RT-DOSE per file. With no reference DICOM, patient/study UIDs come from metadata.json in the folder (auto-created on first run)."/>
+        </StackPanel>
+      </DockPanel>
     </Border>
 
     <!-- Content -->

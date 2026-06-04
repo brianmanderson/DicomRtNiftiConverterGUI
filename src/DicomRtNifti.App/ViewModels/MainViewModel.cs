@@ -80,7 +80,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             ConvertSelectedCommand = new AsyncRelayCommand(ExecuteConvertAsync,
                 () => !IsScanning && !IsConverting && Patients.Count > 0);
             CancelCommand = new RelayCommand(Cancel, () => IsScanning || IsConverting);
-            ManageAssociationsCommand = new RelayCommand(OpenAssociationsStub);
+            ManageAssociationsCommand = new AsyncRelayCommand(OpenAssociationsAsync);
             SelectRoisCommand = new AsyncRelayCommand(OpenRoiSelectionAsync);
             OpenAnonymizationKeyEditorCommand = new AsyncRelayCommand(OpenAnonymizationKeyEditorAsync);
             OpenSettingsCommand = new AsyncRelayCommand(OpenSettingsAsync);
@@ -88,7 +88,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             ExportMetaDataCommand = new AsyncRelayCommand(ExecuteExportMetaDataAsync,
                 () => !IsScanning && !IsConverting && Patients.Count > 0);
             OpenOutputSpacingCommand = new AsyncRelayCommand(OpenOutputSpacingAsync);
-            OpenHelpCommand = new RelayCommand(OpenHelpStub);
+            OpenHelpCommand = new RelayCommand(OpenHelp);
 
             _settings = _settingsService.LoadSettings();
             _associations = _settingsService.LoadAssociations();
@@ -150,7 +150,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public IAsyncRelayCommand ScanCommand { get; }
         public IAsyncRelayCommand ConvertSelectedCommand { get; }
         public IRelayCommand CancelCommand { get; }
-        public IRelayCommand ManageAssociationsCommand { get; }
+        public IAsyncRelayCommand ManageAssociationsCommand { get; }
         public IAsyncRelayCommand SelectRoisCommand { get; }
         public IAsyncRelayCommand OpenAnonymizationKeyEditorCommand { get; }
         public IAsyncRelayCommand OpenSettingsCommand { get; }
@@ -340,7 +340,6 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     anonService = new AnonymizationService(keyFilePath, _settings.HashSalt);
                 }
 
-                var exportedRoisPerSeries = new Dictionary<string, List<string>>();
                 var spacingPerSeries = new Dictionary<string, double[]>();
                 var roiVolumesPerSeries = new Dictionary<string, Dictionary<string, double>>();
 
@@ -395,48 +394,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
                     spacingPerSeries[seriesUid] = seriesSpacing;
 
-                    var exportedRoiNames = new List<string>();
                     Dictionary<string, double> roiVolumes = null;
 
                     if (IncludeStructures && model.LinkedRtStruct != null)
                     {
                         progress.Report($"Rasterizing structures: {displayLabel}");
-
-                        if (model.LinkedRtStruct.RoiNames != null)
-                        {
-                            if (effectiveAssociations != null && effectiveAssociations.Count > 0)
-                            {
-                                foreach (var assoc in effectiveAssociations)
-                                {
-                                    foreach (var roiName in model.LinkedRtStruct.RoiNames)
-                                    {
-                                        if (assoc.Aliases.Any(d => string.Equals(d, roiName, StringComparison.OrdinalIgnoreCase))
-                                            || string.Equals(assoc.CanonicalName, roiName, StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            exportedRoiNames.Add(assoc.CanonicalName);
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (effectiveExportUnmatched)
-                                {
-                                    var matchedDicomNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                                    foreach (var assoc in effectiveAssociations)
-                                    {
-                                        matchedDicomNames.Add(assoc.CanonicalName);
-                                        foreach (var alias in assoc.Aliases)
-                                            matchedDicomNames.Add(alias);
-                                    }
-                                    foreach (var roiName in model.LinkedRtStruct.RoiNames)
-                                        if (!matchedDicomNames.Contains(roiName))
-                                            exportedRoiNames.Add(roiName);
-                                }
-                            }
-                            else
-                            {
-                                exportedRoiNames.AddRange(model.LinkedRtStruct.RoiNames);
-                            }
-                        }
 
                         roiVolumes = await Task.Run(() =>
                             _conversionService.ConvertStructToNifti(
@@ -445,7 +407,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
                                 false, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
                     }
 
-                    exportedRoisPerSeries[seriesUid] = exportedRoiNames;
+                    // The conversion returns volumes keyed by the exported (canonical-or-raw) mask name,
+                    // so the manifest columns come straight from what was actually written — keeping the
+                    // CSV in lock-step with the masks and with the forgiving association matching.
                     if (roiVolumes != null)
                         roiVolumesPerSeries[seriesUid] = roiVolumes;
 
@@ -473,10 +437,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 if (IncludeStructures)
                 {
                     var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var rois in exportedRoisPerSeries.Values)
-                        foreach (var name in rois)
-                            if (roiNameSet.Add(name))
-                                allExportedRoiNames.Add(name);
+                    foreach (var volDict in roiVolumesPerSeries.Values)
+                        foreach (var roiName in volDict.Keys)
+                            if (roiNameSet.Add(roiName))
+                                allExportedRoiNames.Add(roiName);
                 }
 
                 WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames);
@@ -725,18 +689,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         }
 
         private string ResolveToCanonical(string rawName, List<RoiAssociation> associations)
-        {
-            if (associations == null || associations.Count == 0) return rawName;
-            foreach (var assoc in associations)
-            {
-                if (string.Equals(assoc.CanonicalName, rawName, StringComparison.OrdinalIgnoreCase))
-                    return assoc.CanonicalName;
-                foreach (var alias in assoc.Aliases)
-                    if (string.Equals(alias, rawName, StringComparison.OrdinalIgnoreCase))
-                        return assoc.CanonicalName;
-            }
-            return rawName;
-        }
+            => RoiNameMatcher.ResolveToCanonical(rawName, associations);
 
         private async Task OpenSettingsAsync()
         {
@@ -749,13 +702,17 @@ namespace Dicom_RT_images_Csharp.ViewModels
             }
         }
 
-        // --- Editors not yet ported to Avalonia (next Phase 4 increments). The underlying
-        //     association / anonymization data still loads from disk and applies during export. ---
-        private void OpenAssociationsStub()
+        private async Task OpenAssociationsAsync()
         {
-            StatusText = "ROI Associations editor is not yet ported.";
-            AppendLog("ROI Associations editor is coming in a later increment. Existing associations in " +
-                      "%AppData%/DicomToNifti/roi_associations.json still apply (renaming) during export.");
+            // Seed the editor with every ROI name discovered in the current scan so the user can
+            // double-click discovered names straight into an alias set.
+            var vm = new RoiAssociationViewModel(_settingsService, AllDiscoveredRoiNames.ToList());
+            var window = new RoiAssociationWindow { DataContext = vm };
+            await window.ShowDialog<bool>(AppWindows.Active);
+
+            // The editor persists on Save; reload so a subsequent export/ROI-selection picks up edits.
+            _associations = _settingsService.LoadAssociations();
+            AppendLog($"ROI Associations editor closed. {_associations.Count} association(s) loaded.");
         }
 
         private async Task OpenAnonymizationKeyEditorAsync()
@@ -774,10 +731,14 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 AppendLog($"Anonymization key saved: {keyFilePath}");
         }
 
-        private void OpenHelpStub()
+        private void OpenHelp()
         {
-            StatusText = "Help window is not yet ported.";
-            AppendLog("The in-app Help window is coming in a later increment.");
+            var help = new DicomToNiftiHelpWindow();
+            var owner = AppWindows.Active;
+            if (owner != null)
+                help.Show(owner);
+            else
+                help.Show();
         }
 
         private static void RevealFolder(string folder)
@@ -806,8 +767,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
         {
             string csvPath = Path.Combine(outputFolder, fileName);
 
-            var mergedByKey = new Dictionary<string, ManifestRow>(StringComparer.Ordinal);
-            var orderedKeys = new List<string>();
+            var mergedByKey = new Dictionary<(string, string, string), ManifestRow>();
+            var orderedKeys = new List<(string, string, string)>();
             var roiColumns = new List<string>();
             var roiColumnSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -819,7 +780,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                         roiColumns.Add(name);
                 foreach (var row in existingRows)
                 {
-                    string key = ManifestKey(row);
+                    var key = ManifestKey(row);
                     if (!mergedByKey.ContainsKey(key))
                         orderedKeys.Add(key);
                     mergedByKey[key] = row;
@@ -829,7 +790,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             // Overlay the incoming rows: update matching keys in place, append new ones.
             foreach (var row in rows)
             {
-                string key = ManifestKey(row);
+                var key = ManifestKey(row);
                 if (mergedByKey.TryGetValue(key, out var existing))
                 {
                     existing.SpacingX = row.SpacingX;
@@ -872,9 +833,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
             AppendLog($"Wrote manifest: {csvPath}");
         }
 
-        /// <summary>Composite row key for manifest merging: the three identifier columns, NUL-joined.</summary>
-        private static string ManifestKey(ManifestRow row)
-            => (row.PatientID ?? "") + " " + (row.StudyUID ?? "") + " " + (row.SeriesUID ?? "");
+        /// <summary>Composite row key for manifest merging: the three identifier columns as a tuple.</summary>
+        private static (string, string, string) ManifestKey(ManifestRow row)
+            => (row.PatientID ?? "", row.StudyUID ?? "", row.SeriesUID ?? "");
 
         /// <summary>
         /// Reads an existing manifest CSV into its ROI column list (in file order) and its rows (in file
