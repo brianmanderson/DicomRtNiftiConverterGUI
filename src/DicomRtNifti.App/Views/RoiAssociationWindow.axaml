@@ -135,7 +135,20 @@
                    BorderThickness="0" Background="Transparent" Margin="4,0,4,4">
             <ListBox.ItemTemplate>
               <DataTemplate>
-                <TextBlock Text="{Binding Display}" Padding="4,2" Foreground="#333333"/>
+                <StackPanel Orientation="Horizontal">
+                  <!-- Yellow warning triangle: shown when this discovered name is not yet covered
+                       by any association's canonical name or alias. -->
+                  <Canvas Width="13" Height="13" VerticalAlignment="Center" Margin="0,0,5,0"
+                          IsVisible="{Binding IsUnmatched}"
+                          ToolTip.Tip="Not yet mapped to any ROI association">
+                    <Path Data="M6.5,1 L12.5,12 L0.5,12 Z" Fill="#F5A623"
+                          Stroke="#B8860B" StrokeThickness="0.75" StrokeJoin="Round"/>
+                    <Rectangle Canvas.Left="5.9" Canvas.Top="4.5" Width="1.2" Height="4" Fill="#4A3000"/>
+                    <Rectangle Canvas.Left="5.9" Canvas.Top="9.7" Width="1.2" Height="1.2" Fill="#4A3000"/>
+                  </Canvas>
+                  <TextBlock Text="{Binding Display}" Padding="4,2" Foreground="#333333"
+                             VerticalAlignment="Center"/>
+                </StackPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
