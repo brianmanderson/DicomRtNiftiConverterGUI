@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -51,7 +52,14 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 Associations.Add(new RoiAssociationItemViewModel(assoc));
             SelectedAssociation = Associations.FirstOrDefault();
 
+            // Track every edit that can change whether a discovered name is covered (associations
+            // added/removed, canonical renamed, aliases added/removed) so the warning flags stay live.
+            Associations.CollectionChanged += OnAssociationsChanged;
+            foreach (var item in Associations)
+                HookAssociation(item);
+
             FilterDiscoveredRoiNames();
+            RefreshDiscoveredWarnings();
         }
 
         /// <summary>All ROI associations being edited.</summary>
@@ -131,6 +139,64 @@ namespace Dicom_RT_images_Csharp.ViewModels
                     item.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
                     FilteredDiscoveredRoiNames.Add(item);
             }
+        }
+
+        // --- Live "not yet mapped" warning flags on discovered names ------------------------------
+
+        private void OnAssociationsChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+                foreach (RoiAssociationItemViewModel item in e.OldItems)
+                    UnhookAssociation(item);
+            if (e.NewItems != null)
+                foreach (RoiAssociationItemViewModel item in e.NewItems)
+                    HookAssociation(item);
+            RefreshDiscoveredWarnings();
+        }
+
+        private void HookAssociation(RoiAssociationItemViewModel item)
+        {
+            item.PropertyChanged += OnAssociationItemPropertyChanged;
+            item.Aliases.CollectionChanged += OnAliasesChanged;
+        }
+
+        private void UnhookAssociation(RoiAssociationItemViewModel item)
+        {
+            item.PropertyChanged -= OnAssociationItemPropertyChanged;
+            item.Aliases.CollectionChanged -= OnAliasesChanged;
+        }
+
+        private void OnAssociationItemPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            // A canonical-name edit can change which discovered names are covered.
+            if (e.PropertyName == nameof(RoiAssociationItemViewModel.CanonicalName))
+                RefreshDiscoveredWarnings();
+        }
+
+        private void OnAliasesChanged(object sender, NotifyCollectionChangedEventArgs e)
+            => RefreshDiscoveredWarnings();
+
+        /// <summary>
+        /// Flags each discovered name that is not covered by any association's canonical name or alias
+        /// (using the same forgiving matcher the conversion uses), so the browser can warn the user.
+        /// </summary>
+        private void RefreshDiscoveredWarnings()
+        {
+            foreach (var item in _allDiscoveredRoiNames)
+                item.IsUnmatched = !IsNameCovered(item.Name);
+        }
+
+        private bool IsNameCovered(string name)
+        {
+            foreach (var assoc in Associations)
+            {
+                if (RoiNameMatcher.Matches(name, assoc.CanonicalName))
+                    return true;
+                foreach (var alias in assoc.Aliases)
+                    if (RoiNameMatcher.Matches(name, alias))
+                        return true;
+            }
+            return false;
         }
 
         /// <summary>Persists the current associations to the app's roi_associations.json.</summary>
@@ -224,10 +290,13 @@ namespace Dicom_RT_images_Csharp.ViewModels
     /// <summary>
     /// One discovered ROI name in the browser, with the number of series it was found in.
     /// <see cref="Display"/> ("Name (Count)") is what the list shows; <see cref="Name"/> is the bare
-    /// value added as an alias on double-click.
+    /// value added as an alias on double-click. <see cref="IsUnmatched"/> drives the "not yet mapped"
+    /// warning icon and is kept up to date by the owning view-model.
     /// </summary>
-    public class DiscoveredRoiName
+    public class DiscoveredRoiName : INotifyPropertyChanged
     {
+        private bool _isUnmatched;
+
         public DiscoveredRoiName(string name, int count)
         {
             Name = name;
@@ -237,5 +306,16 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public string Name { get; }
         public int Count { get; }
         public string Display => $"{Name} ({Count})";
+
+        /// <summary>True when no association's canonical name or alias covers this discovered name.</summary>
+        public bool IsUnmatched
+        {
+            get => _isUnmatched;
+            set { if (_isUnmatched != value) { _isUnmatched = value; OnPropertyChanged(); } }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
