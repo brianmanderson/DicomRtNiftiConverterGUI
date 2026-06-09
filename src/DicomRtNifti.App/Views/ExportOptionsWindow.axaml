@@ -22,7 +22,7 @@
             CornerRadius="4" Margin="12,12,12,0" Padding="16">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
-          <CheckBox Content="Only export specific ROIs?" IsChecked="{Binding OnlyExportSpecificRois}" Margin="4,8" FontSize="13"/>
+          <CheckBox Content="Limit export to selected ROIs" IsChecked="{Binding OnlyExportSpecificRois}" Margin="4,8" FontSize="13"/>
           <Button Content="Edit ROI Associations..." Command="{Binding ManageAssociationsCommand}"
                   Padding="12,8" Margin="4" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
           <Button Content="Select ROIs for Export..." Command="{Binding SelectRoisCommand}"
@@ -35,8 +35,8 @@
 
           <Separator Margin="0,12"/>
 
-          <CheckBox Content="Specify Output Spacing" IsChecked="{Binding SpecifyOutputSpacing}" Margin="4,8" FontSize="13"/>
-          <Button Content="Specify Output..." Command="{Binding OpenOutputSpacingCommand}"
+          <CheckBox Content="Resample to fixed spacing" IsChecked="{Binding SpecifyOutputSpacing}" Margin="4,8" FontSize="13"/>
+          <Button Content="Set Spacing..." Command="{Binding OpenOutputSpacingCommand}"
                   IsEnabled="{Binding SpecifyOutputSpacing}"
                   Padding="12,8" Margin="4" FontSize="13" Background="#9C27B0" Foreground="White" FontWeight="SemiBold"/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,4,4,0"
@@ -44,7 +44,7 @@
 
           <Separator Margin="0,12"/>
 
-          <CheckBox Content="Anonymize export?" IsChecked="{Binding AnonymizeExport}" Margin="4,8" FontSize="13"/>
+          <CheckBox Content="Anonymize export" IsChecked="{Binding AnonymizeExport}" Margin="4,8" FontSize="13"/>
           <Button Content="Edit Anonymization Key..." Command="{Binding OpenAnonymizationKeyEditorCommand}"
                   IsEnabled="{Binding AnonymizeExport}"
                   Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
@@ -53,7 +53,7 @@
 
           <Separator Margin="0,12"/>
 
-          <CheckBox Content="Export DICOM metadata (metadata.json)?" IsChecked="{Binding ExportDicomMetadata}" Margin="4,8" FontSize="13"/>
+          <CheckBox Content="Write DICOM tag sidecar (metadata.json)" IsChecked="{Binding ExportDicomMetadata}" Margin="4,8" FontSize="13"/>
           <Button Content="Select Metadata Tags..." Command="{Binding OpenMetadataTagsCommand}"
                   IsEnabled="{Binding ExportDicomMetadata}"
                   Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#009688" Foreground="White" FontWeight="SemiBold"/>

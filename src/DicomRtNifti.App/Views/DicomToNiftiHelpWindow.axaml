@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dicom_RT_images_Csharp.Views.DicomToNiftiHelpWindow"
-        Title="Help: DICOM to NIfTI" Width="780" Height="700"
+        Title="Help: DICOM → NIfTI" Width="780" Height="700"
         WindowStartupLocation="CenterOwner"
         CanResize="True" MinHeight="400" MinWidth="540"
         Background="#F5F5F5">
@@ -53,17 +53,17 @@
           </TextBlock>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">2.</Run> Click <Run FontWeight="SemiBold">Scan</Run>. The
-            Patient / Study / Series tree on the left fills in. Tick the patients (or individual
+            Patient / Study / Series tree fills in. Tick the patients (or individual
             series) you want to export.
           </TextBlock>
           <TextBlock Classes="body">
-            <Run FontWeight="SemiBold">3.</Run> In the <Run FontWeight="SemiBold">Data to Export</Run>
-            row of the bottom action bar, tick the artifact types you want:
+            <Run FontWeight="SemiBold">3.</Run> In the <Run FontWeight="SemiBold">Data to export</Run>
+            row of the top toolbar, tick the artifact types you want:
             <Run FontWeight="SemiBold">Export Images</Run> (CT/MR/PT →
             <Run FontFamily="Consolas">image.nii.gz</Run>),
-            <Run FontWeight="SemiBold">Include Structures</Run> (RT-STRUCT → per-ROI masks under
+            <Run FontWeight="SemiBold">Export Structures</Run> (RT-STRUCT → per-ROI masks under
             <Run FontFamily="Consolas">masks/</Run>),
-            <Run FontWeight="SemiBold">Include Dose</Run> (RT-DOSE → one file per dose under
+            <Run FontWeight="SemiBold">Export Dose</Run> (RT-DOSE → one file per dose under
             <Run FontFamily="Consolas">doses/{SeriesDescription}.nii.gz</Run>).
           </TextBlock>
           <TextBlock Classes="body">
@@ -88,8 +88,8 @@
 
           <TextBlock Classes="h2" Text="B. Anonymized batch for research"/>
           <TextBlock Classes="body">
-            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the bottom action bar) and
-            tick <Run FontWeight="SemiBold">Anonymize export?</Run> before Convert Selected. Each
+            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the top toolbar) and
+            tick <Run FontWeight="SemiBold">Anonymize export</Run> before Convert Selected. Each
             exported identifier (MRN, Study UID, Series UID) is replaced by a deterministic per-identifier
             hash; the output layout uses the hashed identifiers in place of the patient / series folder
             names. An <Run FontFamily="Consolas">AnonymizationKey.json</Run> is written at the output root
@@ -103,7 +103,7 @@
             Use this when different patients call the same structure different names (e.g.
             <Run FontFamily="Consolas">PTV</Run>, <Run FontFamily="Consolas">PTV_5400</Run>,
             <Run FontFamily="Consolas">Target</Run>) and you want one canonical mask per ROI.
-            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the bottom action bar) —
+            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the top toolbar) —
             steps 1–3 below all live in that window.
             <LineBreak/>
             <LineBreak/>
@@ -112,7 +112,7 @@
             <Run FontFamily="Consolas">Target</Run> ↔ aliases
             <Run FontFamily="Consolas">{ CTV, GTV, PTV }</Run>.
             <LineBreak/>
-            <Run FontWeight="SemiBold">2.</Run> Tick <Run FontWeight="SemiBold">Only export specific ROIs?</Run>.
+            <Run FontWeight="SemiBold">2.</Run> Tick <Run FontWeight="SemiBold">Limit export to selected ROIs</Run>.
             <LineBreak/>
             <Run FontWeight="SemiBold">3.</Run> Click <Run FontWeight="SemiBold">Select ROIs for Export...</Run>
             and tick the canonical names you want. Patients whose series contain none of the
@@ -122,7 +122,7 @@
             renamed to their canonical name on disk; unmatched ROIs are dropped.
             <LineBreak/>
             <LineBreak/>
-            With <Run FontWeight="SemiBold">Only export specific ROIs?</Run> OFF but ROI Associations
+            With <Run FontWeight="SemiBold">Limit export to selected ROIs</Run> OFF but ROI Associations
             defined, matched ROIs are still renamed — but unmatched ones are also exported with
             their original names.
           </TextBlock>
@@ -130,7 +130,7 @@
           <TextBlock Classes="h2" Text="D. Inventory pass (no .nii.gz files written)"/>
           <TextBlock Classes="body">
             Set up the export options exactly as you would for a full export, then click
-            <Run FontWeight="SemiBold">Export MetaData</Run> instead of Convert Selected. The
+            <Run FontWeight="SemiBold">Export Manifest Only</Run> instead of Convert Selected. The
             rasterizer runs against each selected RT-STRUCT to compute per-ROI volumes (in cc), and
             image spacings are read, but nothing is written except
             <Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root. Ideal for
@@ -139,9 +139,9 @@
 
           <TextBlock Classes="h2" Text="E. Resampled to a target voxel spacing"/>
           <TextBlock Classes="body">
-            In <Run FontWeight="SemiBold">Export Options</Run> (bottom action bar), tick
-            <Run FontWeight="SemiBold">Specify Output Spacing</Run>, click
-            <Run FontWeight="SemiBold">Specify Output...</Run>, and enter X / Y / Z spacings in mm
+            In <Run FontWeight="SemiBold">Export Options</Run> (top toolbar), tick
+            <Run FontWeight="SemiBold">Resample to fixed spacing</Run>, click
+            <Run FontWeight="SemiBold">Set Spacing...</Run>, and enter X / Y / Z spacings in mm
             (e.g. 1.0 × 1.0 × 1.0). On Convert Selected, every output volume is resampled to that
             grid: image and dose with <Run FontWeight="SemiBold">linear</Run> interpolation, masks
             with <Run FontWeight="SemiBold">nearest-neighbour</Run>. The CSV manifest reflects the
@@ -177,7 +177,7 @@
             <Run FontFamily="Consolas">[RTDOSE]</Run> (and any other modality found in the archive).
           </TextBlock>
           <TextBlock Classes="body">
-            The <Run FontWeight="SemiBold">Select All?</Run> checkbox at the tree header toggles
+            The <Run FontWeight="SemiBold">Select all</Run> checkbox at the tree header toggles
             every patient at once. For each image series that has a linked RT-STRUCT, an
             <Run FontWeight="SemiBold">ROI Names</Run> expander appears underneath the row and lists
             every ROI name found in that structure set.
@@ -185,24 +185,24 @@
 
           <TextBlock Classes="h1" Text="Reference: export options"/>
           <TextBlock Classes="body">
-            The three <Run FontWeight="SemiBold">Data to Export</Run> checkboxes (Export Images /
-            Include Structures / Include Dose) live in the bottom action bar, next to Convert Selected.
+            The three <Run FontWeight="SemiBold">Data to export</Run> checkboxes (Export Images /
+            Export Structures / Export Dose) live in the top toolbar, alongside the Export Options button.
             Everything else — ROI filtering, output spacing, and anonymization — opens from the
             <Run FontWeight="SemiBold">Export Options...</Run> button as a separate window you can leave
             open and reposition while you keep working in the main window. Its settings apply to Convert
-            Selected and Export MetaData immediately, whether that window is open or closed.
+            Selected and Export Manifest Only immediately, whether that window is open or closed.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Export Images / Include Structures / Include Dose"/>
+          <TextBlock Classes="h2" Text="Export Images / Export Structures / Export Dose"/>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">Export Images</Run> writes the image series as
             <Run FontFamily="Consolas">image.nii.gz</Run> per series (one file per series, not per
             slice).
             <LineBreak/>
-            <Run FontWeight="SemiBold">Include Structures</Run> rasterizes the linked RT-STRUCT into
+            <Run FontWeight="SemiBold">Export Structures</Run> rasterizes the linked RT-STRUCT into
             per-ROI binary masks under <Run FontFamily="Consolas">masks/{ROI_Name}.nii.gz</Run>.
             <LineBreak/>
-            <Run FontWeight="SemiBold">Include Dose</Run> writes the linked RT-DOSE as
+            <Run FontWeight="SemiBold">Export Dose</Run> writes the linked RT-DOSE as
             <Run FontFamily="Consolas">doses/{SeriesDescription}.nii.gz</Run> (one file per dose,
             named for the RT-DOSE Series Description with filesystem-invalid characters replaced),
             applying any <Run FontFamily="Consolas">DoseGridScaling</Run> so the stored values are
@@ -226,15 +226,15 @@
             between runs.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Export Images OFF + Include Structures ON"/>
+          <TextBlock Classes="h2" Text="Export Images OFF + Export Structures ON"/>
           <TextBlock Classes="body">
             Masks are still rasterized to the image grid (or to the target spacing, if
-            <Run FontWeight="SemiBold">Specify Output Spacing</Run> is ON), but no
+            <Run FontWeight="SemiBold">Resample to fixed spacing</Run> is ON), but no
             <Run FontFamily="Consolas">image.nii.gz</Run> is written. The CSV manifest still records
             the series' voxel spacing and per-ROI volumes.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Only export specific ROIs?"/>
+          <TextBlock Classes="h2" Text="Limit export to selected ROIs"/>
           <TextBlock Classes="body">
             When ON: only ROIs whose DICOM name matches a defined association (or that you tick in
             <Run FontWeight="SemiBold">Select ROIs for Export...</Run>) are exported, and matching
@@ -257,22 +257,22 @@
 
           <TextBlock Classes="h2" Text="Select ROIs for Export..."/>
           <TextBlock Classes="body">
-            Enabled only when <Run FontWeight="SemiBold">Only export specific ROIs?</Run> is ON.
+            Enabled only when <Run FontWeight="SemiBold">Limit export to selected ROIs</Run> is ON.
             Lists every canonical name from the associations plus every unique DICOM ROI name
             discovered in the scan; tick the subset you want to export. Patients whose series have
             no matching ROI are auto-deselected when you click OK.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Specify Output Spacing + Specify Output..."/>
+          <TextBlock Classes="h2" Text="Resample to fixed spacing + Set Spacing..."/>
           <TextBlock Classes="body">
             When the checkbox is ON, all exported volumes (image, dose, masks) are resampled to a
-            uniform voxel spacing in mm. Click <Run FontWeight="SemiBold">Specify Output...</Run> to
+            uniform voxel spacing in mm. Click <Run FontWeight="SemiBold">Set Spacing...</Run> to
             set X / Y / Z spacing. Image and dose use <Run FontWeight="SemiBold">linear</Run>
             interpolation; structure masks use <Run FontWeight="SemiBold">nearest-neighbour</Run> so
             labels stay binary. The target spacing is also recorded in the CSV manifest.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Anonymize export? + Edit Anonymization Key..."/>
+          <TextBlock Classes="h2" Text="Anonymize export + Edit Anonymization Key..."/>
           <TextBlock Classes="body">
             When ON, patient/series folder names are replaced with deterministic per-identifier hashes.
             Each identifier (MRN, Study UID, Series UID) is salted (default salt
@@ -290,19 +290,14 @@
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Reference: bottom action bar"/>
-
-          <TextBlock Classes="h2" Text="Data to Export (Export Images / Include Structures / Include Dose)"/>
           <TextBlock Classes="body">
-            The three checkboxes that pick which artifacts each export writes. See
-            <Run FontWeight="SemiBold">Reference: export options</Run> above for what each one produces.
-          </TextBlock>
-
-          <TextBlock Classes="h2" Text="Export Options..."/>
-          <TextBlock Classes="body">
-            Opens the <Run FontWeight="SemiBold">Export Options</Run> window — ROI filtering, output
-            spacing, and anonymization — without blocking the main window, so it can stay open beside it.
-            Clicking the button again brings the existing window back to the front rather than opening a
-            second one.
+            The bar across the bottom of the window holds the run actions —
+            <Run FontWeight="SemiBold">Convert Selected</Run>,
+            <Run FontWeight="SemiBold">Export Manifest Only</Run>, and
+            <Run FontWeight="SemiBold">Settings...</Run> — above the timestamped log box. (The
+            Data to export checkboxes and the Export Options button live in the top toolbar; see
+            <Run FontWeight="SemiBold">Reference: top toolbar</Run> and
+            <Run FontWeight="SemiBold">Reference: export options</Run> above.)
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Convert Selected"/>
@@ -315,12 +310,12 @@
             every exported series and its per-ROI volumes.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Export MetaData"/>
+          <TextBlock Classes="h2" Text="Export Manifest Only"/>
           <TextBlock Classes="body">
             Inventory pass — writes only the CSV manifest
             (<Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root). No
             .nii.gz files are produced; the rasterizer still runs in-memory to compute per-ROI
-            volumes if <Run FontWeight="SemiBold">Include Structures</Run> is ON.
+            volumes if <Run FontWeight="SemiBold">Export Structures</Run> is ON.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Settings..."/>
@@ -334,7 +329,7 @@
             • <Run FontWeight="SemiBold">Auto-open after conversion</Run> — opens the Output folder
               in the system file browser when Convert Selected finishes.
             <LineBreak/>
-            • <Run FontWeight="SemiBold">Anonymization salt</Run> (<Run FontFamily="Consolas">HashSalt</Run>) — feeds the SHA256 hash for the per-identifier hashes. Changing the salt produces a different hash
+            • <Run FontWeight="SemiBold">Anonymization salt</Run> (<Run FontFamily="Consolas">HashSalt</Run>) — stored in <Run FontFamily="Consolas">settings.json</Run> (not shown in this dialog); feeds the SHA256 hash for the per-identifier hashes. Changing the salt produces a different hash
               space; keep it stable across sessions to keep hashes reproducible.
           </TextBlock>
 
@@ -349,11 +344,11 @@
 │   └─ {SeriesDate}_{SeriesDescription}/
 │       ├─ image.nii.gz            → CT/MR/PT volume        <Run Foreground="#888888">(if Export Images is ON)</Run>
 │       ├─ doses/
-│       │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume  <Run Foreground="#888888">(if Include Dose is ON and a dose is linked)</Run>
+│       │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume  <Run Foreground="#888888">(if Export Dose is ON and a dose is linked)</Run>
 │       └─ masks/
-│           └─ {ROI_Name}.nii.gz   → per-ROI binary mask    <Run Foreground="#888888">(if Include Structures is ON)</Run>
+│           └─ {ROI_Name}.nii.gz   → per-ROI binary mask    <Run Foreground="#888888">(if Export Structures is ON)</Run>
 │
-└─ export_manifest.csv                                      <Run Foreground="#888888">(or export_manifest_meta.csv from Export MetaData)</Run></TextBlock>
+└─ export_manifest.csv                                      <Run Foreground="#888888">(or export_manifest_meta.csv from Export Manifest Only)</Run></TextBlock>
           </Border>
 
           <TextBlock Classes="h2" Text="Anonymized"/>
@@ -372,7 +367,7 @@
 └─ AnonymizationKey.json                                    <Run Foreground="#888888">(deterministic identifier ↔ hash mapping)</Run></TextBlock>
           </Border>
           <TextBlock Classes="body">
-            <Run FontWeight="SemiBold">Export MetaData</Run> writes
+            <Run FontWeight="SemiBold">Export Manifest Only</Run> writes
             <Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root instead of
             <Run FontFamily="Consolas">export_manifest.csv</Run>; no per-series subfolders are created.
           </TextBlock>
@@ -381,7 +376,7 @@
           <TextBlock Classes="body">
             Two filenames depending on which button you clicked:
             <Run FontFamily="Consolas">export_manifest.csv</Run> (Convert Selected) or
-            <Run FontFamily="Consolas">export_manifest_meta.csv</Run> (Export MetaData). Same column
+            <Run FontFamily="Consolas">export_manifest_meta.csv</Run> (Export Manifest Only). Same column
             format in both, written to the output root. If the file already exists, rows are merged
             by their (PatientID, StudyUID, SeriesUID) key and ROI columns are unioned — re-exporting
             updates and extends the manifest rather than overwriting it.
@@ -396,7 +391,7 @@
             <LineBreak/>
             • <Run FontFamily="Consolas">SpacingX</Run>, <Run FontFamily="Consolas">SpacingY</Run>,
               <Run FontFamily="Consolas">SpacingZ</Run> — voxel spacing in mm. When
-              <Run FontWeight="SemiBold">Specify Output Spacing</Run> is ON, these reflect the target
+              <Run FontWeight="SemiBold">Resample to fixed spacing</Run> is ON, these reflect the target
               spacing.
             <LineBreak/>
             • One column per unique canonical ROI name across all exported series — the value is the
@@ -406,7 +401,7 @@
 
           <TextBlock Classes="h1" Text="AnonymizationKey.json"/>
           <TextBlock Classes="body">
-            Written to the output root whenever <Run FontWeight="SemiBold">Anonymize export?</Run>
+            Written to the output root whenever <Run FontWeight="SemiBold">Anonymize export</Run>
             was ON. It holds the salt plus three reverse-lookup maps — MRN → patient hash, Study UID →
             study hash, Series UID → series hash — so each original identifier always resolves to the
             same hash and the mapping can be inverted for de-anonymization.

@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Dicom_RT_images_Csharp.ViewModels"
         x:Class="Dicom_RT_images_Csharp.Views.DicomToNiftiWindow"
-        Title="DICOM to NIfTI Converter" Width="1100" Height="850"
+        Title="DICOM → NIfTI" Width="1100" Height="850"
         MinWidth="820" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         Background="#F5F5F5">
@@ -16,8 +16,8 @@
                 VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="#1976D2"
                 FontWeight="SemiBold" FontSize="13" MinWidth="80" BorderThickness="0"/>
         <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="DICOM to NIfTI Converter" FontSize="20" FontWeight="Bold" Foreground="White"/>
-          <TextBlock Text="Scan DICOM directories, select patients and series, convert to NIfTI format"
+          <TextBlock Text="DICOM → NIfTI" FontSize="20" FontWeight="Bold" Foreground="White"/>
+          <TextBlock Text="Scan an archive, pick the patients and series you want, export to NIfTI"
                      FontSize="12" Foreground="#BBDEFB" Margin="0,4,0,0"/>
         </StackPanel>
       </DockPanel>
@@ -54,13 +54,13 @@
 
         <!-- Data to Export + Export Options launcher (the rest of the options live in the Export Options window) -->
         <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
-          <TextBlock Grid.Column="0" Text="Data to Export:" VerticalAlignment="Center"
+          <TextBlock Grid.Column="0" Text="Data to export:" VerticalAlignment="Center"
                      FontWeight="Medium" Foreground="#555555" Margin="0,0,16,0"/>
           <CheckBox Grid.Column="1" Content="Export Images" IsChecked="{Binding ExportImages}"
                     FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
-          <CheckBox Grid.Column="2" Content="Include Structures" IsChecked="{Binding IncludeStructures}"
+          <CheckBox Grid.Column="2" Content="Export Structures" IsChecked="{Binding IncludeStructures}"
                     FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
-          <CheckBox Grid.Column="3" Content="Include Dose" IsChecked="{Binding IncludeDose}"
+          <CheckBox Grid.Column="3" Content="Export Dose" IsChecked="{Binding IncludeDose}"
                     FontSize="13" VerticalAlignment="Center"/>
           <Button Grid.Column="5" Content="Export Options..." Command="{Binding OpenExportOptionsCommand}"
                   Padding="14,6" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
@@ -77,7 +77,7 @@
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Grid.Column="0" Text="Patient / Study / Series" FontWeight="SemiBold"
                          FontSize="13" Foreground="#333333" VerticalAlignment="Center"/>
-              <CheckBox Grid.Column="1" Content="Select All?" IsChecked="{Binding AllPatientsSelected}"
+              <CheckBox Grid.Column="1" Content="Select all" IsChecked="{Binding AllPatientsSelected}"
                         VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
             </Grid>
           </Border>
@@ -138,7 +138,7 @@
           <Button Grid.Column="0" Content="Convert Selected" Command="{Binding ConvertSelectedCommand}"
                   Padding="12,6" MinWidth="140" FontSize="13" Margin="0,0,5,0"
                   Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
-          <Button Grid.Column="1" Content="Export MetaData" Command="{Binding ExportMetaDataCommand}"
+          <Button Grid.Column="1" Content="Export Manifest Only" Command="{Binding ExportMetaDataCommand}"
                   Padding="12,6" MinWidth="140" FontSize="13" Margin="5,0"
                   Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
           <Button Grid.Column="2" Content="Settings..." Command="{Binding OpenSettingsCommand}"

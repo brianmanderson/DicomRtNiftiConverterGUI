@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dicom_RT_images_Csharp.Views.NiftiToDicomHelpWindow"
-        Title="Help: NIfTI to DICOM" Width="780" Height="700"
+        Title="Help: NIfTI → DICOM" Width="780" Height="700"
         WindowStartupLocation="CenterOwner"
         CanResize="True" MinHeight="400" MinWidth="540"
         Background="#F5F5F5">
@@ -58,9 +58,9 @@
           </TextBlock>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">3.</Run> Leave
-            <Run FontWeight="SemiBold">Convert Image?</Run>,
-            <Run FontWeight="SemiBold">Convert Structures?</Run>, and
-            <Run FontWeight="SemiBold">Convert Doses?</Run> ticked (untick whichever you want to
+            <Run FontWeight="SemiBold">Convert Images</Run>,
+            <Run FontWeight="SemiBold">Convert Structures</Run>, and
+            <Run FontWeight="SemiBold">Convert Dose</Run> ticked (untick whichever you want to
             skip).
           </TextBlock>
           <TextBlock Classes="body">
@@ -104,9 +104,9 @@
             you can skip the metadata edit — the scanner will pick them up automatically.)
             <LineBreak/>
             <Run FontWeight="SemiBold">3.</Run> Untick
-            <Run FontWeight="SemiBold">Convert Image?</Run> and
-            <Run FontWeight="SemiBold">Convert Doses?</Run>; leave
-            <Run FontWeight="SemiBold">Convert Structures?</Run> ticked.
+            <Run FontWeight="SemiBold">Convert Images</Run> and
+            <Run FontWeight="SemiBold">Convert Dose</Run>; leave
+            <Run FontWeight="SemiBold">Convert Structures</Run> ticked.
             <LineBreak/>
             <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert All</Run>.
             The resulting RT-STRUCT references the existing image series without writing new image
@@ -174,7 +174,7 @@
             <Run FontFamily="Consolas">.dcm</Run> files in the folder describe a CT/MR/PT series,
             those are used directly; otherwise the writers fall back to
             <Run FontFamily="Consolas">metadata.json</Run> (with the image series that
-            <Run FontWeight="SemiBold">Convert Image?</Run> just produced from
+            <Run FontWeight="SemiBold">Convert Images</Run> just produced from
             <Run FontFamily="Consolas">image.nii.gz</Run>, if any).
           </TextBlock>
 
@@ -299,7 +299,7 @@
             <Run FontFamily="Consolas">ImageSopInstanceUids</Run> in ascending z-order) to make the
             generated RT-STRUCT reference an existing DICOM image series in the TPS without
             rewriting any image DICOMs. Untick
-            <Run FontWeight="SemiBold">Convert Image?</Run>. If
+            <Run FontWeight="SemiBold">Convert Images</Run>. If
             <Run FontFamily="Consolas">ImageSopInstanceUids</Run> is empty, the RT-STRUCT still
             emits a series-level reference but omits per-slice ContourImageSequence entries.
           </TextBlock>
@@ -311,7 +311,7 @@
             in the folder) and clear <Run FontFamily="Consolas">ImageSeriesInstanceUid</Run> +
             <Run FontFamily="Consolas">ImageSopInstanceUids</Run> in
             <Run FontFamily="Consolas">metadata.json</Run>. The next run with
-            <Run FontWeight="SemiBold">Convert Image?</Run> ON rewrites them.
+            <Run FontWeight="SemiBold">Convert Images</Run> ON rewrites them.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Reference: controls"/>
@@ -333,15 +333,15 @@
             to refresh the list.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Convert Image? / Convert Structures? / Convert Doses?"/>
+          <TextBlock Classes="h2" Text="Convert Images / Convert Structures / Convert Dose"/>
           <TextBlock Classes="body">
             Per-artifact toggles. <Run FontFamily="Consolas">image.nii.gz</Run> writes only when
-            <Run FontWeight="SemiBold">Convert Image?</Run> is ON;
+            <Run FontWeight="SemiBold">Convert Images</Run> is ON;
             <Run FontFamily="Consolas">masks/</Run> write only when
-            <Run FontWeight="SemiBold">Convert Structures?</Run> is ON;
+            <Run FontWeight="SemiBold">Convert Structures</Run> is ON;
             <Run FontFamily="Consolas">doses/</Run> write only when
-            <Run FontWeight="SemiBold">Convert Doses?</Run> is ON. With all three off, the Convert
-            / Run Server buttons are disabled. When Convert Image is ON, the image is written
+            <Run FontWeight="SemiBold">Convert Dose</Run> is ON. With all three off, the Convert
+            / Run Server buttons are disabled. When Convert Images is ON, the image is written
             first per folder so the RT-STRUCT and RT-DOSE reference the resulting DICOM image
             series.
           </TextBlock>

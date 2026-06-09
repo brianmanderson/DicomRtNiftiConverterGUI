@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dicom_RT_images_Csharp.Views.NiftiToDicomWindow"
-        Title="NIfTI to DICOM" Width="820" Height="640"
+        Title="NIfTI → DICOM" Width="820" Height="640"
         MinWidth="640" MinHeight="500"
         WindowStartupLocation="CenterScreen"
         Background="#F5F5F5">
@@ -15,7 +15,7 @@
                 VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="#3F51B5"
                 FontWeight="SemiBold" FontSize="13" MinWidth="80" BorderThickness="0"/>
         <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="NIfTI to DICOM (Batch)" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+          <TextBlock Text="NIfTI → DICOM" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
           <TextBlock Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
                      Text="Select a folder. Each folder with an image.nii.gz, a masks/ subdir, or a doses/ subdir (the folder itself or any subfolder, to any depth) is a job: image.nii.gz → a DICOM image series, masks/ → one RT-STRUCT, doses/ → one RT-DOSE per file. With no reference DICOM, patient/study UIDs come from metadata.json in the folder (auto-created on first run). Run Server watches the folder and converts each subfolder once its files settle."/>
         </StackPanel>
@@ -38,9 +38,11 @@
         </DockPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
-          <CheckBox Content="Convert Image?" IsChecked="{Binding ConvertImage}" FontSize="13" Margin="0,0,20,0"/>
-          <CheckBox Content="Convert Structures?" IsChecked="{Binding ConvertStructures}" FontSize="13" Margin="0,0,20,0"/>
-          <CheckBox Content="Convert Doses?" IsChecked="{Binding ConvertDoses}" FontSize="13"/>
+          <TextBlock Text="Data to convert:" VerticalAlignment="Center" FontWeight="Medium"
+                     Foreground="#555555" Margin="0,0,16,0"/>
+          <CheckBox Content="Convert Images" IsChecked="{Binding ConvertImage}" FontSize="13" Margin="0,0,20,0"/>
+          <CheckBox Content="Convert Structures" IsChecked="{Binding ConvertStructures}" FontSize="13" Margin="0,0,20,0"/>
+          <CheckBox Content="Convert Dose" IsChecked="{Binding ConvertDoses}" FontSize="13"/>
         </StackPanel>
 
         <Border Grid.Row="3" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="2" Background="#FAFAFA">
