@@ -57,8 +57,8 @@
             series) you want to export.
           </TextBlock>
           <TextBlock Classes="body">
-            <Run FontWeight="SemiBold">3.</Run> In the <Run FontWeight="SemiBold">Export Options</Run>
-            panel on the right, tick the artifact types you want:
+            <Run FontWeight="SemiBold">3.</Run> In the <Run FontWeight="SemiBold">Data to Export</Run>
+            row of the bottom action bar, tick the artifact types you want:
             <Run FontWeight="SemiBold">Export Images</Run> (CT/MR/PT →
             <Run FontFamily="Consolas">image.nii.gz</Run>),
             <Run FontWeight="SemiBold">Include Structures</Run> (RT-STRUCT → per-ROI masks under
@@ -88,7 +88,8 @@
 
           <TextBlock Classes="h2" Text="B. Anonymized batch for research"/>
           <TextBlock Classes="body">
-            Tick <Run FontWeight="SemiBold">Anonymize export?</Run> before Convert Selected. Each
+            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the bottom action bar) and
+            tick <Run FontWeight="SemiBold">Anonymize export?</Run> before Convert Selected. Each
             exported identifier (MRN, Study UID, Series UID) is replaced by a deterministic per-identifier
             hash; the output layout uses the hashed identifiers in place of the patient / series folder
             names. An <Run FontFamily="Consolas">AnonymizationKey.json</Run> is written at the output root
@@ -102,6 +103,8 @@
             Use this when different patients call the same structure different names (e.g.
             <Run FontFamily="Consolas">PTV</Run>, <Run FontFamily="Consolas">PTV_5400</Run>,
             <Run FontFamily="Consolas">Target</Run>) and you want one canonical mask per ROI.
+            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the bottom action bar) —
+            steps 1–3 below all live in that window.
             <LineBreak/>
             <LineBreak/>
             <Run FontWeight="SemiBold">1.</Run> Click <Run FontWeight="SemiBold">Edit ROI Associations...</Run>
@@ -126,7 +129,7 @@
 
           <TextBlock Classes="h2" Text="D. Inventory pass (no .nii.gz files written)"/>
           <TextBlock Classes="body">
-            Set up Export Options exactly as you would for a full export, then click
+            Set up the export options exactly as you would for a full export, then click
             <Run FontWeight="SemiBold">Export MetaData</Run> instead of Convert Selected. The
             rasterizer runs against each selected RT-STRUCT to compute per-ROI volumes (in cc), and
             image spacings are read, but nothing is written except
@@ -136,7 +139,8 @@
 
           <TextBlock Classes="h2" Text="E. Resampled to a target voxel spacing"/>
           <TextBlock Classes="body">
-            Tick <Run FontWeight="SemiBold">Specify Output Spacing</Run>, click
+            In <Run FontWeight="SemiBold">Export Options</Run> (bottom action bar), tick
+            <Run FontWeight="SemiBold">Specify Output Spacing</Run>, click
             <Run FontWeight="SemiBold">Specify Output...</Run>, and enter X / Y / Z spacings in mm
             (e.g. 1.0 × 1.0 × 1.0). On Convert Selected, every output volume is resampled to that
             grid: image and dose with <Run FontWeight="SemiBold">linear</Run> interpolation, masks
@@ -179,7 +183,15 @@
             every ROI name found in that structure set.
           </TextBlock>
 
-          <TextBlock Classes="h1" Text="Reference: Export Options panel"/>
+          <TextBlock Classes="h1" Text="Reference: export options"/>
+          <TextBlock Classes="body">
+            The three <Run FontWeight="SemiBold">Data to Export</Run> checkboxes (Export Images /
+            Include Structures / Include Dose) live in the bottom action bar, next to Convert Selected.
+            Everything else — ROI filtering, output spacing, and anonymization — opens from the
+            <Run FontWeight="SemiBold">Export Options...</Run> button as a separate window you can leave
+            open and reposition while you keep working in the main window. Its settings apply to Convert
+            Selected and Export MetaData immediately, whether that window is open or closed.
+          </TextBlock>
 
           <TextBlock Classes="h2" Text="Export Images / Include Structures / Include Dose"/>
           <TextBlock Classes="body">
@@ -278,6 +290,20 @@
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Reference: bottom action bar"/>
+
+          <TextBlock Classes="h2" Text="Data to Export (Export Images / Include Structures / Include Dose)"/>
+          <TextBlock Classes="body">
+            The three checkboxes that pick which artifacts each export writes. See
+            <Run FontWeight="SemiBold">Reference: export options</Run> above for what each one produces.
+          </TextBlock>
+
+          <TextBlock Classes="h2" Text="Export Options..."/>
+          <TextBlock Classes="body">
+            Opens the <Run FontWeight="SemiBold">Export Options</Run> window — ROI filtering, output
+            spacing, and anonymization — without blocking the main window, so it can stay open beside it.
+            Clicking the button again brings the existing window back to the front rather than opening a
+            second one.
+          </TextBlock>
 
           <TextBlock Classes="h2" Text="Convert Selected"/>
           <TextBlock Classes="body">

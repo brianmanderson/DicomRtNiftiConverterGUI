@@ -1,0 +1,65 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Dicom_RT_images_Csharp.Views.ExportOptionsWindow"
+        Title="Export Options" Width="600" Height="780"
+        MinWidth="460" MinHeight="560"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- Header -->
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,10">
+      <StackPanel>
+        <TextBlock Text="Export Options" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Text="ROI filtering, output spacing, and anonymization. Stays open while you work."
+                   Foreground="#BBDEFB" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Options -->
+    <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
+            CornerRadius="4" Margin="12,12,12,0" Padding="16">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <CheckBox Content="Only export specific ROIs?" IsChecked="{Binding OnlyExportSpecificRois}" Margin="4,8" FontSize="13"/>
+          <Button Content="Edit ROI Associations..." Command="{Binding ManageAssociationsCommand}"
+                  Padding="12,8" Margin="4" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+          <Button Content="Select ROIs for Export..." Command="{Binding SelectRoisCommand}"
+                  IsEnabled="{Binding OnlyExportSpecificRois}"
+                  Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#FF9800" Foreground="White" FontWeight="SemiBold"/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4"
+                     Text="ROI Associations always apply — matching ROIs are renamed to their canonical names during export."/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
+                     Text="When checked, only ROIs matching associations are exported. Use 'Select ROIs for Export' to choose which to include. Patients missing all selected ROIs are automatically de-selected."/>
+
+          <Separator Margin="0,12"/>
+
+          <CheckBox Content="Specify Output Spacing" IsChecked="{Binding SpecifyOutputSpacing}" Margin="4,8" FontSize="13"/>
+          <Button Content="Specify Output..." Command="{Binding OpenOutputSpacingCommand}"
+                  IsEnabled="{Binding SpecifyOutputSpacing}"
+                  Padding="12,8" Margin="4" FontSize="13" Background="#9C27B0" Foreground="White" FontWeight="SemiBold"/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,4,4,0"
+                     Text="When enabled, all exports (image, dose, masks) are resampled to the specified X/Y/Z voxel size. Image and dose use linear interpolation; structure masks use nearest-neighbor."/>
+
+          <Separator Margin="0,12"/>
+
+          <CheckBox Content="Anonymize export?" IsChecked="{Binding AnonymizeExport}" Margin="4,8" FontSize="13"/>
+          <Button Content="Edit Anonymization Key..." Command="{Binding OpenAnonymizationKeyEditorCommand}"
+                  IsEnabled="{Binding AnonymizeExport}"
+                  Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
+                     Text="When checked, exports use integer folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions."/>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <!-- Footer -->
+    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+            BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

@@ -25,7 +25,7 @@
 
     <!-- Input/Output/Scan toolbar -->
     <Border Grid.Row="1" Background="#F0F0F0" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1" Padding="12,10">
-      <Grid RowDefinitions="Auto,Auto,Auto">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto">
         <Grid Grid.Row="0" Margin="0,0,0,6" ColumnDefinitions="55,*,Auto">
           <TextBlock Grid.Column="0" Text="Input:" VerticalAlignment="Center" FontWeight="Medium" Foreground="#555555"/>
           <TextBox Grid.Column="1" Text="{Binding InputFolder}" VerticalContentAlignment="Center" Padding="6,4"/>
@@ -38,7 +38,7 @@
           <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseOutputCommand}"
                   Padding="12,6" MinWidth="80" FontSize="13" Margin="8,0,0,0"/>
         </Grid>
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="2" Margin="0,0,0,6" ColumnDefinitions="Auto,Auto,*,Auto">
           <Button Grid.Column="0" Content="Scan" Command="{Binding ScanCommand}"
                   Padding="12,6" MinWidth="100" FontSize="13" Margin="0,0,5,0"
                   Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
@@ -51,14 +51,26 @@
                        TextTrimming="CharacterEllipsis" Foreground="#666666"/>
           </StackPanel>
         </Grid>
+
+        <!-- Data to Export + Export Options launcher (the rest of the options live in the Export Options window) -->
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+          <TextBlock Grid.Column="0" Text="Data to Export:" VerticalAlignment="Center"
+                     FontWeight="Medium" Foreground="#555555" Margin="0,0,16,0"/>
+          <CheckBox Grid.Column="1" Content="Export Images" IsChecked="{Binding ExportImages}"
+                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
+          <CheckBox Grid.Column="2" Content="Include Structures" IsChecked="{Binding IncludeStructures}"
+                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
+          <CheckBox Grid.Column="3" Content="Include Dose" IsChecked="{Binding IncludeDose}"
+                    FontSize="13" VerticalAlignment="Center"/>
+          <Button Grid.Column="5" Content="Export Options..." Command="{Binding OpenExportOptionsCommand}"
+                  Padding="14,6" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+        </Grid>
       </Grid>
     </Border>
 
-    <!-- Tree + options -->
-    <Grid Grid.Row="2" Margin="12" ColumnDefinitions="*,260">
-
-      <Border Grid.Column="0" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
-              CornerRadius="4" Margin="0,0,12,0">
+    <!-- Patient / Study / Series tree -->
+    <Border Grid.Row="2" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
+            CornerRadius="4" Margin="12">
         <Grid RowDefinitions="Auto,*">
           <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE" BorderThickness="0,0,0,1"
                   Padding="12,8" CornerRadius="4,4,0,0">
@@ -117,53 +129,7 @@
             </TreeView.DataTemplates>
           </TreeView>
         </Grid>
-      </Border>
-
-      <!-- Options -->
-      <Border Grid.Column="1" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="16">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel>
-            <TextBlock Text="Export Options" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#333333"/>
-            <TextBlock Text="Data to Export:" FontWeight="Medium" Margin="0,0,0,8" Foreground="#555555"/>
-
-            <CheckBox Content="Export Images" IsChecked="{Binding ExportImages}" Margin="4,4" FontSize="13"/>
-            <CheckBox Content="Include Structures" IsChecked="{Binding IncludeStructures}" Margin="4,4" FontSize="13"/>
-            <CheckBox Content="Include Dose" IsChecked="{Binding IncludeDose}" Margin="4,4" FontSize="13"/>
-
-            <Separator Margin="0,12"/>
-
-            <CheckBox Content="Only export specific ROIs?" IsChecked="{Binding OnlyExportSpecificRois}" Margin="4,8" FontSize="13"/>
-            <Button Content="Edit ROI Associations..." Command="{Binding ManageAssociationsCommand}"
-                    Padding="12,8" Margin="4" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
-            <Button Content="Select ROIs for Export..." Command="{Binding SelectRoisCommand}"
-                    IsEnabled="{Binding OnlyExportSpecificRois}"
-                    Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#FF9800" Foreground="White" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4"
-                       Text="ROI Associations always apply — matching ROIs are renamed to their canonical names during export."/>
-            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
-                       Text="When checked, only ROIs matching associations are exported. Use 'Select ROIs for Export' to choose which to include. Patients missing all selected ROIs are automatically de-selected."/>
-
-            <Separator Margin="0,12"/>
-
-            <CheckBox Content="Specify Output Spacing" IsChecked="{Binding SpecifyOutputSpacing}" Margin="4,8" FontSize="13"/>
-            <Button Content="Specify Output..." Command="{Binding OpenOutputSpacingCommand}"
-                    IsEnabled="{Binding SpecifyOutputSpacing}"
-                    Padding="12,8" Margin="4" FontSize="13" Background="#9C27B0" Foreground="White" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,4,4,0"
-                       Text="When enabled, all exports (image, dose, masks) are resampled to the specified X/Y/Z voxel size. Image and dose use linear interpolation; structure masks use nearest-neighbor."/>
-
-            <Separator Margin="0,12"/>
-
-            <CheckBox Content="Anonymize export?" IsChecked="{Binding AnonymizeExport}" Margin="4,8" FontSize="13"/>
-            <Button Content="Edit Anonymization Key..." Command="{Binding OpenAnonymizationKeyEditorCommand}"
-                    IsEnabled="{Binding AnonymizeExport}"
-                    Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
-                       Text="When checked, exports use integer folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions."/>
-          </StackPanel>
-        </ScrollViewer>
-      </Border>
-    </Grid>
+    </Border>
 
     <!-- Action bar + log -->
     <Border Grid.Row="3" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Margin="12,0" Padding="12">

@@ -21,10 +21,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
     /// Main ViewModel for the forward (DICOM -> NIfTI) workflow. Ported from WPF; the scan /
     /// convert / metadata logic is unchanged. Cross-platform changes: CommunityToolkit commands
     /// (RefreshCommands() raises CanExecuteChanged), IFolderPicker instead of WinForms dialogs,
-    /// async ShowDialog for the OutputSpacing / RoiSelection / Settings / anonymization-key
-    /// dialogs, and an OS-switched folder reveal. The ROI-association editor and Help window are
-    /// not ported yet (their buttons log a notice); the underlying association data still loads
-    /// from disk and applies during export.
+    /// async ShowDialog for the OutputSpacing / RoiSelection / Settings / ROI-association /
+    /// anonymization-key dialogs, and an OS-switched folder reveal. The Help and Export Options
+    /// windows open non-modally via Show(); ROI associations load from disk and apply during export.
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
@@ -44,6 +43,10 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private CancellationTokenSource _cts;
         private AppSettings _settings;
         private List<RoiAssociation> _associations;
+
+        // The non-modal Export Options companion window, tracked so a second click re-focuses the
+        // open window instead of stacking duplicates. Null whenever the window is closed.
+        private ExportOptionsWindow _exportOptionsWindow;
 
         private bool _exportImages = true;
         private bool _includeStructures = true;
@@ -88,6 +91,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             ExportMetaDataCommand = new AsyncRelayCommand(ExecuteExportMetaDataAsync,
                 () => !IsScanning && !IsConverting && Patients.Count > 0);
             OpenOutputSpacingCommand = new AsyncRelayCommand(OpenOutputSpacingAsync);
+            OpenExportOptionsCommand = new RelayCommand(OpenExportOptions);
             OpenHelpCommand = new RelayCommand(OpenHelp);
 
             _settings = _settingsService.LoadSettings();
@@ -157,6 +161,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public IRelayCommand SelectAllPatientsCommand { get; }
         public IAsyncRelayCommand ExportMetaDataCommand { get; }
         public IAsyncRelayCommand OpenOutputSpacingCommand { get; }
+        public IRelayCommand OpenExportOptionsCommand { get; }
         public IRelayCommand OpenHelpCommand { get; }
 
         private void RefreshCommands()
@@ -744,6 +749,29 @@ namespace Dicom_RT_images_Csharp.ViewModels
             var window = new AnonymizationKeyEditorWindow { DataContext = vm };
             if (await window.ShowDialog<bool>(AppWindows.Active))
                 AppendLog($"Anonymization key saved: {keyFilePath}");
+        }
+
+        /// <summary>
+        /// Opens the Export Options as a non-modal companion window bound to this same view-model,
+        /// so its toggles drive the live export state while the main window stays usable. A second
+        /// invocation re-focuses the already-open window rather than opening another.
+        /// </summary>
+        private void OpenExportOptions()
+        {
+            if (_exportOptionsWindow != null)
+            {
+                _exportOptionsWindow.Activate();
+                return;
+            }
+
+            _exportOptionsWindow = new ExportOptionsWindow { DataContext = this };
+            _exportOptionsWindow.Closed += (_, _) => _exportOptionsWindow = null;
+
+            var owner = AppWindows.Active;
+            if (owner != null)
+                _exportOptionsWindow.Show(owner);
+            else
+                _exportOptionsWindow.Show();
         }
 
         private void OpenHelp()
