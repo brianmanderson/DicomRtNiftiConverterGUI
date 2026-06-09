@@ -58,6 +58,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
         private double _outputSpacingX = 1.0;
         private double _outputSpacingY = 1.0;
         private double _outputSpacingZ = 1.0;
+        private bool _exportDicomMetadata;
+        private List<string> _metadataTagKeywords = new List<string>();
 
         private HashSet<string> _selectedRoiNames;
 
@@ -92,6 +94,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 () => !IsScanning && !IsConverting && Patients.Count > 0);
             OpenOutputSpacingCommand = new AsyncRelayCommand(OpenOutputSpacingAsync);
             OpenExportOptionsCommand = new RelayCommand(OpenExportOptions);
+            OpenMetadataTagsCommand = new AsyncRelayCommand(OpenMetadataTagsAsync);
             OpenHelpCommand = new RelayCommand(OpenHelp);
 
             _settings = _settingsService.LoadSettings();
@@ -109,6 +112,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _outputSpacingX = _settings.OutputSpacingX;
             _outputSpacingY = _settings.OutputSpacingY;
             _outputSpacingZ = _settings.OutputSpacingZ;
+            _exportDicomMetadata = _settings.ExportDicomMetadata;
+            _metadataTagKeywords = _settings.MetadataTagKeywords ?? new List<string>();
         }
 
         public string InputFolder { get { return _inputFolder; } set { _inputFolder = value; OnPropertyChanged(); } }
@@ -130,6 +135,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public double OutputSpacingY { get { return _outputSpacingY; } set { _outputSpacingY = value; OnPropertyChanged(); } }
         public double OutputSpacingZ { get { return _outputSpacingZ; } set { _outputSpacingZ = value; OnPropertyChanged(); } }
         public bool AnonymizeExport { get { return _anonymizeExport; } set { _anonymizeExport = value; OnPropertyChanged(); } }
+        public bool ExportDicomMetadata { get { return _exportDicomMetadata; } set { _exportDicomMetadata = value; OnPropertyChanged(); } }
 
         public bool AllPatientsSelected
         {
@@ -162,6 +168,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public IAsyncRelayCommand ExportMetaDataCommand { get; }
         public IAsyncRelayCommand OpenOutputSpacingCommand { get; }
         public IRelayCommand OpenExportOptionsCommand { get; }
+        public IAsyncRelayCommand OpenMetadataTagsCommand { get; }
         public IRelayCommand OpenHelpCommand { get; }
 
         private void RefreshCommands()
@@ -314,6 +321,8 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _settings.OutputSpacingX = OutputSpacingX;
             _settings.OutputSpacingY = OutputSpacingY;
             _settings.OutputSpacingZ = OutputSpacingZ;
+            _settings.ExportDicomMetadata = ExportDicomMetadata;
+            _settings.MetadataTagKeywords = _metadataTagKeywords;
             _settingsService.SaveSettings(_settings);
 
             _associations = _settingsService.LoadAssociations();
@@ -438,6 +447,28 @@ namespace Dicom_RT_images_Csharp.ViewModels
                         progress.Report($"Converting dose: {displayLabel}");
                         await Task.Run(() =>
                             _conversionService.ConvertDoseToNifti(model.LinkedRtDose, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
+                    }
+
+                    // Sidecar metadata.json with the user-selected DICOM tags, read from the series'
+                    // first image slice. Independent of ExportImages (outputDir always exists). Tags
+                    // are written verbatim, so warn when this lands in an anonymized export.
+                    if (ExportDicomMetadata && _metadataTagKeywords.Count > 0 &&
+                        model.FilePaths != null && model.FilePaths.Count > 0)
+                    {
+                        if (AnonymizeExport)
+                            AppendLog($"  Warning: metadata.json for {displayLabel} writes selected tags verbatim — may include PHI in an anonymized export.");
+                        try
+                        {
+                            string metaSource = model.FilePaths[0];
+                            string metaPath = Path.Combine(outputDir, "metadata.json");
+                            await Task.Run(() =>
+                                DicomMetadataExtractor.WriteMetadataJson(metaSource, _metadataTagKeywords, metaPath), _cts.Token).ConfigureAwait(true);
+                            progress.Report($"Wrote metadata.json: {displayLabel}");
+                        }
+                        catch (Exception ex)
+                        {
+                            AppendLog($"  metadata.json failed for {displayLabel}: {ex.Message}");
+                        }
                     }
 
                     completed++;
@@ -772,6 +803,25 @@ namespace Dicom_RT_images_Csharp.ViewModels
                 _exportOptionsWindow.Show(owner);
             else
                 _exportOptionsWindow.Show();
+        }
+
+        /// <summary>
+        /// Opens the metadata-tag picker modally, seeded with the currently-selected keywords. On
+        /// confirm, stores the new selection and persists it (with the toggle) to settings so the
+        /// choice survives across sessions and is ready for the next export.
+        /// </summary>
+        private async Task OpenMetadataTagsAsync()
+        {
+            var vm = new MetadataTagSelectionViewModel(_metadataTagKeywords);
+            var window = new MetadataTagSelectionWindow { DataContext = vm };
+            if (await window.ShowDialog<bool>(AppWindows.Active))
+            {
+                _metadataTagKeywords = vm.GetSelectedKeywords();
+                _settings.ExportDicomMetadata = ExportDicomMetadata;
+                _settings.MetadataTagKeywords = _metadataTagKeywords;
+                _settingsService.SaveSettings(_settings);
+                AppendLog($"Metadata tags selected: {_metadataTagKeywords.Count} tag(s).");
+            }
         }
 
         private void OpenHelp()

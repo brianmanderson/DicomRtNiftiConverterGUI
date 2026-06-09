@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Dicom_RT_images_Csharp.Models
 {
@@ -68,5 +69,17 @@ namespace Dicom_RT_images_Csharp.Models
         /// Output voxel spacing in mm along the Z axis (only used when SpecifyOutputSpacing=true).
         /// </summary>
         public double OutputSpacingZ { get; set; } = 1.0;
+
+        /// <summary>
+        /// When true, a metadata.json with the user-selected DICOM tags is written into each
+        /// series' export folder during a Convert export.
+        /// </summary>
+        public bool ExportDicomMetadata { get; set; } = false;
+
+        /// <summary>
+        /// Dictionary keywords (e.g. "PatientName", "SliceThickness") of the DICOM tags to write
+        /// to metadata.json. Empty by default; populated from the metadata-tag picker.
+        /// </summary>
+        public List<string> MetadataTagKeywords { get; set; } = new List<string>();
     }
 }
