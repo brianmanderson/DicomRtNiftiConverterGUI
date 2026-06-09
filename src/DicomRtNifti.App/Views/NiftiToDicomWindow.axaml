@@ -4,48 +4,48 @@
         Title="NIfTI → DICOM" Width="820" Height="640"
         MinWidth="640" MinHeight="500"
         WindowStartupLocation="CenterScreen"
-        Background="#F5F5F5">
+        Background="{StaticResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- Header -->
-    <Border Grid.Row="0" Background="#1976D2" Padding="16,10">
+    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
       <DockPanel>
         <Button DockPanel.Dock="Right" Content="Help" Command="{Binding OpenHelpCommand}"
-                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="#1976D2"
+                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="{StaticResource AppAccentBrush}"
                 FontWeight="SemiBold" FontSize="13" MinWidth="80" BorderThickness="0"/>
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="NIfTI → DICOM (Batch)" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
-          <TextBlock Foreground="#BBDEFB" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+          <TextBlock Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
                      Text="Scan a folder of NIfTI jobs, then convert each to a DICOM image series, RT-STRUCT, and RT-DOSE. Open Help for the folder layout and metadata.json schema."/>
         </StackPanel>
       </DockPanel>
     </Border>
 
     <!-- Content -->
-    <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD"
+    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}"
             BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="16">
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
-        <TextBlock Grid.Row="0" Text="Folder:" Margin="0,0,0,4" FontWeight="Medium" Foreground="#555555"/>
+        <TextBlock Grid.Row="0" Text="Folder:" Margin="0,0,0,4" FontWeight="Medium" Foreground="{StaticResource AppLabelText}"/>
         <DockPanel Grid.Row="1" Margin="0,0,0,8">
           <Button DockPanel.Dock="Right" Content="Scan" Command="{Binding ScanRootFolderCommand}"
                   Width="80" Margin="8,0,0,0" Padding="8,4"
-                  Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
+                  Classes="primary"/>
           <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowseRootFolderCommand}"
                   Width="80" Margin="8,0,0,0" Padding="8,4"/>
-          <TextBox Text="{Binding RootFolder}" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="#CCCCCC"/>
+          <TextBox Text="{Binding RootFolder}" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}"/>
         </DockPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
           <TextBlock Text="Data to convert:" VerticalAlignment="Center" FontWeight="Medium"
-                     Foreground="#555555" Margin="0,0,16,0"/>
+                     Foreground="{StaticResource AppLabelText}" Margin="0,0,16,0"/>
           <CheckBox Content="Convert Images" IsChecked="{Binding ConvertImage}" FontSize="13" Margin="0,0,20,0"/>
           <CheckBox Content="Convert Structures" IsChecked="{Binding ConvertStructures}" FontSize="13" Margin="0,0,20,0"/>
           <CheckBox Content="Convert Dose" IsChecked="{Binding ConvertDoses}" FontSize="13"/>
         </StackPanel>
 
-        <Border Grid.Row="3" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="2" Background="#FAFAFA">
+        <Border Grid.Row="3" BorderBrush="{StaticResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="{StaticResource AppSurfaceAlt}">
           <Grid>
           <DataGrid ItemsSource="{Binding DiscoveredJobs}" AutoGenerateColumns="False"
                     IsReadOnly="True" CanUserResizeColumns="True"
@@ -65,28 +65,28 @@
           <!-- Empty-state hint: shown until a scan discovers jobs. -->
           <TextBlock Text="Set a folder and click Scan to list conversion jobs here."
                      IsVisible="{Binding ShowJobsEmptyHint}" IsHitTestVisible="False"
-                     Foreground="#999999" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                     Foreground="{StaticResource AppHintText}" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
                      MaxWidth="360" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Grid>
         </Border>
 
-        <Border Grid.Row="4" Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="1"
+        <Border Grid.Row="4" Background="{StaticResource AppWindowBg}" BorderBrush="#E0E0E0" BorderThickness="1"
                 CornerRadius="2" Padding="10,8" Margin="0,12,0,0">
-          <TextBlock Text="{Binding StatusText}" Foreground="#444444" FontSize="12" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource AppBodyText}" FontSize="12" TextWrapping="Wrap"/>
         </Border>
       </Grid>
     </Border>
 
     <!-- Buttons -->
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="{Binding ServerButtonText}" Command="{Binding RunServerCommand}" Width="120" Padding="12,6"
                 Margin="0,0,8,0"/>
         <Button Content="Stop" Command="{Binding CancelCommand}" Width="90" Padding="12,6" Margin="0,0,8,0"
-                Foreground="#D32F2F"/>
+                Classes="danger"/>
         <Button Content="Convert All" Command="{Binding ConvertCommand}" Width="130" Padding="12,6"
-                Margin="0,0,8,0" Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
+                Margin="0,0,8,0" Classes="primary"/>
         <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>
       </StackPanel>
     </Border>

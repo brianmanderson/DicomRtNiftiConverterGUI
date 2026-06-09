@@ -134,13 +134,32 @@ namespace Dicom_RT_images_Csharp.ViewModels
         public bool ExportImages { get { return _exportImages; } set { _exportImages = value; OnPropertyChanged(); } }
         public bool IncludeStructures { get { return _includeStructures; } set { _includeStructures = value; OnPropertyChanged(); } }
         public bool IncludeDose { get { return _includeDose; } set { _includeDose = value; OnPropertyChanged(); } }
-        public bool OnlyExportSpecificRois { get { return _onlyExportSpecificRois; } set { _onlyExportSpecificRois = value; OnPropertyChanged(); } }
-        public bool SpecifyOutputSpacing { get { return _specifyOutputSpacing; } set { _specifyOutputSpacing = value; OnPropertyChanged(); } }
-        public double OutputSpacingX { get { return _outputSpacingX; } set { _outputSpacingX = value; OnPropertyChanged(); } }
-        public double OutputSpacingY { get { return _outputSpacingY; } set { _outputSpacingY = value; OnPropertyChanged(); } }
-        public double OutputSpacingZ { get { return _outputSpacingZ; } set { _outputSpacingZ = value; OnPropertyChanged(); } }
-        public bool AnonymizeExport { get { return _anonymizeExport; } set { _anonymizeExport = value; OnPropertyChanged(); } }
-        public bool ExportDicomMetadata { get { return _exportDicomMetadata; } set { _exportDicomMetadata = value; OnPropertyChanged(); } }
+        public bool OnlyExportSpecificRois { get { return _onlyExportSpecificRois; } set { _onlyExportSpecificRois = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+        public bool SpecifyOutputSpacing { get { return _specifyOutputSpacing; } set { _specifyOutputSpacing = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+        public double OutputSpacingX { get { return _outputSpacingX; } set { _outputSpacingX = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+        public double OutputSpacingY { get { return _outputSpacingY; } set { _outputSpacingY = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+        public double OutputSpacingZ { get { return _outputSpacingZ; } set { _outputSpacingZ = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+        public bool AnonymizeExport { get { return _anonymizeExport; } set { _anonymizeExport = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+        public bool ExportDicomMetadata { get { return _exportDicomMetadata; } set { _exportDicomMetadata = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+
+        /// <summary>
+        /// One-line digest of the non-default Export Options, shown next to the Export Options
+        /// button so hidden state (which lives in a separate window) is visible at a glance.
+        /// </summary>
+        public string ExportOptionsSummary
+        {
+            get
+            {
+                var parts = new List<string>();
+                if (OnlyExportSpecificRois) parts.Add("ROI filter");
+                if (SpecifyOutputSpacing)
+                    parts.Add(string.Format(CultureInfo.InvariantCulture, "{0:0.###}×{1:0.###}×{2:0.###} mm",
+                        OutputSpacingX, OutputSpacingY, OutputSpacingZ));
+                if (AnonymizeExport) parts.Add("anonymized");
+                if (ExportDicomMetadata) parts.Add("tag sidecar");
+                return parts.Count == 0 ? "Default options" : string.Join("  ·  ", parts);
+            }
+        }
 
         public bool AllPatientsSelected
         {

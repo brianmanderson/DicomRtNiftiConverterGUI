@@ -4,36 +4,36 @@
         Title="Select DICOM Metadata Tags" Width="780" Height="620"
         MinWidth="560" MinHeight="420"
         WindowStartupLocation="CenterOwner"
-        Background="#F5F5F5">
+        Background="{StaticResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,*,Auto,Auto">
 
-    <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
+    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,12">
       <StackPanel>
         <TextBlock Text="Select DICOM Metadata Tags" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="Pick the DICOM attributes to write to metadata.json in each export folder."
-                   FontSize="11" Foreground="#B2DFDB" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                   FontSize="11" Foreground="{StaticResource AppOnAccentSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
 
     <Grid Grid.Row="1" Margin="12,12,12,0" ColumnDefinitions="*,260">
 
       <!-- Left: searchable tag checklist (virtualized) -->
-      <Border Grid.Column="0" Background="White" BorderBrush="#DDDDDD"
+      <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource AppBorder}"
               BorderThickness="1" CornerRadius="4" Margin="0,0,8,0">
         <Grid RowDefinitions="Auto,Auto,*">
-          <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
+          <Border Grid.Row="0" Background="{StaticResource AppSurfaceAlt}" BorderBrush="#EEEEEE"
                   BorderThickness="0,0,0,1" Padding="12,8" CornerRadius="4,4,0,0">
             <Grid ColumnDefinitions="*,Auto">
               <CheckBox Grid.Column="0" Content="Select all (filtered)" IsChecked="{Binding AllSelected}"
-                        FontWeight="SemiBold" FontSize="13" Foreground="#333333"/>
+                        FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AppHeadingText}"/>
               <TextBlock Grid.Column="1" Text="{Binding SelectionSummaryText}" FontWeight="Medium" FontSize="11"
-                         Foreground="#999999" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                         Foreground="{StaticResource AppHintText}" VerticalAlignment="Center" Margin="0,0,8,0"/>
             </Grid>
           </Border>
 
           <TextBox Grid.Row="1" Text="{Binding SearchText}" Watermark="Search by keyword, name, or tag…"
-                   Margin="8,8,8,4" Padding="6,4" BorderBrush="#CCCCCC" VerticalContentAlignment="Center"/>
+                   Margin="8,8,8,4" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}" VerticalContentAlignment="Center"/>
 
           <ListBox Grid.Row="2" ItemsSource="{Binding FilteredItems}" Background="Transparent"
                    BorderThickness="0" Padding="4"
@@ -52,7 +52,7 @@
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <CheckBox IsChecked="{Binding IsSelected}" Margin="8,2">
-                  <TextBlock Text="{Binding DisplayText}" FontSize="12" Foreground="#333333"
+                  <TextBlock Text="{Binding DisplayText}" FontSize="12" Foreground="{StaticResource AppHeadingText}"
                              TextTrimming="CharacterEllipsis"/>
                 </CheckBox>
               </DataTemplate>
@@ -62,25 +62,25 @@
       </Border>
 
       <!-- Right: selected summary -->
-      <Border Grid.Column="1" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+      <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1" CornerRadius="4">
         <Grid RowDefinitions="Auto,*">
-          <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE"
+          <Border Grid.Row="0" Background="{StaticResource AppSurfaceAlt}" BorderBrush="#EEEEEE"
                   BorderThickness="0,0,0,1" Padding="10,8" CornerRadius="4,4,0,0">
-            <TextBlock Text="Selected Tags" FontWeight="SemiBold" FontSize="13" Foreground="#333333"/>
+            <TextBlock Text="Selected Tags" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AppHeadingText}"/>
           </Border>
 
           <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="4">
             <ItemsControl ItemsSource="{Binding SelectedSummaryItems}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Border Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="1"
+                  <Border Background="{StaticResource AppWindowBg}" BorderBrush="#E0E0E0" BorderThickness="1"
                           CornerRadius="3" Margin="4,2" Padding="8,5">
                     <Grid ColumnDefinitions="*,Auto">
                       <TextBlock Grid.Column="0" Text="{Binding Keyword}" FontWeight="Medium"
-                                 FontSize="12" Foreground="#333333" VerticalAlignment="Center"
+                                 FontSize="12" Foreground="{StaticResource AppHeadingText}" VerticalAlignment="Center"
                                  TextTrimming="CharacterEllipsis"/>
                       <TextBlock Grid.Column="1" Text="{Binding TagDisplay}" FontSize="11"
-                                 Foreground="#888888" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                 Foreground="{StaticResource AppBadgeText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -91,16 +91,16 @@
       </Border>
     </Grid>
 
-    <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="16,8,16,0"
+    <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource AppMutedText}" Margin="16,8,16,0"
                Text="Values are read from each series' first image. Numeric tags are written as numbers, multi-valued tags as arrays, and tags missing from a series as null."/>
 
-    <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#CCCCCC"
+    <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,8,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Cancel" Click="CancelButton_Click" MinWidth="70" Padding="12,6" Margin="4,0"
                 FontSize="12" IsCancel="True"/>
         <Button Content="Confirm" Click="ConfirmButton_Click" MinWidth="70" Padding="12,6" Margin="4,0"
-                FontSize="12" Background="#1976D2" Foreground="White" FontWeight="SemiBold" IsDefault="True"/>
+                FontSize="12" Classes="primary" IsDefault="True"/>
       </StackPanel>
     </Border>
   </Grid>

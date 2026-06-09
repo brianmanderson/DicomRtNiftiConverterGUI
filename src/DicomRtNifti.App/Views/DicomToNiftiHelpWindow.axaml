@@ -4,23 +4,23 @@
         Title="Help: DICOM → NIfTI" Width="780" Height="700"
         WindowStartupLocation="CenterOwner"
         CanResize="True" MinHeight="400" MinWidth="540"
-        Background="#F5F5F5">
+        Background="{StaticResource AppWindowBg}">
   <Window.Styles>
     <Style Selector="TextBlock.h1">
       <Setter Property="FontSize" Value="16"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="#1976D2"/>
+      <Setter Property="Foreground" Value="{StaticResource AppAccentBrush}"/>
       <Setter Property="Margin" Value="0,18,0,8"/>
     </Style>
     <Style Selector="TextBlock.h2">
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="#333333"/>
+      <Setter Property="Foreground" Value="{StaticResource AppHeadingText}"/>
       <Setter Property="Margin" Value="0,8,0,4"/>
     </Style>
     <Style Selector="TextBlock.body">
       <Setter Property="FontSize" Value="12"/>
-      <Setter Property="Foreground" Value="#444444"/>
+      <Setter Property="Foreground" Value="{StaticResource AppBodyText}"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
       <Setter Property="Margin" Value="0,2,0,2"/>
     </Style>
@@ -28,15 +28,15 @@
 
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <Border Grid.Row="0" Background="#1976D2" Padding="16,10">
+    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
       <StackPanel>
         <TextBlock Text="Help: DICOM → NIfTI" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="How to convert DICOM RT-STRUCT, CT/MR/PT image series, and RT-DOSE into NIfTI files."
-                   Foreground="#BBDEFB" FontSize="11" Margin="0,4,0,0"/>
+                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
+    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
             CornerRadius="4" Margin="12,12,12,0" Padding="20,12">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
@@ -336,27 +336,27 @@
           <TextBlock Classes="h1" Text="Output structure"/>
 
           <TextBlock Classes="h2" Text="Non-anonymized"/>
-          <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">{Output}/
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">{Output}/
 │
 ├─ {PatientID}/
 │   └─ {SeriesDate}_{SeriesDescription}/
-│       ├─ image.nii.gz            → CT/MR/PT volume        <Run Foreground="#888888">(if Export Images is ON)</Run>
+│       ├─ image.nii.gz            → CT/MR/PT volume        <Run Foreground="{StaticResource AppBadgeText}">(if Export Images is ON)</Run>
 │       ├─ doses/
-│       │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume  <Run Foreground="#888888">(if Export Dose is ON and a dose is linked)</Run>
+│       │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume  <Run Foreground="{StaticResource AppBadgeText}">(if Export Dose is ON and a dose is linked)</Run>
 │       └─ masks/
-│           └─ {ROI_Name}.nii.gz   → per-ROI binary mask    <Run Foreground="#888888">(if Export Structures is ON)</Run>
+│           └─ {ROI_Name}.nii.gz   → per-ROI binary mask    <Run Foreground="{StaticResource AppBadgeText}">(if Export Structures is ON)</Run>
 │
-└─ export_manifest.csv                                      <Run Foreground="#888888">(or export_manifest_meta.csv from Export Manifest Only)</Run></TextBlock>
+└─ export_manifest.csv                                      <Run Foreground="{StaticResource AppBadgeText}">(or export_manifest_meta.csv from Export Manifest Only)</Run></TextBlock>
           </Border>
 
           <TextBlock Classes="h2" Text="Anonymized"/>
-          <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">{Output}/
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">{Output}/
 │
-├─ {PatientHash}/{StudyHash}/{SeriesHash}/                  <Run Foreground="#888888">(hashed identifiers in place of {PatientID}/{Date}_...)</Run>
+├─ {PatientHash}/{StudyHash}/{SeriesHash}/                  <Run Foreground="{StaticResource AppBadgeText}">(hashed identifiers in place of {PatientID}/{Date}_...)</Run>
 │   ├─ image.nii.gz                → CT/MR/PT volume
 │   ├─ doses/
 │   │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume
@@ -364,7 +364,7 @@
 │       └─ {ROI_Name}.nii.gz       → per-ROI binary mask
 │
 ├─ export_manifest.csv
-└─ AnonymizationKey.json                                    <Run Foreground="#888888">(deterministic identifier ↔ hash mapping)</Run></TextBlock>
+└─ AnonymizationKey.json                                    <Run Foreground="{StaticResource AppBadgeText}">(deterministic identifier ↔ hash mapping)</Run></TextBlock>
           </Border>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">Export Manifest Only</Run> writes
@@ -433,7 +433,7 @@
       </ScrollViewer>
     </Border>
 
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>

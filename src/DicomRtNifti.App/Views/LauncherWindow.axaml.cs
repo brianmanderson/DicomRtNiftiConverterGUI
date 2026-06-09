@@ -18,6 +18,11 @@ namespace Dicom_RT_images_Csharp.Views
         {
             InitializeComponent();
             DataContextChanged += OnDataContextChanged;
+
+            // Surface the build version (from Directory.Build.props) and licence in the footer.
+            var v = typeof(LauncherWindow).Assembly.GetName().Version;
+            string version = v == null ? "" : $"v{v.Major}.{v.Minor}.{v.Build}";
+            VersionText.Text = $"DICOM RT Toolkit  ·  {version}  ·  MIT licensed";
         }
 
         private void OnDataContextChanged(object sender, EventArgs e)

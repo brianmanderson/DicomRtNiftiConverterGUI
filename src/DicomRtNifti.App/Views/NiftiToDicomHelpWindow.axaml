@@ -4,23 +4,23 @@
         Title="Help: NIfTI → DICOM" Width="780" Height="700"
         WindowStartupLocation="CenterOwner"
         CanResize="True" MinHeight="400" MinWidth="540"
-        Background="#F5F5F5">
+        Background="{StaticResource AppWindowBg}">
   <Window.Styles>
     <Style Selector="TextBlock.h1">
       <Setter Property="FontSize" Value="16"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="#3F51B5"/>
+      <Setter Property="Foreground" Value="{StaticResource AppAccentBrush}"/>
       <Setter Property="Margin" Value="0,18,0,8"/>
     </Style>
     <Style Selector="TextBlock.h2">
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="#333333"/>
+      <Setter Property="Foreground" Value="{StaticResource AppHeadingText}"/>
       <Setter Property="Margin" Value="0,8,0,4"/>
     </Style>
     <Style Selector="TextBlock.body">
       <Setter Property="FontSize" Value="12"/>
-      <Setter Property="Foreground" Value="#444444"/>
+      <Setter Property="Foreground" Value="{StaticResource AppBodyText}"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
       <Setter Property="Margin" Value="0,2,0,2"/>
     </Style>
@@ -28,15 +28,15 @@
 
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <Border Grid.Row="0" Background="#3F51B5" Padding="16,10">
+    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
       <StackPanel>
         <TextBlock Text="Help: NIfTI → DICOM" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="How to convert NIfTI binary masks and dose volumes back into DICOM RT-STRUCT and RT-DOSE files."
-                   Foreground="#C5CAE9" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
+    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
             CornerRadius="4" Margin="12,12,12,0" Padding="20,12">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
@@ -154,19 +154,19 @@
             <Run FontFamily="Consolas">doses/*.nii.gz</Run>. Scan checks the path you provide
             <Run FontWeight="SemiBold">and</Run> its first-level subfolders.
           </TextBlock>
-          <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">PatientFolder/
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">PatientFolder/
 │
-├─ image.nii.gz              → DICOM CT/MR/PT image series       <Run Foreground="#888888">(optional)</Run>
-├─ metadata.json                patient / study / UIDs           <Run Foreground="#888888">(optional — auto-generated with anonymous defaults if missing)</Run>
-├─ CT.1.dcm, CT.2.dcm, ...      existing reference image series  <Run Foreground="#888888">(optional — used instead of image.nii.gz if present)</Run>
+├─ image.nii.gz              → DICOM CT/MR/PT image series       <Run Foreground="{StaticResource AppBadgeText}">(optional)</Run>
+├─ metadata.json                patient / study / UIDs           <Run Foreground="{StaticResource AppBadgeText}">(optional — auto-generated with anonymous defaults if missing)</Run>
+├─ CT.1.dcm, CT.2.dcm, ...      existing reference image series  <Run Foreground="{StaticResource AppBadgeText}">(optional — used instead of image.nii.gz if present)</Run>
 │
-├─ masks/                                                        <Run Foreground="#888888">(optional folder — each .nii.gz below becomes one ROI)</Run>
+├─ masks/                                                        <Run Foreground="{StaticResource AppBadgeText}">(optional folder — each .nii.gz below becomes one ROI)</Run>
 │   ├─ Brain.nii.gz          → ROI "Brain"  in the generated RT-STRUCT
 │   └─ CTV.nii.gz            → ROI "CTV"    in the generated RT-STRUCT
 │
-└─ doses/                                                        <Run Foreground="#888888">(optional folder — each .nii.gz below becomes its own RT-DOSE)</Run>
+└─ doses/                                                        <Run Foreground="{StaticResource AppBadgeText}">(optional folder — each .nii.gz below becomes its own RT-DOSE)</Run>
     └─ plan_total.nii.gz     → one RT-DOSE file</TextBlock>
           </Border>
           <TextBlock Classes="body">
@@ -247,9 +247,9 @@
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Sample metadata.json (CT defaults)"/>
-          <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">{
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">{
     "PatientId": "ANON_a1b2c3",
     "PatientName": "ANON^ANON",
     "PatientBirthDate": "",
@@ -525,7 +525,7 @@
       </ScrollViewer>
     </Border>
 
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>
