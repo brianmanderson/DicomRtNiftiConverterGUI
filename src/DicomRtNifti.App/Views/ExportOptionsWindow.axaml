@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dicom_RT_images_Csharp.Views.ExportOptionsWindow"
-        Title="Export Options" Width="600" Height="780"
+        Title="Export Options" Width="600" Height="860"
         MinWidth="460" MinHeight="560"
         WindowStartupLocation="CenterOwner"
         Background="#F5F5F5">
@@ -50,6 +50,17 @@
                   Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
                      Text="When checked, exports use integer folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions."/>
+
+          <Separator Margin="0,12"/>
+
+          <CheckBox Content="Export DICOM metadata (metadata.json)?" IsChecked="{Binding ExportDicomMetadata}" Margin="4,8" FontSize="13"/>
+          <Button Content="Select Metadata Tags..." Command="{Binding OpenMetadataTagsCommand}"
+                  IsEnabled="{Binding ExportDicomMetadata}"
+                  Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#009688" Foreground="White" FontWeight="SemiBold"/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4"
+                     Text="When checked, a metadata.json with your selected DICOM tags is written into every export folder. Tags are read from each series' first image; numeric tags become numbers, multi-valued tags become arrays, and tags missing from a series are written as null."/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
+                     Text="Note: selected tags are written as-is even when anonymizing, so avoid selecting identifying tags (PatientName, PatientID, …) for anonymized exports."/>
         </StackPanel>
       </ScrollViewer>
     </Border>
