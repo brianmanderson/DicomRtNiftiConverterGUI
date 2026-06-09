@@ -389,9 +389,9 @@
             click produces fresh files even if prior ones exist.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Cancel / Close"/>
+          <TextBlock Classes="h2" Text="Stop / Close"/>
           <TextBlock Classes="body">
-            <Run FontWeight="SemiBold">Cancel</Run>: aborts an in-progress
+            <Run FontWeight="SemiBold">Stop</Run>: aborts an in-progress
             <Run FontWeight="SemiBold">Convert All</Run>.
             <Run FontWeight="SemiBold">Close</Run>: closes the window; the state (folder, toggles,
             discovered jobs, server status) is preserved while the launcher is open.

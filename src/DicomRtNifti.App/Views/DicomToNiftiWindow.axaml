@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterScreen"
         Background="#F5F5F5">
 
-  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
 
     <!-- Header -->
     <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
@@ -38,18 +38,19 @@
           <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseOutputCommand}"
                   Padding="12,6" MinWidth="80" FontSize="13" Margin="8,0,0,0"/>
         </Grid>
-        <Grid Grid.Row="2" Margin="0,0,0,6" ColumnDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="2" Margin="0,0,0,6" ColumnDefinitions="Auto,Auto,*">
           <Button Grid.Column="0" Content="Scan" Command="{Binding ScanCommand}"
                   Padding="12,6" MinWidth="100" FontSize="13" Margin="0,0,5,0"
-                  Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
-          <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelCommand}"
-                  Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"/>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0">
-            <ProgressBar Value="{Binding ProgressValue}" Minimum="0" Maximum="100"
-                         Height="18" Width="400" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Margin="10,0,0,0"
-                       TextTrimming="CharacterEllipsis" Foreground="#666666"/>
-          </StackPanel>
+                  Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
+          <Button Grid.Column="1" Content="Stop" Command="{Binding CancelCommand}"
+                  Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"
+                  Foreground="#D32F2F"/>
+          <Grid Grid.Column="2" Margin="16,0,0,0" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+            <ProgressBar Grid.Column="0" Value="{Binding ProgressValue}" Minimum="0" Maximum="100"
+                         Height="18" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" Margin="10,0,0,0"
+                       TextTrimming="CharacterEllipsis" Foreground="#666666" MinWidth="110"/>
+          </Grid>
         </Grid>
 
         <!-- Data to Export + Export Options launcher (the rest of the options live in the Export Options window) -->
@@ -63,7 +64,7 @@
           <CheckBox Grid.Column="3" Content="Export Dose" IsChecked="{Binding IncludeDose}"
                     FontSize="13" VerticalAlignment="Center"/>
           <Button Grid.Column="5" Content="Export Options..." Command="{Binding OpenExportOptionsCommand}"
-                  Padding="14,6" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+                  Padding="14,6" FontSize="13"/>
         </Grid>
       </Grid>
     </Border>
@@ -95,7 +96,7 @@
 
               <TreeDataTemplate DataType="vm:StudyGroupViewModel" ItemsSource="{Binding ImageSeries}">
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="[S]" Margin="0,0,6,0" FontSize="11" Foreground="#FF9800"
+                  <TextBlock Text="[S]" Margin="0,0,6,0" FontSize="11" Foreground="#888888"
                              FontWeight="Bold" VerticalAlignment="Center"/>
                   <TextBlock Text="{Binding DisplayName}" FontStyle="Italic" VerticalAlignment="Center"/>
                 </StackPanel>
@@ -106,7 +107,7 @@
                   <StackPanel Orientation="Horizontal">
                     <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding Model.Modality, StringFormat='[{0}]'}" Margin="0,0,6,0"
-                               FontSize="11" Foreground="#4CAF50" FontWeight="Bold" VerticalAlignment="Center"/>
+                               FontSize="11" Foreground="#1976D2" FontWeight="Bold" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                   </StackPanel>
                   <Expander Header="ROI Names" Margin="20,2,0,0"
@@ -128,6 +129,12 @@
               </DataTemplate>
             </TreeView.DataTemplates>
           </TreeView>
+
+          <!-- Empty-state hint: shown until a scan populates the tree. -->
+          <TextBlock Grid.Row="1" Text="Set an input folder and click Scan to list patients here."
+                     IsVisible="{Binding ShowTreeEmptyHint}" IsHitTestVisible="False"
+                     Foreground="#999999" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                     MaxWidth="360" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Grid>
     </Border>
 
@@ -139,8 +146,7 @@
                   Padding="12,6" MinWidth="140" FontSize="13" Margin="0,0,5,0"
                   Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
           <Button Grid.Column="1" Content="Export Manifest Only" Command="{Binding ExportMetaDataCommand}"
-                  Padding="12,6" MinWidth="140" FontSize="13" Margin="5,0"
-                  Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+                  Padding="12,6" MinWidth="140" FontSize="13" Margin="5,0"/>
           <Button Grid.Column="2" Content="Settings..." Command="{Binding OpenSettingsCommand}"
                   Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"/>
         </Grid>
@@ -151,9 +157,5 @@
       </StackPanel>
     </Border>
 
-    <!-- Status bar -->
-    <Border Grid.Row="4" Background="#E8E8E8" BorderBrush="#CCCCCC" BorderThickness="0,1,0,0" Padding="12,6">
-      <TextBlock Text="{Binding StatusText}" Foreground="#555555" FontSize="11"/>
-    </Border>
   </Grid>
 </Window>

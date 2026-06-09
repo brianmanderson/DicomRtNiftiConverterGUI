@@ -9,15 +9,15 @@
   <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- Header -->
-    <Border Grid.Row="0" Background="#3F51B5" Padding="16,10">
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,10">
       <DockPanel>
         <Button DockPanel.Dock="Right" Content="Help" Command="{Binding OpenHelpCommand}"
-                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="#3F51B5"
+                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="#1976D2"
                 FontWeight="SemiBold" FontSize="13" MinWidth="80" BorderThickness="0"/>
         <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="NIfTI → DICOM" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
-          <TextBlock Foreground="#E0E0E0" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
-                     Text="Select a folder. Each folder with an image.nii.gz, a masks/ subdir, or a doses/ subdir (the folder itself or any subfolder, to any depth) is a job: image.nii.gz → a DICOM image series, masks/ → one RT-STRUCT, doses/ → one RT-DOSE per file. With no reference DICOM, patient/study UIDs come from metadata.json in the folder (auto-created on first run). Run Server watches the folder and converts each subfolder once its files settle."/>
+          <TextBlock Text="NIfTI → DICOM (Batch)" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+          <TextBlock Foreground="#BBDEFB" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                     Text="Scan a folder of NIfTI jobs, then convert each to a DICOM image series, RT-STRUCT, and RT-DOSE. Open Help for the folder layout and metadata.json schema."/>
         </StackPanel>
       </DockPanel>
     </Border>
@@ -31,7 +31,7 @@
         <DockPanel Grid.Row="1" Margin="0,0,0,8">
           <Button DockPanel.Dock="Right" Content="Scan" Command="{Binding ScanRootFolderCommand}"
                   Width="80" Margin="8,0,0,0" Padding="8,4"
-                  Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+                  Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
           <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowseRootFolderCommand}"
                   Width="80" Margin="8,0,0,0" Padding="8,4"/>
           <TextBox Text="{Binding RootFolder}" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="#CCCCCC"/>
@@ -46,6 +46,7 @@
         </StackPanel>
 
         <Border Grid.Row="3" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="2" Background="#FAFAFA">
+          <Grid>
           <DataGrid ItemsSource="{Binding DiscoveredJobs}" AutoGenerateColumns="False"
                     IsReadOnly="True" CanUserResizeColumns="True"
                     GridLinesVisibility="Horizontal" HeadersVisibility="Column"
@@ -60,6 +61,13 @@
               <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="220"/>
             </DataGrid.Columns>
           </DataGrid>
+
+          <!-- Empty-state hint: shown until a scan discovers jobs. -->
+          <TextBlock Text="Set a folder and click Scan to list conversion jobs here."
+                     IsVisible="{Binding ShowJobsEmptyHint}" IsHitTestVisible="False"
+                     Foreground="#999999" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                     MaxWidth="360" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Grid>
         </Border>
 
         <Border Grid.Row="4" Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="1"
@@ -74,10 +82,11 @@
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="{Binding ServerButtonText}" Command="{Binding RunServerCommand}" Width="120" Padding="12,6"
-                Margin="0,0,8,0" Background="#E91E63" Foreground="White" FontWeight="SemiBold"/>
-        <Button Content="Convert All" Command="{Binding ConvertCommand}" Width="120" Padding="12,6"
-                Margin="0,0,8,0" Background="#3F51B5" Foreground="White" FontWeight="SemiBold"/>
-        <Button Content="Cancel" Command="{Binding CancelCommand}" Width="90" Padding="12,6" Margin="0,0,8,0"/>
+                Margin="0,0,8,0"/>
+        <Button Content="Stop" Command="{Binding CancelCommand}" Width="90" Padding="12,6" Margin="0,0,8,0"
+                Foreground="#D32F2F"/>
+        <Button Content="Convert All" Command="{Binding ConvertCommand}" Width="130" Padding="12,6"
+                Margin="0,0,8,0" Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
         <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>
       </StackPanel>
     </Border>

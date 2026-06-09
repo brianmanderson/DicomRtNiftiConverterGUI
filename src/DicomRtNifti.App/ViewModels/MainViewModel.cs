@@ -77,13 +77,15 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _folderPicker = folderPicker;
 
             Patients = new ObservableCollection<PatientGroupViewModel>();
+            Patients.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowTreeEmptyHint));
             AllDiscoveredRoiNames = new ObservableCollection<string>();
 
             BrowseInputCommand = new AsyncRelayCommand(BrowseInputAsync);
             BrowseOutputCommand = new AsyncRelayCommand(BrowseOutputAsync);
-            ScanCommand = new AsyncRelayCommand(ExecuteScanAsync, () => !IsScanning && !IsConverting);
+            ScanCommand = new AsyncRelayCommand(ExecuteScanAsync,
+                () => !IsScanning && !IsConverting && !string.IsNullOrWhiteSpace(InputFolder));
             ConvertSelectedCommand = new AsyncRelayCommand(ExecuteConvertAsync,
-                () => !IsScanning && !IsConverting && Patients.Count > 0);
+                () => !IsScanning && !IsConverting && Patients.Count > 0 && !string.IsNullOrWhiteSpace(OutputFolder));
             CancelCommand = new RelayCommand(Cancel, () => IsScanning || IsConverting);
             ManageAssociationsCommand = new AsyncRelayCommand(OpenAssociationsAsync);
             SelectRoisCommand = new AsyncRelayCommand(OpenRoiSelectionAsync);
@@ -91,7 +93,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             OpenSettingsCommand = new AsyncRelayCommand(OpenSettingsAsync);
             SelectAllPatientsCommand = new RelayCommand(ToggleSelectAllPatients);
             ExportMetaDataCommand = new AsyncRelayCommand(ExecuteExportMetaDataAsync,
-                () => !IsScanning && !IsConverting && Patients.Count > 0);
+                () => !IsScanning && !IsConverting && Patients.Count > 0 && !string.IsNullOrWhiteSpace(OutputFolder));
             OpenOutputSpacingCommand = new AsyncRelayCommand(OpenOutputSpacingAsync);
             OpenExportOptionsCommand = new RelayCommand(OpenExportOptions);
             OpenMetadataTagsCommand = new AsyncRelayCommand(OpenMetadataTagsAsync);
@@ -116,8 +118,11 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _metadataTagKeywords = _settings.MetadataTagKeywords ?? new List<string>();
         }
 
-        public string InputFolder { get { return _inputFolder; } set { _inputFolder = value; OnPropertyChanged(); } }
-        public string OutputFolder { get { return _outputFolder; } set { _outputFolder = value; OnPropertyChanged(); } }
+        public string InputFolder { get { return _inputFolder; } set { _inputFolder = value; OnPropertyChanged(); RefreshCommands(); } }
+        public string OutputFolder { get { return _outputFolder; } set { _outputFolder = value; OnPropertyChanged(); RefreshCommands(); } }
+
+        /// <summary>True when no scan results are loaded yet — drives the tree's empty-state hint.</summary>
+        public bool ShowTreeEmptyHint => Patients.Count == 0;
 
         public bool IsScanning { get { return _isScanning; } set { _isScanning = value; OnPropertyChanged(); RefreshCommands(); } }
         public bool IsConverting { get { return _isConverting; } set { _isConverting = value; OnPropertyChanged(); RefreshCommands(); } }

@@ -8,7 +8,7 @@
 
   <Grid RowDefinitions="Auto,*,Auto,Auto">
 
-    <Border Grid.Row="0" Background="#009688" Padding="16,12">
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
       <StackPanel>
         <TextBlock Text="Select DICOM Metadata Tags" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="Pick the DICOM attributes to write to metadata.json in each export folder."
@@ -100,7 +100,7 @@
         <Button Content="Cancel" Click="CancelButton_Click" MinWidth="70" Padding="12,6" Margin="4,0"
                 FontSize="12" IsCancel="True"/>
         <Button Content="Confirm" Click="ConfirmButton_Click" MinWidth="70" Padding="12,6" Margin="4,0"
-                FontSize="12" Background="#009688" Foreground="White" FontWeight="SemiBold" IsDefault="True"/>
+                FontSize="12" Background="#1976D2" Foreground="White" FontWeight="SemiBold" IsDefault="True"/>
       </StackPanel>
     </Border>
   </Grid>

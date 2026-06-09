@@ -9,7 +9,7 @@
   <Grid RowDefinitions="Auto,*">
 
     <!-- Header bar -->
-    <Border Grid.Row="0" Background="#3F51B5" Padding="16,12">
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
       <StackPanel>
         <TextBlock Text="DICOM RT Toolkit" FontSize="18" FontWeight="Bold" Foreground="White"/>
         <TextBlock Text="Pick a workflow to begin" FontSize="12" Foreground="#C5CAE9" Margin="0,4,0,0"/>
@@ -31,10 +31,10 @@
 
       <Button Grid.Row="1" Command="{Binding OpenNiftiToDicomCommand}"
               Margin="0,10,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-              Background="#3F51B5" Foreground="White" BorderThickness="0">
+              Background="#1976D2" Foreground="White" BorderThickness="0">
         <StackPanel Margin="14,8">
           <TextBlock Text="NIfTI → DICOM" FontSize="16" FontWeight="SemiBold"/>
-          <TextBlock FontSize="11" Foreground="#E8EAF6" TextWrapping="Wrap" Margin="0,4,0,0"
+          <TextBlock FontSize="11" Foreground="#E3F2FD" TextWrapping="Wrap" Margin="0,4,0,0"
                      Text="Convert NIfTI image, masks, and dose back into standards-compliant DICOM (batch)."/>
         </StackPanel>
       </Button>

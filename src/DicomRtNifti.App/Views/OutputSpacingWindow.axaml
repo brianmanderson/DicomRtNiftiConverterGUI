@@ -8,7 +8,7 @@
 
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <Border Grid.Row="0" Background="#9C27B0" Padding="16,10">
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,10">
       <TextBlock Text="Output Voxel Spacing" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
     </Border>
 
@@ -45,10 +45,10 @@
     <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Cancel" Click="CancelButton_Click" Width="90" Padding="12,6" Margin="0,0,8,0" IsCancel="True"/>
         <Button Content="Save" Click="SaveButton_Click" Width="90" Padding="12,6"
-                IsDefault="True" Margin="0,0,8,0"
-                Background="#9C27B0" Foreground="White" FontWeight="SemiBold"/>
-        <Button Content="Cancel" Click="CancelButton_Click" Width="90" Padding="12,6" IsCancel="True"/>
+                IsDefault="True"
+                Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
       </StackPanel>
     </Border>
   </Grid>

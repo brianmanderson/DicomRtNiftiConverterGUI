@@ -158,11 +158,11 @@
             is where .nii.gz files and the CSV manifest are written; it is created if it does not exist.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Scan / Cancel + progress"/>
+          <TextBlock Classes="h2" Text="Scan / Stop + progress"/>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">Scan</Run> walks the Input folder in parallel, parses each
             DICOM file, and builds the Patient → Study → Series tree.
-            <Run FontWeight="SemiBold">Cancel</Run> stops an in-progress scan or conversion.
+            <Run FontWeight="SemiBold">Stop</Run> aborts an in-progress scan or conversion.
             The progress bar and adjacent status text show live percentages and per-step messages
             (e.g. "Rasterizing structures: PatientA/CT_HEAD"). The bigger log box at the bottom of
             the window accumulates a timestamped record of every action.

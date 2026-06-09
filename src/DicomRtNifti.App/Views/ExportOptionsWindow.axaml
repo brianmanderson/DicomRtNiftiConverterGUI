@@ -22,14 +22,19 @@
             CornerRadius="4" Margin="12,12,12,0" Padding="16">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
-          <CheckBox Content="Limit export to selected ROIs" IsChecked="{Binding OnlyExportSpecificRois}" Margin="4,8" FontSize="13"/>
+          <TextBlock Text="ROI renaming (always applies)" FontWeight="SemiBold" FontSize="13"
+                     Foreground="#333333" Margin="4,4,4,2"/>
           <Button Content="Edit ROI Associations..." Command="{Binding ManageAssociationsCommand}"
-                  Padding="12,8" Margin="4" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+                  Padding="12,8" Margin="4" FontSize="13"/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4"
+                     Text="ROI Associations always apply — matching ROIs are renamed to their canonical names during export, whether or not the filter below is on."/>
+
+          <Separator Margin="0,12"/>
+
+          <CheckBox Content="Limit export to selected ROIs" IsChecked="{Binding OnlyExportSpecificRois}" Margin="4,8" FontSize="13"/>
           <Button Content="Select ROIs for Export..." Command="{Binding SelectRoisCommand}"
                   IsEnabled="{Binding OnlyExportSpecificRois}"
-                  Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#FF9800" Foreground="White" FontWeight="SemiBold"/>
-          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4"
-                     Text="ROI Associations always apply — matching ROIs are renamed to their canonical names during export."/>
+                  Padding="12,8" Margin="4,4,4,12" FontSize="13"/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
                      Text="When checked, only ROIs matching associations are exported. Use 'Select ROIs for Export' to choose which to include. Patients missing all selected ROIs are automatically de-selected."/>
 
@@ -38,7 +43,7 @@
           <CheckBox Content="Resample to fixed spacing" IsChecked="{Binding SpecifyOutputSpacing}" Margin="4,8" FontSize="13"/>
           <Button Content="Set Spacing..." Command="{Binding OpenOutputSpacingCommand}"
                   IsEnabled="{Binding SpecifyOutputSpacing}"
-                  Padding="12,8" Margin="4" FontSize="13" Background="#9C27B0" Foreground="White" FontWeight="SemiBold"/>
+                  Padding="12,8" Margin="4" FontSize="13"/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,4,4,0"
                      Text="When enabled, all exports (image, dose, masks) are resampled to the specified X/Y/Z voxel size. Image and dose use linear interpolation; structure masks use nearest-neighbor."/>
 
@@ -47,7 +52,7 @@
           <CheckBox Content="Anonymize export" IsChecked="{Binding AnonymizeExport}" Margin="4,8" FontSize="13"/>
           <Button Content="Edit Anonymization Key..." Command="{Binding OpenAnonymizationKeyEditorCommand}"
                   IsEnabled="{Binding AnonymizeExport}"
-                  Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+                  Padding="12,8" Margin="4,4,4,12" FontSize="13"/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"
                      Text="When checked, exports use integer folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions."/>
 
@@ -56,7 +61,7 @@
           <CheckBox Content="Write DICOM tag sidecar (metadata.json)" IsChecked="{Binding ExportDicomMetadata}" Margin="4,8" FontSize="13"/>
           <Button Content="Select Metadata Tags..." Command="{Binding OpenMetadataTagsCommand}"
                   IsEnabled="{Binding ExportDicomMetadata}"
-                  Padding="12,8" Margin="4,4,4,12" FontSize="13" Background="#009688" Foreground="White" FontWeight="SemiBold"/>
+                  Padding="12,8" Margin="4,4,4,12" FontSize="13"/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,4"
                      Text="When checked, a metadata.json with your selected DICOM tags is written into every export folder. Tags are read from each series' first image; numeric tags become numbers, multi-valued tags become arrays, and tags missing from a series are written as null."/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666666" Margin="4,0,4,0"

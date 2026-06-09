@@ -22,7 +22,7 @@
   <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- Blue header bar -->
-    <Border Grid.Row="0" Background="#2196F3" Padding="16,12">
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
       <StackPanel>
         <TextBlock Text="Manage ROI Associations" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="Define canonical names and map alternative ROI names as aliases"
@@ -55,7 +55,7 @@
                   Padding="8,6" CornerRadius="0,0,4,4">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
               <Button Content="Add" Command="{Binding AddAssociationCommand}" Classes="panel"
-                      Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+                      FontWeight="SemiBold"/>
               <Button Content="Remove" Command="{Binding RemoveAssociationCommand}" Classes="panel"/>
             </StackPanel>
           </Border>
@@ -101,7 +101,7 @@
               <TextBlock Text="Add custom alias:" Margin="0,12,0,4" FontWeight="Medium" Foreground="#555555"/>
               <DockPanel Margin="0,0,0,6">
                 <Button DockPanel.Dock="Right" Content="Add" Classes="panel" Margin="6,0,0,0"
-                        Background="#4CAF50" Foreground="White" FontWeight="SemiBold"
+                        FontWeight="SemiBold"
                         Command="{Binding $parent[Window].DataContext.AddCustomAliasCommand}"/>
                 <TextBox Text="{Binding $parent[Window].DataContext.NewAliasText, Mode=TwoWay}"
                          VerticalContentAlignment="Center" Padding="6,4" BorderBrush="#CCCCCC"/>

@@ -7,7 +7,7 @@
 
   <Grid RowDefinitions="Auto,*,Auto,Auto">
 
-    <Border Grid.Row="0" Background="#2196F3" Padding="16,12">
+    <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
       <StackPanel>
         <TextBlock Text="Select ROIs for Export" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="Choose which ROIs to include. Patients missing all selected ROIs will be de-selected."
