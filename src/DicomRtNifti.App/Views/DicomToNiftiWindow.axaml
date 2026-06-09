@@ -25,7 +25,7 @@
 
     <!-- Input/Output/Scan toolbar -->
     <Border Grid.Row="1" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}" BorderThickness="0,0,0,1" Padding="12,10">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+      <Grid RowDefinitions="Auto,Auto,Auto">
         <Grid Grid.Row="0" Margin="0,0,0,6" ColumnDefinitions="55,*,Auto">
           <TextBlock Grid.Column="0" Text="Input:" VerticalAlignment="Center" FontWeight="Medium" Foreground="{StaticResource AppLabelText}"/>
           <TextBox Grid.Column="1" Text="{Binding InputFolder}" VerticalContentAlignment="Center" Padding="6,4"/>
@@ -51,24 +51,6 @@
             <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" Margin="10,0,0,0"
                        TextTrimming="CharacterEllipsis" Foreground="{StaticResource AppMutedText}" MinWidth="110"/>
           </Grid>
-        </Grid>
-
-        <!-- Data to Export + Export Options launcher (the rest of the options live in the Export Options window) -->
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
-          <TextBlock Grid.Column="0" Text="Data to export:" VerticalAlignment="Center"
-                     FontWeight="Medium" Foreground="{StaticResource AppLabelText}" Margin="0,0,16,0"/>
-          <CheckBox Grid.Column="1" Content="Export Images" IsChecked="{Binding ExportImages}"
-                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
-          <CheckBox Grid.Column="2" Content="Export Structures" IsChecked="{Binding IncludeStructures}"
-                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
-          <CheckBox Grid.Column="3" Content="Export Dose" IsChecked="{Binding IncludeDose}"
-                    FontSize="13" VerticalAlignment="Center"/>
-          <TextBlock Grid.Column="4" Text="{Binding ExportOptionsSummary}" VerticalAlignment="Center"
-                     HorizontalAlignment="Right" Margin="0,0,12,0" FontSize="11"
-                     Foreground="{StaticResource AppMutedText}" TextTrimming="CharacterEllipsis"
-                     ToolTip.Tip="Current Export Options. Click Export Options... to change."/>
-          <Button Grid.Column="5" Content="Export Options..." Command="{Binding OpenExportOptionsCommand}"
-                  Padding="14,6" FontSize="13"/>
         </Grid>
       </Grid>
     </Border>
@@ -145,6 +127,26 @@
     <!-- Action bar + log -->
     <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1" CornerRadius="4" Margin="12,0" Padding="12">
       <StackPanel>
+        <!-- Data to export + Export Options, sitting directly above the run actions. -->
+        <Grid Margin="0,0,0,8" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+          <TextBlock Grid.Column="0" Text="Data to export:" VerticalAlignment="Center"
+                     FontWeight="Medium" Foreground="{StaticResource AppLabelText}" Margin="0,0,16,0"/>
+          <CheckBox Grid.Column="1" Content="Export Images" IsChecked="{Binding ExportImages}"
+                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
+          <CheckBox Grid.Column="2" Content="Export Structures" IsChecked="{Binding IncludeStructures}"
+                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
+          <CheckBox Grid.Column="3" Content="Export Dose" IsChecked="{Binding IncludeDose}"
+                    FontSize="13" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="4" Text="{Binding ExportOptionsSummary}" VerticalAlignment="Center"
+                     HorizontalAlignment="Right" Margin="0,0,12,0" FontSize="11"
+                     Foreground="{StaticResource AppMutedText}" TextTrimming="CharacterEllipsis"
+                     ToolTip.Tip="Current Export Options. Click Export Options... to change."/>
+          <Button Grid.Column="5" Content="Export Options..." Command="{Binding OpenExportOptionsCommand}"
+                  Padding="14,6" FontSize="13"/>
+        </Grid>
+
+        <Border Margin="0,0,0,8" BorderBrush="{StaticResource AppBorder}" BorderThickness="0,0,0,1"/>
+
         <Grid Margin="0,0,0,8" ColumnDefinitions="Auto,Auto,Auto,*">
           <Button Grid.Column="0" Content="Convert Selected" Command="{Binding ConvertSelectedCommand}"
                   Padding="12,6" MinWidth="140" FontSize="13" Margin="0,0,5,0"

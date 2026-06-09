@@ -58,7 +58,7 @@
           </TextBlock>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">3.</Run> In the <Run FontWeight="SemiBold">Data to export</Run>
-            row of the top toolbar, tick the artifact types you want:
+            row of the bottom action bar, tick the artifact types you want:
             <Run FontWeight="SemiBold">Export Images</Run> (CT/MR/PT →
             <Run FontFamily="Consolas">image.nii.gz</Run>),
             <Run FontWeight="SemiBold">Export Structures</Run> (RT-STRUCT → per-ROI masks under
@@ -88,7 +88,7 @@
 
           <TextBlock Classes="h2" Text="B. Anonymized batch for research"/>
           <TextBlock Classes="body">
-            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the top toolbar) and
+            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the bottom action bar) and
             tick <Run FontWeight="SemiBold">Anonymize export</Run> before Convert Selected. Each
             exported identifier (MRN, Study UID, Series UID) is replaced by a deterministic per-identifier
             hash; the output layout uses the hashed identifiers in place of the patient / series folder
@@ -103,7 +103,7 @@
             Use this when different patients call the same structure different names (e.g.
             <Run FontFamily="Consolas">PTV</Run>, <Run FontFamily="Consolas">PTV_5400</Run>,
             <Run FontFamily="Consolas">Target</Run>) and you want one canonical mask per ROI.
-            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the top toolbar) —
+            Open <Run FontWeight="SemiBold">Export Options</Run> (button in the bottom action bar) —
             steps 1–3 below all live in that window.
             <LineBreak/>
             <LineBreak/>
@@ -139,7 +139,7 @@
 
           <TextBlock Classes="h2" Text="E. Resampled to a target voxel spacing"/>
           <TextBlock Classes="body">
-            In <Run FontWeight="SemiBold">Export Options</Run> (top toolbar), tick
+            In <Run FontWeight="SemiBold">Export Options</Run> (bottom action bar), tick
             <Run FontWeight="SemiBold">Resample to fixed spacing</Run>, click
             <Run FontWeight="SemiBold">Set Spacing...</Run>, and enter X / Y / Z spacings in mm
             (e.g. 1.0 × 1.0 × 1.0). On Convert Selected, every output volume is resampled to that
@@ -186,7 +186,8 @@
           <TextBlock Classes="h1" Text="Reference: export options"/>
           <TextBlock Classes="body">
             The three <Run FontWeight="SemiBold">Data to export</Run> checkboxes (Export Images /
-            Export Structures / Export Dose) live in the top toolbar, alongside the Export Options button.
+            Export Structures / Export Dose) live in the bottom action bar, just above Convert Selected,
+            alongside the Export Options button.
             Everything else — ROI filtering, output spacing, and anonymization — opens from the
             <Run FontWeight="SemiBold">Export Options...</Run> button as a separate window you can leave
             open and reposition while you keep working in the main window. Its settings apply to Convert
@@ -291,13 +292,15 @@
 
           <TextBlock Classes="h1" Text="Reference: bottom action bar"/>
           <TextBlock Classes="body">
-            The bar across the bottom of the window holds the run actions —
+            The bar across the bottom of the window groups everything that drives an export. A
+            <Run FontWeight="SemiBold">Data to export</Run> row (the Export Images / Export Structures /
+            Export Dose checkboxes plus the <Run FontWeight="SemiBold">Export Options...</Run> button)
+            sits directly above the run actions —
             <Run FontWeight="SemiBold">Convert Selected</Run>,
             <Run FontWeight="SemiBold">Export Manifest Only</Run>, and
-            <Run FontWeight="SemiBold">Settings...</Run> — above the timestamped log box. (The
-            Data to export checkboxes and the Export Options button live in the top toolbar; see
-            <Run FontWeight="SemiBold">Reference: top toolbar</Run> and
-            <Run FontWeight="SemiBold">Reference: export options</Run> above.)
+            <Run FontWeight="SemiBold">Settings...</Run> — with the timestamped log box beneath. See
+            <Run FontWeight="SemiBold">Reference: export options</Run> above for what each checkbox and
+            the Export Options window produce.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Convert Selected"/>
