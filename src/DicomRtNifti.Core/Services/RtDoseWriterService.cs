@@ -328,7 +328,7 @@ namespace DicomRtNifti.Core.Services
             ds.AddOrUpdate(DicomTag.InstanceNumber, 1);
 
             // Manufacturer / instance creation
-            ds.AddOrUpdate(DicomTag.Manufacturer, "Dicom_RT_images_Csharp");
+            ds.AddOrUpdate(DicomTag.Manufacturer, "DICOM RT Toolkit");
             ds.AddOrUpdate(DicomTag.InstanceCreationDate, nowDate);
             ds.AddOrUpdate(DicomTag.InstanceCreationTime, nowTime);
             ds.AddOrUpdate(DicomTag.ContentDate, nowDate);
