@@ -1,4 +1,4 @@
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Services;
 using Xunit;
 
 namespace DicomRtNifti.Core.Tests

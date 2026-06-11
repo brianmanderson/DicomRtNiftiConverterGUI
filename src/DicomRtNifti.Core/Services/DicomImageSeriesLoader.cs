@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using FellowOakDicom;
 using itk.simple;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Loads a sorted DICOM image series into a SimpleITK Image with a

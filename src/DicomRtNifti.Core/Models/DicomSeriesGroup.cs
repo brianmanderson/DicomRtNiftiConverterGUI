@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Dicom_RT_images_Csharp.Models
+namespace DicomRtNifti.Core.Models
 {
     /// <summary>
     /// Groups all DICOM files within a single series, with links to associated RT data.

@@ -6,16 +6,11 @@
   <!--
     Cross-platform Avalonia desktop GUI (.NET 8), successor to the legacy WPF app.
     net8.0 / Nullable / version metadata come from ../Directory.Build.props.
-
-    SimpleITK is NOT imported here yet: the skeleton (launcher + stub workflow
-    windows) makes no SimpleITK calls. SimpleITK.props is added when the real
-    workflow windows that invoke Core conversion services are ported (Phase 4).
+    RootNamespace defaults to the assembly name (DicomRtNifti.App).
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>DicomRtNifti.App</AssemblyName>
-    <!-- Match the legacy namespace so ported views/view-models keep their names. -->
-    <RootNamespace>Dicom_RT_images_Csharp</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

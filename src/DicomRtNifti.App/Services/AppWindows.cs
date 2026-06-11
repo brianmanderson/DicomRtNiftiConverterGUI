@@ -3,7 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.App.Services
 {
     /// <summary>
     /// Resolves the currently-active desktop window, used as the owner for modal dialogs

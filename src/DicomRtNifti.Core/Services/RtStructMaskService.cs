@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using FellowOakDicom;
 using itk.simple;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Rasterizes RT Struct contours into binary 3D mask volumes.

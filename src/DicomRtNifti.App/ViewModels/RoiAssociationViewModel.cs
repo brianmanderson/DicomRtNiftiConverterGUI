@@ -6,10 +6,10 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using CommunityToolkit.Mvvm.Input;
-using Dicom_RT_images_Csharp.Models;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Models;
+using DicomRtNifti.Core.Services;
 
-namespace Dicom_RT_images_Csharp.ViewModels
+namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>
     /// View-model for the ROI Association editor. Ported from WPF; the editing model is unchanged

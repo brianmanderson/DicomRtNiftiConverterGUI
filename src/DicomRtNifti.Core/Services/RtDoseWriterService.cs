@@ -4,12 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 using FellowOakDicom;
 using FellowOakDicom.IO.Buffer;
 using itk.simple;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Builds DICOM RT-DOSE (.dcm) files from NIfTI dose volumes. Each .nii.gz file in the
@@ -328,7 +328,7 @@ namespace Dicom_RT_images_Csharp.Services
             ds.AddOrUpdate(DicomTag.InstanceNumber, 1);
 
             // Manufacturer / instance creation
-            ds.AddOrUpdate(DicomTag.Manufacturer, "Dicom_RT_images_Csharp");
+            ds.AddOrUpdate(DicomTag.Manufacturer, "DICOM RT Toolkit");
             ds.AddOrUpdate(DicomTag.InstanceCreationDate, nowDate);
             ds.AddOrUpdate(DicomTag.InstanceCreationTime, nowTime);
             ds.AddOrUpdate(DicomTag.ContentDate, nowDate);

@@ -11,11 +11,12 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
-using Dicom_RT_images_Csharp.Models;
-using Dicom_RT_images_Csharp.Services;
-using Dicom_RT_images_Csharp.Views;
+using DicomRtNifti.Core.Models;
+using DicomRtNifti.Core.Services;
+using DicomRtNifti.App.Services;
+using DicomRtNifti.App.Views;
 
-namespace Dicom_RT_images_Csharp.ViewModels
+namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>
     /// Main ViewModel for the forward (DICOM -> NIfTI) workflow. Ported from WPF; the scan /

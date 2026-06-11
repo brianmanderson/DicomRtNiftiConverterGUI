@@ -6,13 +6,13 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.App.Services
 {
     /// <summary>
     /// Folder-selection abstraction so view-models can prompt for a folder without
     /// referencing a Window (the WPF VMs used System.Windows.Forms.FolderBrowserDialog
     /// directly). Lives in the same namespace as the Core services so existing
-    /// `using Dicom_RT_images_Csharp.Services;` directives pick it up.
+    /// `using DicomRtNifti.Core.Services;` directives pick it up.
     /// </summary>
     public interface IFolderPicker
     {

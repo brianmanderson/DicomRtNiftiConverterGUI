@@ -2,9 +2,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 
-namespace Dicom_RT_images_Csharp.ViewModels
+namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>ViewModel for a patient node in the TreeView. Ported verbatim from WPF
     /// (no UI dependencies — INotifyPropertyChanged + Core models only).</summary>

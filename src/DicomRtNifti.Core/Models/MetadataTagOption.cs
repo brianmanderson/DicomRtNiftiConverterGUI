@@ -1,4 +1,4 @@
-namespace Dicom_RT_images_Csharp.Models
+namespace DicomRtNifti.Core.Models
 {
     /// <summary>
     /// A single selectable DICOM attribute presented in the metadata-tag picker. This is a

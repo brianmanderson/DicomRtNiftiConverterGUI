@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// Forward workflow (DICOM -> NIfTI) window. DataContext is a MainViewModel supplied by

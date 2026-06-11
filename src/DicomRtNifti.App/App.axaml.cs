@@ -1,11 +1,12 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using Dicom_RT_images_Csharp.Services;
-using Dicom_RT_images_Csharp.ViewModels;
-using Dicom_RT_images_Csharp.Views;
+using DicomRtNifti.Core.Services;
+using DicomRtNifti.App.Services;
+using DicomRtNifti.App.ViewModels;
+using DicomRtNifti.App.Views;
 
-namespace Dicom_RT_images_Csharp
+namespace DicomRtNifti.App
 {
     public partial class App : Application
     {

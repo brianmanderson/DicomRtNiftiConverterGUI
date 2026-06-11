@@ -2,7 +2,7 @@ using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// Output voxel-spacing dialog. Shown via <c>ShowDialog&lt;bool&gt;</c>; on Save it closes

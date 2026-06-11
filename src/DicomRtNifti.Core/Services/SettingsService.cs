@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 using Newtonsoft.Json;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Handles loading and saving application settings and ROI associations to JSON files.

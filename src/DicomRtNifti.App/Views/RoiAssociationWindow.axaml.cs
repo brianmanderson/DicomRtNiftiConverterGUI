@@ -3,9 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using Dicom_RT_images_Csharp.ViewModels;
+using DicomRtNifti.App.ViewModels;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// ROI Association editor dialog. DataContext is a <see cref="RoiAssociationViewModel"/>. Save and

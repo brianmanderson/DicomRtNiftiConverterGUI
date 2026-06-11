@@ -1,8 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Dicom_RT_images_Csharp.ViewModels;
+using DicomRtNifti.App.ViewModels;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// Anonymization-key editor dialog. The DataContext is an AnonymizationKeyEditorViewModel.

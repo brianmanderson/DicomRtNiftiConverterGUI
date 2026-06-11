@@ -4,9 +4,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using CommunityToolkit.Mvvm.Input;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Services;
 
-namespace Dicom_RT_images_Csharp.ViewModels
+namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>
     /// One editable input -> hash mapping shown in the anonymization-key editor.

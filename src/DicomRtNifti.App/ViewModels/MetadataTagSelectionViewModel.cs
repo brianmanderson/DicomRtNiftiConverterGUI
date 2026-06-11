@@ -4,10 +4,10 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Dicom_RT_images_Csharp.Models;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Models;
+using DicomRtNifti.Core.Services;
 
-namespace Dicom_RT_images_Csharp.ViewModels
+namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>
     /// ViewModel for the metadata-tag picker. Lists every selectable DICOM attribute

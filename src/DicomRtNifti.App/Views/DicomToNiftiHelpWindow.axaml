@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Dicom_RT_images_Csharp.Views.DicomToNiftiHelpWindow"
+        x:Class="DicomRtNifti.App.Views.DicomToNiftiHelpWindow"
         Title="Help: DICOM → NIfTI" Width="780" Height="700"
         WindowStartupLocation="CenterOwner"
         CanResize="True" MinHeight="400" MinWidth="540"
