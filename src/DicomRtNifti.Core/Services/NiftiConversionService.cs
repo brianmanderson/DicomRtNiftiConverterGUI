@@ -5,11 +5,11 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 using FellowOakDicom;
 using itk.simple;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Converts DICOM image series, RT Dose, and RT Struct data to NIfTI (.nii.gz) format.

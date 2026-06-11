@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Provides deterministic per-identifier hashing for anonymized exports.

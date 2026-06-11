@@ -4,9 +4,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 
-namespace Dicom_RT_images_Csharp.ViewModels
+namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>
     /// ViewModel for the ROI selection window. Shows all unique canonical ROI names

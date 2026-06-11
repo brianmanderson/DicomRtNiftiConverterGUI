@@ -2,7 +2,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Services;
 using Xunit;
 
 namespace DicomRtNifti.Core.Tests

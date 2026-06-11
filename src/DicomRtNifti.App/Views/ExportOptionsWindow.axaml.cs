@@ -1,7 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// Non-modal Export Options window. Shares the forward window's MainViewModel (set as its

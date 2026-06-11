@@ -5,10 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 using FellowOakDicom;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Recursively scans a directory tree for DICOM files and groups them into a

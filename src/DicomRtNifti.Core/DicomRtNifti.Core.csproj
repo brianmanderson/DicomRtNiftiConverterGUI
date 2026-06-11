@@ -4,9 +4,6 @@
 
   <PropertyGroup>
     <AssemblyName>DicomRtNifti.Core</AssemblyName>
-    <!-- RootNamespace kept on the legacy value for this commit; the namespace
-         modernization to DicomRtNifti.Core.* lands as a separate change. -->
-    <RootNamespace>Dicom_RT_images_Csharp</RootNamespace>
   </PropertyGroup>
 
   <!-- Some service helpers (e.g. NiftiFileNaming) are `internal`; they were accessible when

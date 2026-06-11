@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Dicom_RT_images_Csharp.Models
+namespace DicomRtNifti.Core.Models
 {
     /// <summary>
     /// Maps a canonical ROI name to a set of aliases for matching against DICOM structure names.

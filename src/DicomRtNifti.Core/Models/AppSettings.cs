@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Dicom_RT_images_Csharp.Models
+namespace DicomRtNifti.Core.Models
 {
     /// <summary>
     /// Application settings persisted to JSON.

@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Dicom_RT_images_Csharp.Views.MetadataTagSelectionWindow"
+        x:Class="DicomRtNifti.App.Views.MetadataTagSelectionWindow"
         Title="Select DICOM Metadata Tags" Width="780" Height="620"
         MinWidth="560" MinHeight="420"
         WindowStartupLocation="CenterOwner"

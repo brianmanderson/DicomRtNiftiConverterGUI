@@ -2,10 +2,10 @@ using System.IO;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using Dicom_RT_images_Csharp.Models;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Models;
+using DicomRtNifti.Core.Services;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// Settings dialog. Folder selection uses Avalonia's IStorageProvider (the WPF version

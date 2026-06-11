@@ -1,9 +1,9 @@
 using System;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Dicom_RT_images_Csharp.ViewModels;
+using DicomRtNifti.App.ViewModels;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// Reverse workflow (NIfTI -> DICOM) window. DataContext is a NiftiToDicomViewModel

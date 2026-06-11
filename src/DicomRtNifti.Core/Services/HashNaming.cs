@@ -4,7 +4,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Deterministic, content-stable filename helpers for the NIfTI -> DICOM workflow.

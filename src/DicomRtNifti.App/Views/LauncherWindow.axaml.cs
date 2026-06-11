@@ -1,8 +1,8 @@
 using System;
 using Avalonia.Controls;
-using Dicom_RT_images_Csharp.ViewModels;
+using DicomRtNifti.App.ViewModels;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// Launcher window: top-level chooser. Opens the NIfTI->DICOM workflow window (wired to a

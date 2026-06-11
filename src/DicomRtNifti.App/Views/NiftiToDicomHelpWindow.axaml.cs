@@ -1,7 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace Dicom_RT_images_Csharp.Views
+namespace DicomRtNifti.App.Views
 {
     /// <summary>
     /// Read-only help window for the NIfTI → DICOM workflow. Opened non-modally from the

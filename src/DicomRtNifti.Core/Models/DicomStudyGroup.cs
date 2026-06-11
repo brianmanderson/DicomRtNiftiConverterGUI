@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Dicom_RT_images_Csharp.Models
+namespace DicomRtNifti.Core.Models
 {
     /// <summary>
     /// Groups all DICOM series within a single study.

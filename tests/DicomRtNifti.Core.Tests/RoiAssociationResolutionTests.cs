@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using Dicom_RT_images_Csharp.Models;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Models;
+using DicomRtNifti.Core.Services;
 using Xunit;
 
 namespace DicomRtNifti.Core.Tests

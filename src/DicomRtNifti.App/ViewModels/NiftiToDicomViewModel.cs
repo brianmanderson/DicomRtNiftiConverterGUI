@@ -10,11 +10,12 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
-using Dicom_RT_images_Csharp.Models;
-using Dicom_RT_images_Csharp.Services;
-using Dicom_RT_images_Csharp.Views;
+using DicomRtNifti.Core.Models;
+using DicomRtNifti.Core.Services;
+using DicomRtNifti.App.Services;
+using DicomRtNifti.App.Views;
 
-namespace Dicom_RT_images_Csharp.ViewModels
+namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>
     /// ViewModel for the "NIfTI to DICOM" window. Pointed at a folder, it scans (recursively,

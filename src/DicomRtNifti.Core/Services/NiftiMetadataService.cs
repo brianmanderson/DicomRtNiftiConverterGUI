@@ -1,11 +1,11 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 using FellowOakDicom;
 using Newtonsoft.Json;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Loads / synthesizes / persists the patient + study + frame-of-reference metadata

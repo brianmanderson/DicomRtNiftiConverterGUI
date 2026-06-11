@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace Dicom_RT_images_Csharp.Models
+namespace DicomRtNifti.Core.Models
 {
     /// <summary>
     /// Central matching for ROI names against ROI-association aliases / canonical names. Matching is

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Dicom_RT_images_Csharp.Models
+namespace DicomRtNifti.Core.Models
 {
     /// <summary>
     /// Patient/study/frame-of-reference metadata used when converting NIfTI inputs

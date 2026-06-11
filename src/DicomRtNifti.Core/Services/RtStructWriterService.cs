@@ -4,11 +4,11 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 using FellowOakDicom;
 using itk.simple;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Builds a new DICOM RT-Structure Set (.dcm) from one or more NIfTI binary masks

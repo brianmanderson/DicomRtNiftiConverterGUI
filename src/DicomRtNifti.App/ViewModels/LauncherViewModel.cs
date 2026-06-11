@@ -1,9 +1,10 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Services;
+using DicomRtNifti.App.Services;
 
-namespace Dicom_RT_images_Csharp.ViewModels
+namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>
     /// Top-level launcher: chooses between the two workflows. Holds the Core services (built

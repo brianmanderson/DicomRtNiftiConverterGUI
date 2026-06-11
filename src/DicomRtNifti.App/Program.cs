@@ -1,7 +1,7 @@
 using System;
 using Avalonia;
 
-namespace Dicom_RT_images_Csharp
+namespace DicomRtNifti.App
 {
     /// <summary>
     /// Avalonia desktop entry point. The headless conversion CLI lives in the separate

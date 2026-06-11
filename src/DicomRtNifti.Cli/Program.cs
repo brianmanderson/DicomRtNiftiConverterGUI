@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Dicom_RT_images_Csharp.Cli
+namespace DicomRtNifti.Cli
 {
     /// <summary>
     /// Cross-platform console entry point for the DICOM RT Toolkit headless CLI.

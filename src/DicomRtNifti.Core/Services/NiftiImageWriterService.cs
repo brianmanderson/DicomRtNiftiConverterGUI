@@ -4,12 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 using FellowOakDicom;
 using FellowOakDicom.IO.Buffer;
 using itk.simple;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Writes <c>&lt;dicomFolder&gt;/image.nii.gz</c> (or <c>image.nii</c>) as a single-series,

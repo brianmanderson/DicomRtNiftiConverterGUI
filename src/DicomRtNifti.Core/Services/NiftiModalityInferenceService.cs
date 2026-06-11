@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using itk.simple;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Heuristic CT / MR / PT modality inference from a NIfTI image.

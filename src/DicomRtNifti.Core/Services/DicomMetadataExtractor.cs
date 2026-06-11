@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using Dicom_RT_images_Csharp.Models;
+using DicomRtNifti.Core.Models;
 using FellowOakDicom;
 using FellowOakDicom.IO;
 using Newtonsoft.Json;
 
-namespace Dicom_RT_images_Csharp.Services
+namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Reads a chosen set of DICOM attributes from a file and serializes them to a

@@ -4,12 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
-using Dicom_RT_images_Csharp.Models;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Models;
+using DicomRtNifti.Core.Services;
 using FellowOakDicom;
 using itk.simple;
 
-namespace Dicom_RT_images_Csharp.Cli
+namespace DicomRtNifti.Cli
 {
     /// <summary>
     /// Headless command-line entry point for benchmark / batch use, invoked from
@@ -19,7 +19,7 @@ namespace Dicom_RT_images_Csharp.Cli
     /// Usage:
     ///
     ///   Forward (RTSTRUCT -> per-ROI binary masks; optionally also image.nii.gz and doses/):
-    ///       Dicom_RT_images_Csharp.exe --headless --forward
+    ///       DicomRtNifti.Cli--forward
     ///           --rtstruct PATH
     ///           --image-folder PATH
     ///           --output-folder PATH
@@ -27,13 +27,13 @@ namespace Dicom_RT_images_Csharp.Cli
     ///           [--rtdose PATH]      (also write doses/&lt;series description&gt;.nii.gz)
     ///
     ///   Reverse (per-ROI binary masks -> RTSTRUCT):
-    ///       Dicom_RT_images_Csharp.exe --headless --reverse
+    ///       DicomRtNifti.Cli--reverse
     ///           --image-folder PATH
     ///           --masks-folder PATH
     ///           --output PATH
     ///
     ///   Image-reverse (NIfTI image volume -> DICOM image series):
-    ///       Dicom_RT_images_Csharp.exe --headless --image-reverse
+    ///       DicomRtNifti.Cli--image-reverse
     ///           --nifti-image PATH
     ///           --output-folder PATH
     ///           [--modality {CT|MR|PT|auto}]  (default: auto -- infers from
@@ -43,7 +43,7 @@ namespace Dicom_RT_images_Csharp.Cli
     ///           [--ref-dicom-folder PATH] (template for patient/study metadata)
     ///
     ///   Image-forward (DICOM image series -> NIfTI image volume):
-    ///       Dicom_RT_images_Csharp.exe --headless --image-forward
+    ///       DicomRtNifti.Cli--image-forward
     ///           --image-folder PATH
     ///           --output PATH             (.nii.gz output file)
     ///           [--target-spacing X,Y,Z]  (optional resample, mm)
@@ -325,7 +325,7 @@ namespace Dicom_RT_images_Csharp.Cli
                 var imageWriter = new NiftiImageWriterService(metaService);
                 imageWriter.ConvertImageNiftiToDicomSeries(stage, meta, progress, CancellationToken.None);
 
-                Dicom_RT_images_Csharp.Models.DicomSeriesGroup imageSeries = null;
+                DicomRtNifti.Core.Models.DicomSeriesGroup imageSeries = null;
                 var dcmFiles = Directory.EnumerateFiles(stage, "*.dcm", SearchOption.TopDirectoryOnly).ToList();
                 if (dcmFiles.Count > 0)
                 {

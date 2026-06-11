@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Dicom_RT_images_Csharp.Views.LauncherWindow"
+        x:Class="DicomRtNifti.App.Views.LauncherWindow"
         Title="DICOM RT Toolkit" Width="480" Height="392"
         WindowStartupLocation="CenterScreen"
         CanResize="False"

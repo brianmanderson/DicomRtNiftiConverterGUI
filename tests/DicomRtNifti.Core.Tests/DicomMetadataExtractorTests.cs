@@ -1,6 +1,6 @@
 using System.IO;
 using System.Linq;
-using Dicom_RT_images_Csharp.Services;
+using DicomRtNifti.Core.Services;
 using FellowOakDicom;
 using Xunit;
 

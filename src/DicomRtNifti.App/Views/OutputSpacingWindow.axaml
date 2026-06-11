@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Dicom_RT_images_Csharp.Views.OutputSpacingWindow"
+        x:Class="DicomRtNifti.App.Views.OutputSpacingWindow"
         Title="Output Spacing" Width="420" Height="360"
         WindowStartupLocation="CenterOwner"
         CanResize="False"
