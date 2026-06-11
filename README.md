@@ -1,6 +1,6 @@
 # DicomRtNiftiConverterGUI
 
-A C# .NET 4.8 WPF application (with a headless CLI mode) that converts DICOM radiotherapy data — CT/MR images, RT Structures, and RT Dose — to NIfTI (`.nii.gz`) format, and also performs the reverse mask → RTSTRUCT operation.
+A cross-platform C# **.NET 8** toolkit that converts DICOM radiotherapy data — CT/MR/PT images, RT Structures, and RT Dose — to NIfTI (`.nii.gz`) format, and performs the reverse (mask → RTSTRUCT, NIfTI → DICOM image series). It ships as an **Avalonia desktop GUI** (`DicomRtNifti.App`) and a **headless CLI** (`DicomRtNifti.Cli`) that share one core conversion library (`DicomRtNifti.Core`), and runs on Windows, Linux, and macOS.
 
 The rasterization core handles the five clinically-used DICOM `ContourGeometricType` values — `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT` — and exposes both forward (RTSTRUCT → mask) and reverse (mask → RTSTRUCT) directions through a headless CLI. The rare `CLOSED_PLANAR_XOR` type tag (DICOM 2020 supplement) is deliberately not implemented because clinical RTSTRUCTs encode hollow shapes via the multi-contour even-odd convention instead.
 
@@ -8,7 +8,7 @@ Methodology borrows from [Dicom_RT_and_Images_to_Mask](https://github.com/brianm
 
 ## GUI mode
 
-Running `Dicom_RT_images_Csharp.exe` with no arguments opens a 480×320 launcher with two buttons:
+Launch the GUI with `dotnet run --project src/DicomRtNifti.App` (or run the published `DicomRtNifti.App` executable). It opens a launcher with two buttons:
 
 - **DICOM → NIfTI** — opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`).
 - **NIfTI → DICOM** — opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE).
@@ -18,9 +18,9 @@ Each directional window has a **Help** button (top right) with the full workflow
 ## Features
 
 - Recursive DICOM folder scanning with automatic Patient/Study/Series grouping
-- CT/MR image series export to `image.nii.gz` via SimpleITK
+- CT/MR/PT image series export to `image.nii.gz` via SimpleITK (with optional resampling to a fixed voxel spacing)
 - RT Struct contour rasterization to per-ROI binary mask `.nii.gz` files, supporting the five clinically-used `ContourGeometricType` values: `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT`. Hollow shapes are handled via the multi-contour `CLOSED_PLANAR` convention with even-odd XOR fill, the dominant clinical encoding; the explicit `CLOSED_PLANAR_XOR` type tag is not dispatched separately
-- Reverse direction: mask → RTSTRUCT writer (`RtStructWriterService.cs`)
+- Reverse direction: mask → RTSTRUCT writer (`RtStructWriterService`) and NIfTI volume → DICOM image series (`NiftiImageWriterService`)
 - RT Dose export to `doses/{SeriesDescription}.nii.gz` (one file per dose, filename sanitized) with DoseGridScaling applied
 - ROI Association editor for mapping canonical names to DICOM structure aliases
 - Configurable settings with JSON persistence
@@ -29,56 +29,84 @@ Each directional window has a **Help** button (top right) with the full workflow
 
 ## Headless mode
 
-For batch use and benchmark integration, the application exposes a CLI that
-bypasses the WPF UI:
+For batch use and benchmark integration, the `DicomRtNifti.Cli` executable runs
+the same conversion services as the GUI, with no desktop required. Run the
+published binary directly, or during development via
+`dotnet run --project src/DicomRtNifti.Cli -- <args>`. (A leading `--headless`
+flag is accepted but optional.)
 
 ```
-# Forward: RTSTRUCT + image series → per-ROI binary masks
-#   --include-image (optional) also writes image.nii.gz alongside the masks.
-Dicom_RT_images_Csharp.exe --headless --forward ^
-    --rtstruct PATH --image-folder PATH --output-folder PATH ^
-    [--include-image]
+# Forward: RTSTRUCT + image series -> per-ROI binary masks
+#   --include-image (optional) also writes image.nii.gz; --rtdose (optional) writes doses/<desc>.nii.gz
+DicomRtNifti.Cli --forward --rtstruct PATH --image-folder PATH --output-folder PATH \
+    [--include-image] [--rtdose PATH]
 
-# Reverse with reference DICOM: per-ROI binary masks → RTSTRUCT
-Dicom_RT_images_Csharp.exe --headless --reverse ^
-    --image-folder PATH --masks-folder PATH --output PATH
+# Reverse with reference DICOM: per-ROI masks -> RTSTRUCT
+DicomRtNifti.Cli --reverse --image-folder PATH --masks-folder PATH --output PATH
 
 # Reverse, NIfTI-only (no reference DICOM): synthesizes the DICOM image series
 # from image.nii.gz + metadata.json so the RT-STRUCT can reference it.
 #   --image-nifti         (optional, default <masks-folder>/image.nii.gz)
 #   --metadata            (optional, default <masks-folder>/metadata.json;
 #                          auto-generated with anonymous defaults on first run)
-#   --output-image-folder (optional, persist the generated DICOM image series
-#                          alongside the RT-STRUCT for inspection)
-Dicom_RT_images_Csharp.exe --headless --reverse ^
-    --masks-folder PATH --output PATH ^
+#   --output-image-folder (optional, persist the generated DICOM image series)
+DicomRtNifti.Cli --reverse --masks-folder PATH --output PATH \
     [--image-nifti PATH] [--metadata PATH] [--output-image-folder PATH]
+
+# Image-forward: DICOM image series -> NIfTI image volume (no RTSTRUCT needed)
+DicomRtNifti.Cli --image-forward --image-folder PATH --output PATH.nii.gz \
+    [--target-spacing X,Y,Z]
+
+# Image-reverse: NIfTI image volume -> DICOM image series
+#   --modality default 'auto' infers CT/MR/PT from the NIfTI's pixel values
+DicomRtNifti.Cli --image-reverse --nifti-image PATH --output-folder PATH \
+    [--modality CT|MR|PT|auto]
+
+# Version + SimpleITK native-load probe
+DicomRtNifti.Cli --version
 ```
 
 - **Exit codes** — `0` on success, `1` on conversion failure (with stack trace on stderr), `2` on missing or invalid arguments (usage printed on stderr).
-- **Stdout (forward)** — header line `# rt_mask_validation forward`, then one TSV row per ROI: `<ROIName>\t<Volume_cc>\t<mask_path>`.
-- **Stdout (reverse)** — header line `# rt_mask_validation reverse` (or `# rt_mask_validation reverse (nifti-only)` when no reference DICOM was supplied), then a single line with the output RT-STRUCT path.
+- **Stdout** — a `# rt_mask_validation <mode>` header line followed by the machine-readable results: forward writes one TSV row per ROI (`<ROIName>\t<Volume_cc>\t<mask_path>`); the reverse/image modes write the output path(s).
 - **Stderr** — human-readable progress and error messages.
 
-The CLI reuses the same services the GUI uses. See [Dicom_RT_images_Csharp/Cli/HeadlessRunner.cs](Dicom_RT_images_Csharp/Cli/HeadlessRunner.cs).
+The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
 
 ## Dependencies
 
-- **.NET Framework 4.8** (WPF)
+- **.NET 8** — cross-platform runtime (Windows, Linux, macOS)
+- **Avalonia 11** — cross-platform desktop UI (GUI only)
 - **fo-dicom 5.2.5** — DICOM file parsing and metadata extraction
-- **SimpleITK** — Image I/O and NIfTI writing (external DLL, not NuGet)
-- **Newtonsoft.Json 13.0.4** — Settings and ROI association persistence
+- **SimpleITK** — image I/O and NIfTI writing (external native library, **not** a NuGet package; see Build)
+- **Newtonsoft.Json 13.0.4** — settings and ROI association persistence
+- **CommunityToolkit.Mvvm / .HighPerformance** — MVVM commands (GUI) and span helpers (Core)
 
 ## Build instructions
 
-1. Open `Dicom_RT_images_Csharp.sln` in Visual Studio 2022.
-2. Ensure NuGet packages are restored (right-click solution → Restore NuGet Packages).
-3. SimpleITK DLLs must be present at `../SimpleITK/` relative to this repository root (equivalently, `../../SimpleITK/` relative to the `Dicom_RT_images_Csharp/` project folder):
-   - `SimpleITKCSharpManaged.dll` (managed wrapper, referenced by the project)
-   - `SimpleITKCSharpNative.dll` (native, auto-copied to output)
+Requires the **.NET 8 SDK**. From the repository root:
 
-   Download from the [SimpleITK GitHub releases](https://github.com/SimpleITK/SimpleITK/releases) (e.g. `SimpleITK-2.5.0-CSharp-win64-x64.zip`). Extract so that the two DLLs live directly under `../SimpleITK/` (no version subfolder).
-4. Build in Debug or Release configuration (target: Any CPU).
+```
+dotnet build DicomRtNifti.sln -c Release
+dotnet test  tests/DicomRtNifti.Core.Tests/DicomRtNifti.Core.Tests.csproj -c Release
+```
+
+**SimpleITK** is not a NuGet package. The managed wrapper `SimpleITKCSharpManaged.dll`
+is referenced by `src/SimpleITK.props`, and the matching native library
+(`SimpleITKCSharpNative.dll` / `libSimpleITKCSharpNative.so` / `.dylib`) is copied
+into the build output so it loads at runtime. Stage both at **`../SimpleITK/`**
+(one level above the repository root; override with `-p:SitkDir=...`):
+
+1. Download a C# release from the [SimpleITK releases](https://github.com/SimpleITK/SimpleITK/releases) (e.g. `SimpleITK-2.5.0-CSharp-win64-x64.zip`).
+2. Extract so the two DLLs live directly under `../SimpleITK/` (no version subfolder).
+3. Verify the native loaded: `dotnet run --project src/DicomRtNifti.Cli -- --version` prints `SimpleITK native: OK`.
+
+To produce a self-contained build that needs no .NET install on the target
+machine (rid = `win-x64` | `linux-x64` | `osx-arm64`):
+
+```
+dotnet publish src/DicomRtNifti.App/DicomRtNifti.App.csproj -c Release -r <rid> --self-contained
+dotnet publish src/DicomRtNifti.Cli/DicomRtNifti.Cli.csproj -c Release -r <rid> --self-contained
+```
 
 ## RT Struct mask rasterization
 
