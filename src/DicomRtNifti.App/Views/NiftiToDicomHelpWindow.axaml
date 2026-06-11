@@ -1,26 +1,26 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dicom_RT_images_Csharp.Views.NiftiToDicomHelpWindow"
-        Title="Help: NIfTI to DICOM" Width="780" Height="700"
+        Title="Help: NIfTI → DICOM" Width="780" Height="700"
         WindowStartupLocation="CenterOwner"
         CanResize="True" MinHeight="400" MinWidth="540"
-        Background="#F5F5F5">
+        Background="{StaticResource AppWindowBg}">
   <Window.Styles>
     <Style Selector="TextBlock.h1">
       <Setter Property="FontSize" Value="16"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="#3F51B5"/>
+      <Setter Property="Foreground" Value="{StaticResource AppAccentBrush}"/>
       <Setter Property="Margin" Value="0,18,0,8"/>
     </Style>
     <Style Selector="TextBlock.h2">
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="#333333"/>
+      <Setter Property="Foreground" Value="{StaticResource AppHeadingText}"/>
       <Setter Property="Margin" Value="0,8,0,4"/>
     </Style>
     <Style Selector="TextBlock.body">
       <Setter Property="FontSize" Value="12"/>
-      <Setter Property="Foreground" Value="#444444"/>
+      <Setter Property="Foreground" Value="{StaticResource AppBodyText}"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
       <Setter Property="Margin" Value="0,2,0,2"/>
     </Style>
@@ -28,15 +28,15 @@
 
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <Border Grid.Row="0" Background="#3F51B5" Padding="16,10">
+    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
       <StackPanel>
         <TextBlock Text="Help: NIfTI → DICOM" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="How to convert NIfTI binary masks and dose volumes back into DICOM RT-STRUCT and RT-DOSE files."
-                   Foreground="#C5CAE9" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="1" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
+    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
             CornerRadius="4" Margin="12,12,12,0" Padding="20,12">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
@@ -58,9 +58,9 @@
           </TextBlock>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">3.</Run> Leave
-            <Run FontWeight="SemiBold">Convert Image?</Run>,
-            <Run FontWeight="SemiBold">Convert Structures?</Run>, and
-            <Run FontWeight="SemiBold">Convert Doses?</Run> ticked (untick whichever you want to
+            <Run FontWeight="SemiBold">Convert Images</Run>,
+            <Run FontWeight="SemiBold">Convert Structures</Run>, and
+            <Run FontWeight="SemiBold">Convert Dose</Run> ticked (untick whichever you want to
             skip).
           </TextBlock>
           <TextBlock Classes="body">
@@ -104,9 +104,9 @@
             you can skip the metadata edit — the scanner will pick them up automatically.)
             <LineBreak/>
             <Run FontWeight="SemiBold">3.</Run> Untick
-            <Run FontWeight="SemiBold">Convert Image?</Run> and
-            <Run FontWeight="SemiBold">Convert Doses?</Run>; leave
-            <Run FontWeight="SemiBold">Convert Structures?</Run> ticked.
+            <Run FontWeight="SemiBold">Convert Images</Run> and
+            <Run FontWeight="SemiBold">Convert Dose</Run>; leave
+            <Run FontWeight="SemiBold">Convert Structures</Run> ticked.
             <LineBreak/>
             <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert All</Run>.
             The resulting RT-STRUCT references the existing image series without writing new image
@@ -154,19 +154,19 @@
             <Run FontFamily="Consolas">doses/*.nii.gz</Run>. Scan checks the path you provide
             <Run FontWeight="SemiBold">and</Run> its first-level subfolders.
           </TextBlock>
-          <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">PatientFolder/
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">PatientFolder/
 │
-├─ image.nii.gz              → DICOM CT/MR/PT image series       <Run Foreground="#888888">(optional)</Run>
-├─ metadata.json                patient / study / UIDs           <Run Foreground="#888888">(optional — auto-generated with anonymous defaults if missing)</Run>
-├─ CT.1.dcm, CT.2.dcm, ...      existing reference image series  <Run Foreground="#888888">(optional — used instead of image.nii.gz if present)</Run>
+├─ image.nii.gz              → DICOM CT/MR/PT image series       <Run Foreground="{StaticResource AppBadgeText}">(optional)</Run>
+├─ metadata.json                patient / study / UIDs           <Run Foreground="{StaticResource AppBadgeText}">(optional — auto-generated with anonymous defaults if missing)</Run>
+├─ CT.1.dcm, CT.2.dcm, ...      existing reference image series  <Run Foreground="{StaticResource AppBadgeText}">(optional — used instead of image.nii.gz if present)</Run>
 │
-├─ masks/                                                        <Run Foreground="#888888">(optional folder — each .nii.gz below becomes one ROI)</Run>
+├─ masks/                                                        <Run Foreground="{StaticResource AppBadgeText}">(optional folder — each .nii.gz below becomes one ROI)</Run>
 │   ├─ Brain.nii.gz          → ROI "Brain"  in the generated RT-STRUCT
 │   └─ CTV.nii.gz            → ROI "CTV"    in the generated RT-STRUCT
 │
-└─ doses/                                                        <Run Foreground="#888888">(optional folder — each .nii.gz below becomes its own RT-DOSE)</Run>
+└─ doses/                                                        <Run Foreground="{StaticResource AppBadgeText}">(optional folder — each .nii.gz below becomes its own RT-DOSE)</Run>
     └─ plan_total.nii.gz     → one RT-DOSE file</TextBlock>
           </Border>
           <TextBlock Classes="body">
@@ -174,7 +174,7 @@
             <Run FontFamily="Consolas">.dcm</Run> files in the folder describe a CT/MR/PT series,
             those are used directly; otherwise the writers fall back to
             <Run FontFamily="Consolas">metadata.json</Run> (with the image series that
-            <Run FontWeight="SemiBold">Convert Image?</Run> just produced from
+            <Run FontWeight="SemiBold">Convert Images</Run> just produced from
             <Run FontFamily="Consolas">image.nii.gz</Run>, if any).
           </TextBlock>
 
@@ -247,9 +247,9 @@
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Sample metadata.json (CT defaults)"/>
-          <Border Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="1"
+          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#333333" xml:space="preserve">{
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">{
     "PatientId": "ANON_a1b2c3",
     "PatientName": "ANON^ANON",
     "PatientBirthDate": "",
@@ -299,7 +299,7 @@
             <Run FontFamily="Consolas">ImageSopInstanceUids</Run> in ascending z-order) to make the
             generated RT-STRUCT reference an existing DICOM image series in the TPS without
             rewriting any image DICOMs. Untick
-            <Run FontWeight="SemiBold">Convert Image?</Run>. If
+            <Run FontWeight="SemiBold">Convert Images</Run>. If
             <Run FontFamily="Consolas">ImageSopInstanceUids</Run> is empty, the RT-STRUCT still
             emits a series-level reference but omits per-slice ContourImageSequence entries.
           </TextBlock>
@@ -311,7 +311,7 @@
             in the folder) and clear <Run FontFamily="Consolas">ImageSeriesInstanceUid</Run> +
             <Run FontFamily="Consolas">ImageSopInstanceUids</Run> in
             <Run FontFamily="Consolas">metadata.json</Run>. The next run with
-            <Run FontWeight="SemiBold">Convert Image?</Run> ON rewrites them.
+            <Run FontWeight="SemiBold">Convert Images</Run> ON rewrites them.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Reference: controls"/>
@@ -333,15 +333,15 @@
             to refresh the list.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Convert Image? / Convert Structures? / Convert Doses?"/>
+          <TextBlock Classes="h2" Text="Convert Images / Convert Structures / Convert Dose"/>
           <TextBlock Classes="body">
             Per-artifact toggles. <Run FontFamily="Consolas">image.nii.gz</Run> writes only when
-            <Run FontWeight="SemiBold">Convert Image?</Run> is ON;
+            <Run FontWeight="SemiBold">Convert Images</Run> is ON;
             <Run FontFamily="Consolas">masks/</Run> write only when
-            <Run FontWeight="SemiBold">Convert Structures?</Run> is ON;
+            <Run FontWeight="SemiBold">Convert Structures</Run> is ON;
             <Run FontFamily="Consolas">doses/</Run> write only when
-            <Run FontWeight="SemiBold">Convert Doses?</Run> is ON. With all three off, the Convert
-            / Run Server buttons are disabled. When Convert Image is ON, the image is written
+            <Run FontWeight="SemiBold">Convert Dose</Run> is ON. With all three off, the Convert
+            / Run Server buttons are disabled. When Convert Images is ON, the image is written
             first per folder so the RT-STRUCT and RT-DOSE reference the resulting DICOM image
             series.
           </TextBlock>
@@ -389,9 +389,9 @@
             click produces fresh files even if prior ones exist.
           </TextBlock>
 
-          <TextBlock Classes="h2" Text="Cancel / Close"/>
+          <TextBlock Classes="h2" Text="Stop / Close"/>
           <TextBlock Classes="body">
-            <Run FontWeight="SemiBold">Cancel</Run>: aborts an in-progress
+            <Run FontWeight="SemiBold">Stop</Run>: aborts an in-progress
             <Run FontWeight="SemiBold">Convert All</Run>.
             <Run FontWeight="SemiBold">Close</Run>: closes the window; the state (folder, toggles,
             discovered jobs, server status) is preserved while the launcher is open.
@@ -525,7 +525,7 @@
       </ScrollViewer>
     </Border>
 
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC"
+    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>

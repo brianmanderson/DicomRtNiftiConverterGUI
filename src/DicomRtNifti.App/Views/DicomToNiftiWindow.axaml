@@ -2,83 +2,70 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Dicom_RT_images_Csharp.ViewModels"
         x:Class="Dicom_RT_images_Csharp.Views.DicomToNiftiWindow"
-        Title="DICOM to NIfTI Converter" Width="1100" Height="850"
+        Title="DICOM → NIfTI" Width="1100" Height="850"
         MinWidth="820" MinHeight="600"
         WindowStartupLocation="CenterScreen"
-        Background="#F5F5F5">
+        Background="{StaticResource AppWindowBg}">
 
-  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
 
     <!-- Header -->
-    <Border Grid.Row="0" Background="#1976D2" Padding="16,12">
+    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,12">
       <DockPanel>
         <Button DockPanel.Dock="Right" Content="Help" Command="{Binding OpenHelpCommand}"
-                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="#1976D2"
+                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="{StaticResource AppAccentBrush}"
                 FontWeight="SemiBold" FontSize="13" MinWidth="80" BorderThickness="0"/>
         <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="DICOM to NIfTI Converter" FontSize="20" FontWeight="Bold" Foreground="White"/>
-          <TextBlock Text="Scan DICOM directories, select patients and series, convert to NIfTI format"
-                     FontSize="12" Foreground="#BBDEFB" Margin="0,4,0,0"/>
+          <TextBlock Text="DICOM → NIfTI" FontSize="20" FontWeight="Bold" Foreground="White"/>
+          <TextBlock Text="Scan an archive, pick the patients and series you want, export to NIfTI"
+                     FontSize="12" Foreground="{StaticResource AppOnAccentSubtitle}" Margin="0,4,0,0"/>
         </StackPanel>
       </DockPanel>
     </Border>
 
     <!-- Input/Output/Scan toolbar -->
-    <Border Grid.Row="1" Background="#F0F0F0" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1" Padding="12,10">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+    <Border Grid.Row="1" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}" BorderThickness="0,0,0,1" Padding="12,10">
+      <Grid RowDefinitions="Auto,Auto,Auto">
         <Grid Grid.Row="0" Margin="0,0,0,6" ColumnDefinitions="55,*,Auto">
-          <TextBlock Grid.Column="0" Text="Input:" VerticalAlignment="Center" FontWeight="Medium" Foreground="#555555"/>
+          <TextBlock Grid.Column="0" Text="Input:" VerticalAlignment="Center" FontWeight="Medium" Foreground="{StaticResource AppLabelText}"/>
           <TextBox Grid.Column="1" Text="{Binding InputFolder}" VerticalContentAlignment="Center" Padding="6,4"/>
           <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseInputCommand}"
                   Padding="12,6" MinWidth="80" FontSize="13" Margin="8,0,0,0"/>
         </Grid>
         <Grid Grid.Row="1" Margin="0,0,0,6" ColumnDefinitions="55,*,Auto">
-          <TextBlock Grid.Column="0" Text="Output:" VerticalAlignment="Center" FontWeight="Medium" Foreground="#555555"/>
+          <TextBlock Grid.Column="0" Text="Output:" VerticalAlignment="Center" FontWeight="Medium" Foreground="{StaticResource AppLabelText}"/>
           <TextBox Grid.Column="1" Text="{Binding OutputFolder}" VerticalContentAlignment="Center" Padding="6,4"/>
           <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseOutputCommand}"
                   Padding="12,6" MinWidth="80" FontSize="13" Margin="8,0,0,0"/>
         </Grid>
-        <Grid Grid.Row="2" Margin="0,0,0,6" ColumnDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="2" Margin="0,0,0,6" ColumnDefinitions="Auto,Auto,*">
           <Button Grid.Column="0" Content="Scan" Command="{Binding ScanCommand}"
                   Padding="12,6" MinWidth="100" FontSize="13" Margin="0,0,5,0"
-                  Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
-          <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelCommand}"
-                  Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"/>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0">
-            <ProgressBar Value="{Binding ProgressValue}" Minimum="0" Maximum="100"
-                         Height="18" Width="400" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Margin="10,0,0,0"
-                       TextTrimming="CharacterEllipsis" Foreground="#666666"/>
-          </StackPanel>
-        </Grid>
-
-        <!-- Data to Export + Export Options launcher (the rest of the options live in the Export Options window) -->
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
-          <TextBlock Grid.Column="0" Text="Data to Export:" VerticalAlignment="Center"
-                     FontWeight="Medium" Foreground="#555555" Margin="0,0,16,0"/>
-          <CheckBox Grid.Column="1" Content="Export Images" IsChecked="{Binding ExportImages}"
-                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
-          <CheckBox Grid.Column="2" Content="Include Structures" IsChecked="{Binding IncludeStructures}"
-                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
-          <CheckBox Grid.Column="3" Content="Include Dose" IsChecked="{Binding IncludeDose}"
-                    FontSize="13" VerticalAlignment="Center"/>
-          <Button Grid.Column="5" Content="Export Options..." Command="{Binding OpenExportOptionsCommand}"
-                  Padding="14,6" FontSize="13" Background="#2196F3" Foreground="White" FontWeight="SemiBold"/>
+                  Classes="primary"/>
+          <Button Grid.Column="1" Content="Stop" Command="{Binding CancelCommand}"
+                  Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"
+                  Classes="danger"/>
+          <Grid Grid.Column="2" Margin="16,0,0,0" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+            <ProgressBar Grid.Column="0" Value="{Binding ProgressValue}" Minimum="0" Maximum="100"
+                         Height="18" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" Margin="10,0,0,0"
+                       TextTrimming="CharacterEllipsis" Foreground="{StaticResource AppMutedText}" MinWidth="110"/>
+          </Grid>
         </Grid>
       </Grid>
     </Border>
 
     <!-- Patient / Study / Series tree -->
-    <Border Grid.Row="2" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
+    <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
             CornerRadius="4" Margin="12">
         <Grid RowDefinitions="Auto,*">
-          <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE" BorderThickness="0,0,0,1"
+          <Border Grid.Row="0" Background="{StaticResource AppSurfaceAlt}" BorderBrush="#EEEEEE" BorderThickness="0,0,0,1"
                   Padding="12,8" CornerRadius="4,4,0,0">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Grid.Column="0" Text="Patient / Study / Series" FontWeight="SemiBold"
-                         FontSize="13" Foreground="#333333" VerticalAlignment="Center"/>
-              <CheckBox Grid.Column="1" Content="Select All?" IsChecked="{Binding AllPatientsSelected}"
-                        VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
+                         FontSize="13" Foreground="{StaticResource AppHeadingText}" VerticalAlignment="Center"/>
+              <CheckBox Grid.Column="1" Content="Select all" IsChecked="{Binding AllPatientsSelected}"
+                        VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource AppLabelText}"/>
             </Grid>
           </Border>
 
@@ -87,7 +74,7 @@
               <TreeDataTemplate DataType="vm:PatientGroupViewModel" ItemsSource="{Binding Studies}">
                 <StackPanel Orientation="Horizontal">
                   <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                  <TextBlock Text="[P]" Margin="0,0,6,0" FontSize="12" Foreground="#1976D2"
+                  <TextBlock Text="[P]" Margin="0,0,6,0" FontSize="12" Foreground="{StaticResource AppAccentBrush}"
                              FontWeight="Bold" VerticalAlignment="Center"/>
                   <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
                 </StackPanel>
@@ -95,7 +82,7 @@
 
               <TreeDataTemplate DataType="vm:StudyGroupViewModel" ItemsSource="{Binding ImageSeries}">
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="[S]" Margin="0,0,6,0" FontSize="11" Foreground="#FF9800"
+                  <TextBlock Text="[S]" Margin="0,0,6,0" FontSize="11" Foreground="{StaticResource AppBadgeText}"
                              FontWeight="Bold" VerticalAlignment="Center"/>
                   <TextBlock Text="{Binding DisplayName}" FontStyle="Italic" VerticalAlignment="Center"/>
                 </StackPanel>
@@ -106,7 +93,7 @@
                   <StackPanel Orientation="Horizontal">
                     <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding Model.Modality, StringFormat='[{0}]'}" Margin="0,0,6,0"
-                               FontSize="11" Foreground="#4CAF50" FontWeight="Bold" VerticalAlignment="Center"/>
+                               FontSize="11" Foreground="{StaticResource AppAccentBrush}" FontWeight="Bold" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                   </StackPanel>
                   <Expander Header="ROI Names" Margin="20,2,0,0"
@@ -114,46 +101,67 @@
                     <ItemsControl ItemsSource="{Binding RoiNames}" Margin="16,0,0,0">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                          <TextBlock Text="{Binding}" Foreground="#555555" FontSize="11"/>
+                          <TextBlock Text="{Binding}" Foreground="{StaticResource AppLabelText}" FontSize="11"/>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
                   </Expander>
                   <StackPanel Orientation="Horizontal" Margin="20,2,0,0" IsVisible="{Binding HasLinkedRtDose}">
-                    <TextBlock Text="[RTDOSE]" FontSize="11" FontWeight="Bold" Foreground="#1976D2"
+                    <TextBlock Text="[RTDOSE]" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AppAccentBrush}"
                                Margin="0,0,6,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding LinkedRtDoseLabel}" FontSize="11" Foreground="#555555" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding LinkedRtDoseLabel}" FontSize="11" Foreground="{StaticResource AppLabelText}" VerticalAlignment="Center"/>
                   </StackPanel>
                 </StackPanel>
               </DataTemplate>
             </TreeView.DataTemplates>
           </TreeView>
+
+          <!-- Empty-state hint: shown until a scan populates the tree. -->
+          <TextBlock Grid.Row="1" Text="Set an input folder and click Scan to list patients here."
+                     IsVisible="{Binding ShowTreeEmptyHint}" IsHitTestVisible="False"
+                     Foreground="{StaticResource AppHintText}" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                     MaxWidth="360" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Grid>
     </Border>
 
     <!-- Action bar + log -->
-    <Border Grid.Row="3" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Margin="12,0" Padding="12">
+    <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1" CornerRadius="4" Margin="12,0" Padding="12">
       <StackPanel>
+        <!-- Data to export + Export Options, sitting directly above the run actions. -->
+        <Grid Margin="0,0,0,8" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+          <TextBlock Grid.Column="0" Text="Data to export:" VerticalAlignment="Center"
+                     FontWeight="Medium" Foreground="{StaticResource AppLabelText}" Margin="0,0,16,0"/>
+          <CheckBox Grid.Column="1" Content="Export Images" IsChecked="{Binding ExportImages}"
+                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
+          <CheckBox Grid.Column="2" Content="Export Structures" IsChecked="{Binding IncludeStructures}"
+                    FontSize="13" Margin="0,0,12,0" VerticalAlignment="Center"/>
+          <CheckBox Grid.Column="3" Content="Export Dose" IsChecked="{Binding IncludeDose}"
+                    FontSize="13" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="4" Text="{Binding ExportOptionsSummary}" VerticalAlignment="Center"
+                     HorizontalAlignment="Right" Margin="0,0,12,0" FontSize="11"
+                     Foreground="{StaticResource AppMutedText}" TextTrimming="CharacterEllipsis"
+                     ToolTip.Tip="Current Export Options. Click Export Options... to change."/>
+          <Button Grid.Column="5" Content="Export Options..." Command="{Binding OpenExportOptionsCommand}"
+                  Padding="14,6" FontSize="13"/>
+        </Grid>
+
+        <Border Margin="0,0,0,8" BorderBrush="{StaticResource AppBorder}" BorderThickness="0,0,0,1"/>
+
         <Grid Margin="0,0,0,8" ColumnDefinitions="Auto,Auto,Auto,*">
           <Button Grid.Column="0" Content="Convert Selected" Command="{Binding ConvertSelectedCommand}"
                   Padding="12,6" MinWidth="140" FontSize="13" Margin="0,0,5,0"
-                  Background="#1976D2" Foreground="White" FontWeight="SemiBold"/>
-          <Button Grid.Column="1" Content="Export MetaData" Command="{Binding ExportMetaDataCommand}"
-                  Padding="12,6" MinWidth="140" FontSize="13" Margin="5,0"
-                  Background="#4CAF50" Foreground="White" FontWeight="SemiBold"/>
+                  Classes="primary"/>
+          <Button Grid.Column="1" Content="Export Manifest Only" Command="{Binding ExportMetaDataCommand}"
+                  Padding="12,6" MinWidth="140" FontSize="13" Margin="5,0"/>
           <Button Grid.Column="2" Content="Settings..." Command="{Binding OpenSettingsCommand}"
                   Padding="12,6" MinWidth="80" FontSize="13" Margin="5,0"/>
         </Grid>
         <TextBox x:Name="LogTextBox" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
                  ScrollViewer.VerticalScrollBarVisibility="Auto" Height="120" FontFamily="Consolas" FontSize="11"
                  TextWrapping="Wrap" AcceptsReturn="True" TextChanged="LogTextBox_TextChanged"
-                 Background="#FAFAFA" BorderBrush="#E0E0E0" Padding="8"/>
+                 Background="{StaticResource AppSurfaceAlt}" BorderBrush="#E0E0E0" Padding="8"/>
       </StackPanel>
     </Border>
 
-    <!-- Status bar -->
-    <Border Grid.Row="4" Background="#E8E8E8" BorderBrush="#CCCCCC" BorderThickness="0,1,0,0" Padding="12,6">
-      <TextBlock Text="{Binding StatusText}" Foreground="#555555" FontSize="11"/>
-    </Border>
   </Grid>
 </Window>

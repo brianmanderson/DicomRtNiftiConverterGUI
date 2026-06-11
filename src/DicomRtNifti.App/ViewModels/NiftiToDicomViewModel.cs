@@ -68,6 +68,7 @@ namespace Dicom_RT_images_Csharp.ViewModels
             _folderPicker = folderPicker;
 
             DiscoveredJobs = new ObservableCollection<NiftiToDicomJob>();
+            DiscoveredJobs.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowJobsEmptyHint));
 
             BrowseRootFolderCommand = new AsyncRelayCommand(BrowseRootFolderAsync, () => !IsBusy && !IsServerMode);
             ScanRootFolderCommand = new RelayCommand(DiscoverJobs,
@@ -147,6 +148,9 @@ namespace Dicom_RT_images_Csharp.ViewModels
 
         /// <summary>One row per DICOM folder eligible for conversion.</summary>
         public ObservableCollection<NiftiToDicomJob> DiscoveredJobs { get; }
+
+        /// <summary>True when no jobs have been discovered yet — drives the grid's empty-state hint.</summary>
+        public bool ShowJobsEmptyHint => DiscoveredJobs.Count == 0;
 
         public IAsyncRelayCommand BrowseRootFolderCommand { get; }
         public IRelayCommand ScanRootFolderCommand { get; }

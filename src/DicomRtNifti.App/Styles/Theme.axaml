@@ -1,0 +1,37 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Single source of truth for the app's palette. Every window references these
+    keys instead of inlining hex, so the accent / surface / text scale can only
+    change in one place. Button look lives in the Button.primary / Button.danger
+    style classes (App.axaml), which read AppAccentBrush / AppDangerBrush below.
+
+    Adding a primary action? Use Classes="primary". A destructive / stop action?
+    Classes="danger". Do not reintroduce per-window accent hex.
+  -->
+
+  <!-- Brand accent: the one colour for headers and primary actions. -->
+  <SolidColorBrush x:Key="AppAccentBrush" Color="#1976D2"/>
+  <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#1565C0"/>
+  <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#0D47A1"/>
+
+  <!-- Reserved for Stop / destructive actions and validation errors. -->
+  <SolidColorBrush x:Key="AppDangerBrush" Color="#D32F2F"/>
+
+  <!-- Surfaces and borders. -->
+  <SolidColorBrush x:Key="AppWindowBg" Color="#F5F5F5"/>
+  <SolidColorBrush x:Key="AppSurfaceAlt" Color="#FAFAFA"/>
+  <SolidColorBrush x:Key="AppBorder" Color="#DDDDDD"/>
+  <SolidColorBrush x:Key="AppBorderAlt" Color="#CCCCCC"/>
+
+  <!-- Text scale, lightest-used to darkest. -->
+  <SolidColorBrush x:Key="AppHeadingText" Color="#333333"/>
+  <SolidColorBrush x:Key="AppBodyText" Color="#444444"/>
+  <SolidColorBrush x:Key="AppLabelText" Color="#555555"/>
+  <SolidColorBrush x:Key="AppMutedText" Color="#666666"/>
+  <SolidColorBrush x:Key="AppBadgeText" Color="#888888"/>
+  <SolidColorBrush x:Key="AppHintText" Color="#999999"/>
+
+  <!-- Subtitle text sitting on the accent header bar. -->
+  <SolidColorBrush x:Key="AppOnAccentSubtitle" Color="#BBDEFB"/>
+</ResourceDictionary>

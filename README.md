@@ -98,10 +98,10 @@ Non-anonymized (one folder per patient, one subfolder per series):
     {SeriesDate}_{SeriesDescription}/
       image.nii.gz                          # if Export Images is ON
       doses/
-        {SeriesDescription}.nii.gz          # if Include Dose is ON and a dose is linked
+        {SeriesDescription}.nii.gz          # if Export Dose is ON and a dose is linked
       masks/
-        {ROI_Name}.nii.gz                   # if Include Structures is ON
-  export_manifest.csv       # at the output root (or export_manifest_meta.csv for Export MetaData)
+        {ROI_Name}.nii.gz                   # if Export Structures is ON
+  export_manifest.csv       # at the output root (or export_manifest_meta.csv for Export Manifest Only)
 ```
 
 Anonymized (folders named by deterministic per-identifier hashes; a patient's datasets all nest under one patient hash, each study groups its series):
@@ -143,7 +143,7 @@ You can point the **NIfTI → DICOM** window (or the headless `--reverse` flag) 
 
 Stored in `%AppData%\DicomToNifti\`:
 
-- `settings.json` — default output directory, auto-open after conversion, global Export Images / Include Structures / Include Dose toggles, output spacing, anonymization salt (`HashSalt`), and the persisted state of the "Only export specific ROIs" / "Anonymize export" / "Specify Output Spacing" checkboxes.
+- `settings.json` — default output directory, auto-open after conversion, global Export Images / Export Structures / Export Dose toggles, output spacing, anonymization salt (`HashSalt`), and the persisted state of the "Limit export to selected ROIs" / "Anonymize export" / "Resample to fixed spacing" checkboxes.
 - `roi_associations.json` — ROI canonical-name ↔ alias-set mappings used to rename DICOM ROIs to canonical names on export.
 
 `AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds three reverse-lookup maps — MRN→PatientHash, StudyUID→StudyHash, SeriesUID→SeriesHash — so anonymized exports can be traced back to their original identifiers. Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
