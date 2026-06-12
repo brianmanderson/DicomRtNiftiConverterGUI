@@ -55,16 +55,136 @@ namespace DicomRtNifti.Core.Services
         public static IReadOnlyList<MetadataTagOption> GetSelectableTags() => SelectableTags.Value;
 
         /// <summary>
-        /// Reads <paramref name="keywords"/> from <paramref name="dicomFilePath"/> and writes them
-        /// to <paramref name="outputJsonPath"/> as indented JSON. Only the header is loaded eagerly
-        /// (pixel data is read on demand and never touched here). Throws if the file cannot be opened.
+        /// Writes a sectioned <c>metadata.json</c> for one series. Each non-empty keyword list in
+        /// <paramref name="request"/> becomes a top-level section — "ImageAttributes",
+        /// "StructureAttributes", "DoseAttributes" — keyed by friendly names
+        /// (<see cref="MetadataTagCatalog.FriendlyName"/>); a section whose source file is missing
+        /// is written with all-null values. Computed "@..." keys are resolved per section. Never
+        /// throws on a missing/unreadable source file (those values fall back to null); only a
+        /// failure to write <paramref name="outputJsonPath"/> propagates.
         /// </summary>
-        public static void WriteMetadataJson(string dicomFilePath, IReadOnlyList<string> keywords, string outputJsonPath)
+        public static void WriteMetadataJson(MetadataExportRequest request, string outputJsonPath)
         {
-            var dataset = DicomFile.Open(dicomFilePath, FileReadOption.ReadLargeOnDemand).Dataset;
-            var metadata = Extract(dataset, keywords);
-            string json = JsonConvert.SerializeObject(metadata, Formatting.Indented);
+            if (request == null)
+                return;
+
+            var root = new Dictionary<string, object>();
+
+            if (request.ImageKeywords != null && request.ImageKeywords.Count > 0)
+            {
+                string imagePath = (request.ImageFilePaths != null && request.ImageFilePaths.Count > 0)
+                    ? request.ImageFilePaths[0] : null;
+                int sliceCount = request.ImageFilePaths != null ? request.ImageFilePaths.Count : 0;
+                var ds = TryOpen(imagePath, FileReadOption.ReadLargeOnDemand);
+                Func<string, object> resolver = key =>
+                {
+                    if (key == MetadataTagCatalog.VoxelSizeKey)
+                        return MetadataComputedValues.ImageVoxelSize(ds, request.ImageVoxelSpacing);
+                    if (key == MetadataTagCatalog.ImageDimensionsKey)
+                        return MetadataComputedValues.ImageDimensions(ds, sliceCount);
+                    return null;
+                };
+                root["ImageAttributes"] = BuildSection(ds, request.ImageKeywords, resolver);
+            }
+
+            if (request.StructureKeywords != null && request.StructureKeywords.Count > 0)
+            {
+                var ds = TryOpen(request.StructureFilePath, FileReadOption.ReadLargeOnDemand);
+                Func<string, object> resolver = key =>
+                {
+                    if (key == MetadataTagCatalog.RoiNamesKey)
+                        return MetadataComputedValues.RoiNames(ds);
+                    if (key == MetadataTagCatalog.RoiCountKey)
+                        return MetadataComputedValues.RoiCount(ds);
+                    return null;
+                };
+                root["StructureAttributes"] = BuildSection(ds, request.StructureKeywords, resolver);
+            }
+
+            if (request.DoseKeywords != null && request.DoseKeywords.Count > 0)
+            {
+                // Max dose needs the pixel buffer materialized, so read the whole file for that case.
+                bool needsPixels = ListContains(request.DoseKeywords, MetadataTagCatalog.MaxDoseKey);
+                var ds = TryOpen(request.DoseFilePath,
+                    needsPixels ? FileReadOption.ReadAll : FileReadOption.ReadLargeOnDemand);
+                Func<string, object> resolver = key =>
+                {
+                    if (key == MetadataTagCatalog.MaxDoseKey)
+                        return MetadataComputedValues.MaxDose(ds);
+                    if (key == MetadataTagCatalog.DoseVoxelSizeKey)
+                        return MetadataComputedValues.DoseVoxelSize(ds);
+                    return null;
+                };
+                root["DoseAttributes"] = BuildSection(ds, request.DoseKeywords, resolver);
+            }
+
+            string json = JsonConvert.SerializeObject(root, Formatting.Indented);
             File.WriteAllText(outputJsonPath, json);
+        }
+
+        // Opens a DICOM file's dataset, or returns null if the path is missing/unreadable.
+        private static DicomDataset TryOpen(string path, FileReadOption option)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                return null;
+            try { return DicomFile.Open(path, option).Dataset; }
+            catch { return null; }
+        }
+
+        private static bool ListContains(IReadOnlyList<string> keywords, string key)
+        {
+            if (keywords == null)
+                return false;
+            for (int i = 0; i < keywords.Count; i++)
+                if (string.Equals(keywords[i], key, StringComparison.Ordinal))
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Builds one friendly-name-keyed section. Computed "@..." keys are resolved via
+        /// <paramref name="computedResolver"/>; raw keywords are read from <paramref name="dataset"/>
+        /// (null dataset → null values). Keys are mapped through
+        /// <see cref="MetadataTagCatalog.FriendlyName"/>; a (theoretical) friendly-name collision
+        /// falls back to the raw keyword as the key.
+        /// </summary>
+        private static Dictionary<string, object> BuildSection(
+            DicomDataset dataset, IReadOnlyList<string> keywords, Func<string, object> computedResolver)
+        {
+            var section = new Dictionary<string, object>();
+            if (keywords == null)
+                return section;
+
+            var map = KeywordToTag.Value;
+            foreach (var keyword in keywords)
+            {
+                if (string.IsNullOrEmpty(keyword))
+                    continue;
+
+                object value;
+                if (MetadataTagCatalog.IsComputedKey(keyword))
+                {
+                    value = computedResolver != null ? computedResolver(keyword) : null;
+                }
+                else if (dataset != null && map.TryGetValue(keyword, out var tag))
+                {
+                    value = ExtractValue(dataset, tag);
+                }
+                else
+                {
+                    value = null; // missing dataset or unknown keyword: keep the key, null value
+                }
+
+                string friendly = MetadataTagCatalog.FriendlyName(keyword);
+                if (string.IsNullOrEmpty(friendly))
+                    friendly = keyword;
+
+                if (!section.ContainsKey(friendly))
+                    section[friendly] = value;
+                else if (!section.ContainsKey(keyword))
+                    section[keyword] = value; // friendly-name collision: fall back to raw keyword
+            }
+            return section;
         }
 
         /// <summary>
