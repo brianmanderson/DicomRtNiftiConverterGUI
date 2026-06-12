@@ -44,7 +44,9 @@ namespace DicomRtNifti.Core.Services
                 if (File.Exists(SettingsFilePath))
                 {
                     string json = File.ReadAllText(SettingsFilePath);
-                    return JsonConvert.DeserializeObject<AppSettings>(json) ?? new AppSettings();
+                    var settings = JsonConvert.DeserializeObject<AppSettings>(json) ?? new AppSettings();
+                    MigrateMetadataTagKeywords(settings);
+                    return settings;
                 }
             }
             catch (Exception)
@@ -52,6 +54,30 @@ namespace DicomRtNifti.Core.Services
                 // Return defaults on any read/parse error
             }
             return new AppSettings();
+        }
+
+        /// <summary>
+        /// One-time migration from the legacy flat <see cref="AppSettings.MetadataTagKeywords"/> to
+        /// the per-section lists: if none of the three new lists are populated and the legacy list
+        /// is non-empty, its contents move into <see cref="AppSettings.MetadataImageTagKeywords"/>
+        /// and the legacy list is cleared. Idempotent and a no-op once migrated; the migrated shape
+        /// persists on the next <see cref="SaveSettings"/>.
+        /// </summary>
+        internal static void MigrateMetadataTagKeywords(AppSettings settings)
+        {
+            if (settings == null)
+                return;
+
+            bool newListsEmpty =
+                (settings.MetadataImageTagKeywords == null || settings.MetadataImageTagKeywords.Count == 0) &&
+                (settings.MetadataStructureTagKeywords == null || settings.MetadataStructureTagKeywords.Count == 0) &&
+                (settings.MetadataDoseTagKeywords == null || settings.MetadataDoseTagKeywords.Count == 0);
+
+            if (newListsEmpty && settings.MetadataTagKeywords != null && settings.MetadataTagKeywords.Count > 0)
+            {
+                settings.MetadataImageTagKeywords = new List<string>(settings.MetadataTagKeywords);
+                settings.MetadataTagKeywords = new List<string>();
+            }
         }
 
         /// <summary>

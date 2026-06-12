@@ -1,8 +1,9 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="using:DicomRtNifti.App.Views"
         x:Class="DicomRtNifti.App.Views.MetadataTagSelectionWindow"
-        Title="Select DICOM Metadata Tags" Width="780" Height="620"
-        MinWidth="560" MinHeight="420"
+        Title="Select DICOM Metadata Tags" Width="820" Height="640"
+        MinWidth="600" MinHeight="460"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource AppWindowBg}">
 
@@ -11,88 +12,25 @@
     <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,12">
       <StackPanel>
         <TextBlock Text="Select DICOM Metadata Tags" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
-        <TextBlock Text="Pick the DICOM attributes to write to metadata.json in each export folder."
+        <TextBlock Text="Pick the attributes to write to metadata.json, grouped by modality. Each tab writes its own JSON section (ImageAttributes / StructureAttributes / DoseAttributes)."
                    FontSize="11" Foreground="{StaticResource AppOnAccentSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
 
-    <Grid Grid.Row="1" Margin="12,12,12,0" ColumnDefinitions="*,260">
-
-      <!-- Left: searchable tag checklist (virtualized) -->
-      <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource AppBorder}"
-              BorderThickness="1" CornerRadius="4" Margin="0,0,8,0">
-        <Grid RowDefinitions="Auto,Auto,*">
-          <Border Grid.Row="0" Background="{StaticResource AppSurfaceAlt}" BorderBrush="#EEEEEE"
-                  BorderThickness="0,0,0,1" Padding="12,8" CornerRadius="4,4,0,0">
-            <Grid ColumnDefinitions="*,Auto">
-              <CheckBox Grid.Column="0" Content="Select all (filtered)" IsChecked="{Binding AllSelected}"
-                        FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AppHeadingText}"/>
-              <TextBlock Grid.Column="1" Text="{Binding SelectionSummaryText}" FontWeight="Medium" FontSize="11"
-                         Foreground="{StaticResource AppHintText}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-            </Grid>
-          </Border>
-
-          <TextBox Grid.Row="1" Text="{Binding SearchText}" Watermark="Search by keyword, name, or tag…"
-                   Margin="8,8,8,4" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}" VerticalContentAlignment="Center"/>
-
-          <ListBox Grid.Row="2" ItemsSource="{Binding FilteredItems}" Background="Transparent"
-                   BorderThickness="0" Padding="4"
-                   ScrollViewer.VerticalScrollBarVisibility="Auto"
-                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-            <ListBox.Styles>
-              <!-- Render rows as a plain checklist (no selection highlight). -->
-              <Style Selector="ListBoxItem">
-                <Setter Property="Padding" Value="0"/>
-                <Setter Property="Background" Value="Transparent"/>
-              </Style>
-              <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                <Setter Property="Background" Value="Transparent"/>
-              </Style>
-            </ListBox.Styles>
-            <ListBox.ItemTemplate>
-              <DataTemplate>
-                <CheckBox IsChecked="{Binding IsSelected}" Margin="8,2">
-                  <TextBlock Text="{Binding DisplayText}" FontSize="12" Foreground="{StaticResource AppHeadingText}"
-                             TextTrimming="CharacterEllipsis"/>
-                </CheckBox>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </Grid>
-      </Border>
-
-      <!-- Right: selected summary -->
-      <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1" CornerRadius="4">
-        <Grid RowDefinitions="Auto,*">
-          <Border Grid.Row="0" Background="{StaticResource AppSurfaceAlt}" BorderBrush="#EEEEEE"
-                  BorderThickness="0,0,0,1" Padding="10,8" CornerRadius="4,4,0,0">
-            <TextBlock Text="Selected Tags" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AppHeadingText}"/>
-          </Border>
-
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="4">
-            <ItemsControl ItemsSource="{Binding SelectedSummaryItems}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Background="{StaticResource AppWindowBg}" BorderBrush="#E0E0E0" BorderThickness="1"
-                          CornerRadius="3" Margin="4,2" Padding="8,5">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Text="{Binding Keyword}" FontWeight="Medium"
-                                 FontSize="12" Foreground="{StaticResource AppHeadingText}" VerticalAlignment="Center"
-                                 TextTrimming="CharacterEllipsis"/>
-                      <TextBlock Grid.Column="1" Text="{Binding TagDisplay}" FontSize="11"
-                                 Foreground="{StaticResource AppBadgeText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-        </Grid>
-      </Border>
-    </Grid>
+    <TabControl Grid.Row="1" Margin="12,12,12,0">
+      <TabItem Header="Images">
+        <v:MetadataTagSectionView DataContext="{Binding ImagesSection}"/>
+      </TabItem>
+      <TabItem Header="Structures">
+        <v:MetadataTagSectionView DataContext="{Binding StructuresSection}"/>
+      </TabItem>
+      <TabItem Header="Dose">
+        <v:MetadataTagSectionView DataContext="{Binding DoseSection}"/>
+      </TabItem>
+    </TabControl>
 
     <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource AppMutedText}" Margin="16,8,16,0"
-               Text="Values are read from each series' first image. Numeric tags are written as numbers, multi-valued tags as arrays, and tags missing from a series as null."/>
+               Text="Image tags are read from the series' first slice, structure tags from the linked RTSTRUCT, and dose tags from the linked RTDOSE; missing files or tags are written as null. Computed values (e.g. Voxel Size) and friendly names are used as the JSON keys."/>
 
     <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,8,0,0">

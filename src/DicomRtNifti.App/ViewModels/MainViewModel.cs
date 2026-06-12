@@ -60,7 +60,9 @@ namespace DicomRtNifti.App.ViewModels
         private double _outputSpacingY = 1.0;
         private double _outputSpacingZ = 1.0;
         private bool _exportDicomMetadata;
-        private List<string> _metadataTagKeywords = new List<string>();
+        private List<string> _metadataImageTagKeywords = new List<string>();
+        private List<string> _metadataStructureTagKeywords = new List<string>();
+        private List<string> _metadataDoseTagKeywords = new List<string>();
 
         private HashSet<string> _selectedRoiNames;
 
@@ -116,7 +118,9 @@ namespace DicomRtNifti.App.ViewModels
             _outputSpacingY = _settings.OutputSpacingY;
             _outputSpacingZ = _settings.OutputSpacingZ;
             _exportDicomMetadata = _settings.ExportDicomMetadata;
-            _metadataTagKeywords = _settings.MetadataTagKeywords ?? new List<string>();
+            _metadataImageTagKeywords = _settings.MetadataImageTagKeywords ?? new List<string>();
+            _metadataStructureTagKeywords = _settings.MetadataStructureTagKeywords ?? new List<string>();
+            _metadataDoseTagKeywords = _settings.MetadataDoseTagKeywords ?? new List<string>();
         }
 
         public string InputFolder { get { return _inputFolder; } set { _inputFolder = value; OnPropertyChanged(); RefreshCommands(); } }
@@ -347,7 +351,9 @@ namespace DicomRtNifti.App.ViewModels
             _settings.OutputSpacingY = OutputSpacingY;
             _settings.OutputSpacingZ = OutputSpacingZ;
             _settings.ExportDicomMetadata = ExportDicomMetadata;
-            _settings.MetadataTagKeywords = _metadataTagKeywords;
+            _settings.MetadataImageTagKeywords = _metadataImageTagKeywords;
+            _settings.MetadataStructureTagKeywords = _metadataStructureTagKeywords;
+            _settings.MetadataDoseTagKeywords = _metadataDoseTagKeywords;
             _settingsService.SaveSettings(_settings);
 
             _associations = _settingsService.LoadAssociations();
@@ -474,20 +480,33 @@ namespace DicomRtNifti.App.ViewModels
                             _conversionService.ConvertDoseToNifti(model.LinkedRtDose, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
                     }
 
-                    // Sidecar metadata.json with the user-selected DICOM tags, read from the series'
-                    // first image slice. Independent of ExportImages (outputDir always exists). Tags
-                    // are written verbatim, so warn when this lands in an anonymized export.
-                    if (ExportDicomMetadata && _metadataTagKeywords.Count > 0 &&
-                        model.FilePaths != null && model.FilePaths.Count > 0)
+                    // Sidecar metadata.json: a section per modality (image tags from the series' first
+                    // slice, structure tags from the linked RTSTRUCT, dose tags from the linked RTDOSE).
+                    // Independent of the per-modality export toggles (outputDir always exists) and of
+                    // ExportImages. Tags are written verbatim, so warn when this lands in an anonymized export.
+                    if (ExportDicomMetadata &&
+                        (_metadataImageTagKeywords.Count > 0 || _metadataStructureTagKeywords.Count > 0 ||
+                         _metadataDoseTagKeywords.Count > 0))
                     {
                         if (AnonymizeExport)
                             AppendLog($"  Warning: metadata.json for {displayLabel} writes selected tags verbatim — may include PHI in an anonymized export.");
                         try
                         {
-                            string metaSource = model.FilePaths[0];
+                            var request = new MetadataExportRequest
+                            {
+                                ImageFilePaths = model.FilePaths,
+                                StructureFilePath = (model.LinkedRtStruct != null && model.LinkedRtStruct.FilePaths.Count > 0)
+                                    ? model.LinkedRtStruct.FilePaths[0] : null,
+                                DoseFilePath = (model.LinkedRtDose != null && model.LinkedRtDose.FilePaths.Count > 0)
+                                    ? model.LinkedRtDose.FilePaths[0] : null,
+                                ImageKeywords = _metadataImageTagKeywords,
+                                StructureKeywords = _metadataStructureTagKeywords,
+                                DoseKeywords = _metadataDoseTagKeywords,
+                                ImageVoxelSpacing = seriesSpacing
+                            };
                             string metaPath = Path.Combine(outputDir, "metadata.json");
                             await Task.Run(() =>
-                                DicomMetadataExtractor.WriteMetadataJson(metaSource, _metadataTagKeywords, metaPath), _cts.Token).ConfigureAwait(true);
+                                DicomMetadataExtractor.WriteMetadataJson(request, metaPath), _cts.Token).ConfigureAwait(true);
                             progress.Report($"Wrote metadata.json: {displayLabel}");
                         }
                         catch (Exception ex)
@@ -837,15 +856,21 @@ namespace DicomRtNifti.App.ViewModels
         /// </summary>
         private async Task OpenMetadataTagsAsync()
         {
-            var vm = new MetadataTagSelectionViewModel(_metadataTagKeywords);
+            var vm = new MetadataTagSelectionViewModel(
+                _metadataImageTagKeywords, _metadataStructureTagKeywords, _metadataDoseTagKeywords);
             var window = new MetadataTagSelectionWindow { DataContext = vm };
             if (await window.ShowDialog<bool>(AppWindows.Active))
             {
-                _metadataTagKeywords = vm.GetSelectedKeywords();
+                _metadataImageTagKeywords = vm.ImagesSection.GetSelectedKeywords();
+                _metadataStructureTagKeywords = vm.StructuresSection.GetSelectedKeywords();
+                _metadataDoseTagKeywords = vm.DoseSection.GetSelectedKeywords();
                 _settings.ExportDicomMetadata = ExportDicomMetadata;
-                _settings.MetadataTagKeywords = _metadataTagKeywords;
+                _settings.MetadataImageTagKeywords = _metadataImageTagKeywords;
+                _settings.MetadataStructureTagKeywords = _metadataStructureTagKeywords;
+                _settings.MetadataDoseTagKeywords = _metadataDoseTagKeywords;
                 _settingsService.SaveSettings(_settings);
-                AppendLog($"Metadata tags selected: {_metadataTagKeywords.Count} tag(s).");
+                AppendLog($"Metadata tags selected: {_metadataImageTagKeywords.Count} image, " +
+                          $"{_metadataStructureTagKeywords.Count} structure, {_metadataDoseTagKeywords.Count} dose.");
             }
         }
 

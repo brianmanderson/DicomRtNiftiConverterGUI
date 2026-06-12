@@ -77,9 +77,27 @@ namespace DicomRtNifti.Core.Models
         public bool ExportDicomMetadata { get; set; } = false;
 
         /// <summary>
-        /// Dictionary keywords (e.g. "PatientName", "SliceThickness") of the DICOM tags to write
-        /// to metadata.json. Empty by default; populated from the metadata-tag picker.
+        /// Legacy flat list of metadata-tag keywords. Superseded by the per-section lists below;
+        /// retained only so old settings files still deserialize. On load,
+        /// <see cref="Services.SettingsService.MigrateMetadataTagKeywords"/> moves any contents into
+        /// <see cref="MetadataImageTagKeywords"/> and clears this; it then persists empty.
         /// </summary>
         public List<string> MetadataTagKeywords { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Image-tab metadata selections written to the "ImageAttributes" section of metadata.json.
+        /// DICOM keywords (e.g. "PatientName") and/or "@..." computed keys (e.g. "@VoxelSize").
+        /// </summary>
+        public List<string> MetadataImageTagKeywords { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Structures-tab metadata selections written to the "StructureAttributes" section.
+        /// </summary>
+        public List<string> MetadataStructureTagKeywords { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Dose-tab metadata selections written to the "DoseAttributes" section.
+        /// </summary>
+        public List<string> MetadataDoseTagKeywords { get; set; } = new List<string>();
     }
 }
