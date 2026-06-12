@@ -73,7 +73,8 @@ SimpleITK is **not** a NuGet package. The managed wrapper `SimpleITKCSharpManage
 - `RtStructWriterService`, `RtDoseWriterService`, `NiftiImageWriterService` — the reverse direction (mask/NIfTI → DICOM).
 - `NiftiMetadataService` — loads/synthesizes the `metadata.json` that drives NIfTI-only reverse runs (patient/study/UIDs, rescale slope/intercept).
 - `AnonymizationService` + `HashNaming` — deterministic SHA256-of-salted-identifier hashing (stable folder names across re-runs); `WindowsPathSanitizer` makes every path segment valid on Windows.
-- `SettingsService` (JSON in `%AppData%\DicomToNifti\`), `DicomMetadataExtractor`, `NiftiModalityInferenceService` (infers CT/MR/PT from pixel value range).
+- `SettingsService` (JSON in `%AppData%\DicomToNifti\`), `NiftiModalityInferenceService` (infers CT/MR/PT from pixel value range).
+- `DicomMetadataExtractor` (+ `MetadataTagCatalog`, `MetadataComputedValues`) — writes the optional **forward-export** `metadata.json` sidecar, one per series. Driven by a `MetadataExportRequest`, it emits a sectioned JSON — `ImageAttributes` / `StructureAttributes` / `DoseAttributes` — keyed by friendly names (PascalCase keyword split, e.g. `PatientName` → `"Patient Name"`). Image tags read from the series' first slice, structure tags from the linked RTSTRUCT, dose tags from the linked RTDOSE; each tab also offers computed values selected as `@`-prefixed pseudo-keywords (`@VoxelSize`, `@ImageDimensions`, `@RoiNames`, `@RoiCount`, `@MaxDose`, `@DoseVoxelSize`). The GUI tag picker persists three per-section keyword lists in `settings.json` (legacy flat `MetadataTagKeywords` is migrated into the image list on load). **Distinct from `NiftiMetadataService`'s reverse-direction `metadata.json` above** — same filename, different schema and purpose.
 
 Dependencies: **fo-dicom 5.2.5** (DICOM parsing), **SimpleITK** (image I/O + NIfTI), **Newtonsoft.Json 13.0.4**, **CommunityToolkit.HighPerformance/Mvvm**.
 

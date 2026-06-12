@@ -22,6 +22,7 @@ Each directional window has a **Help** button (top right) with the full workflow
 - RT Struct contour rasterization to per-ROI binary mask `.nii.gz` files, supporting the five clinically-used `ContourGeometricType` values: `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT`. Hollow shapes are handled via the multi-contour `CLOSED_PLANAR` convention with even-odd XOR fill, the dominant clinical encoding; the explicit `CLOSED_PLANAR_XOR` type tag is not dispatched separately
 - Reverse direction: mask → RTSTRUCT writer (`RtStructWriterService`) and NIfTI volume → DICOM image series (`NiftiImageWriterService`)
 - RT Dose export to `doses/{SeriesDescription}.nii.gz` (one file per dose, filename sanitized) with DoseGridScaling applied
+- Optional per-series `metadata.json` sidecar (DICOM → NIfTI): a tabbed **Images / Structures / Dose** picker selects DICOM attributes and computed values (voxel size, image dimensions, ROI names, max dose, …), written as a sectioned, friendly-name-keyed JSON
 - ROI Association editor for mapping canonical names to DICOM structure aliases
 - Configurable settings with JSON persistence
 - **Headless CLI** for batch and benchmark integration (see Headless mode below)
@@ -125,6 +126,7 @@ Non-anonymized (one folder per patient, one subfolder per series):
   {PatientID}/
     {SeriesDate}_{SeriesDescription}/
       image.nii.gz                          # if Export Images is ON
+      metadata.json                         # if Export DICOM Metadata is ON (selected tags; see below)
       doses/
         {SeriesDescription}.nii.gz          # if Export Dose is ON and a dose is linked
       masks/
@@ -140,6 +142,7 @@ Anonymized (folders named by deterministic per-identifier hashes; a patient's da
     {StudyHash}/                # e.g. ST9a8b7c6d5e4f (stable per StudyInstanceUID)
       {SeriesHash}/             # e.g. SE0011223344ff (stable per SeriesInstanceUID)
         image.nii.gz
+        metadata.json
         doses/
           {SeriesDescription}.nii.gz
         masks/
@@ -149,6 +152,22 @@ Anonymized (folders named by deterministic per-identifier hashes; a patient's da
 ```
 
 The CSV manifest columns are `PatientID, StudyUID, SeriesUID, SpacingX, SpacingY, SpacingZ` followed by one column per unique canonical ROI name (volume in cc; `-1` where the row's series did not contain that ROI). When anonymizing, the `PatientID`/`StudyUID`/`SeriesUID` cells hold the hashes; otherwise they hold the real identifiers. Every exported folder/file segment is sanitized to be valid on Windows (forbidden characters, reserved device names, trailing dots/spaces), anonymized or not. See the in-app **Help** in the DICOM → NIfTI window for the full per-control reference.
+
+### `metadata.json` sidecar (selected DICOM tags)
+
+When **Export DICOM Metadata** is enabled and at least one tag is selected, each series folder also gets a `metadata.json` holding the attributes chosen in the tabbed **Select DICOM Metadata Tags** dialog. Each of the dialog's three tabs writes its own top-level section, keyed by **friendly names**; values are typed (numbers, strings, arrays) and tags absent from the file are written as `null`:
+
+```json
+{
+  "ImageAttributes":     { "Patient Name": "Doe^John", "Voxel Size": [0.98, 0.98, 3.0] },
+  "StructureAttributes": { "Structure Set Label": "Plan1", "ROI Names": ["PTV", "Lung_L"] },
+  "DoseAttributes":      { "Dose Units": "GY", "Max Dose": 72.4 }
+}
+```
+
+Image tags are read from the series' first slice, structure tags from the linked RTSTRUCT, and dose tags from the linked RTDOSE (a section whose source file is missing is written with all-`null` values; a section with no selected tags is omitted). Besides raw DICOM attributes, each tab offers **computed** values — Voxel Size and Image Dimensions (image), ROI Names and Number of ROIs (structure), Max Dose and Dose Grid Voxel Size (dose). The picker shows a short curated list per tab by default, with a **Show all tags** toggle to browse the full DICOM dictionary.
+
+> **Note:** this forward-export sidecar is a different file from the reverse-mode `metadata.json` described under *Reverse-mode folder layout* below — that one carries patient/study/UIDs + rescale slope/intercept to drive NIfTI → DICOM, and is unrelated to the tag selections here.
 
 ## Reverse-mode folder layout (NIfTI → DICOM)
 
