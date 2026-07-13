@@ -1,8 +1,8 @@
 # DicomRtNiftiConverterGUI
 
-A cross-platform C# **.NET 8** toolkit that converts DICOM radiotherapy data â€” CT/MR/PT images, RT Structures, and RT Dose â€” to NIfTI (`.nii.gz`) format, and performs the reverse (mask â†’ RTSTRUCT, NIfTI â†’ DICOM image series). It ships as an **Avalonia desktop GUI** (`DicomRtNifti.App`) and a **headless CLI** (`DicomRtNifti.Cli`) that share one core conversion library (`DicomRtNifti.Core`), and runs on Windows, Linux, and macOS.
+A cross-platform C# **.NET 8** toolkit that converts DICOM radiotherapy data - CT/MR/PT images, RT Structures, and RT Dose - to NIfTI (`.nii.gz`) format, and performs the reverse (mask -> RTSTRUCT, NIfTI -> DICOM image series). It ships as an **Avalonia desktop GUI** (`DicomRtNifti.App`) and a **headless CLI** (`DicomRtNifti.Cli`) that share one core conversion library (`DicomRtNifti.Core`), and runs on Windows, Linux, and macOS.
 
-The rasterization core handles the five clinically-used DICOM `ContourGeometricType` values â€” `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT` â€” and exposes both forward (RTSTRUCT â†’ mask) and reverse (mask â†’ RTSTRUCT) directions through a headless CLI. The rare `CLOSED_PLANAR_XOR` type tag (DICOM 2020 supplement) is deliberately not implemented because clinical RTSTRUCTs encode hollow shapes via the multi-contour even-odd convention instead.
+The rasterization core handles the five clinically-used DICOM `ContourGeometricType` values - `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT` - and exposes both forward (RTSTRUCT -> mask) and reverse (mask -> RTSTRUCT) directions through a headless CLI. The rare `CLOSED_PLANAR_XOR` type tag (DICOM 2020 supplement) is deliberately not implemented because clinical RTSTRUCTs encode hollow shapes via the multi-contour even-odd convention instead.
 
 Methodology borrows from [Dicom_RT_and_Images_to_Mask](https://github.com/brianmanderson/Dicom_RT_and_Images_to_Mask) (DicomRTTool); this implementation extends coverage beyond `CLOSED_PLANAR`-only and adds the reverse direction.
 
@@ -10,8 +10,8 @@ Methodology borrows from [Dicom_RT_and_Images_to_Mask](https://github.com/brianm
 
 Launch the GUI with `dotnet run --project src/DicomRtNifti.App` (or run the published `DicomRtNifti.App` executable). It opens a launcher with two buttons:
 
-- **DICOM â†’ NIfTI** â€” opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`).
-- **NIfTI â†’ DICOM** â€” opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE).
+- **DICOM -> NIfTI** - opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`).
+- **NIfTI -> DICOM** - opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE).
 
 Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The CLI below is the alternative when scripting batch / benchmark runs.
 
@@ -20,13 +20,13 @@ Each directional window has a **Help** button (top right) with the full workflow
 - Recursive DICOM folder scanning with automatic Patient/Study/Series grouping
 - CT/MR/PT image series export to `image.nii.gz` via SimpleITK (with optional resampling to a fixed voxel spacing)
 - RT Struct contour rasterization to per-ROI binary mask `.nii.gz` files, supporting the five clinically-used `ContourGeometricType` values: `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT`. Hollow shapes are handled via the multi-contour `CLOSED_PLANAR` convention with even-odd XOR fill, the dominant clinical encoding; the explicit `CLOSED_PLANAR_XOR` type tag is not dispatched separately
-- Reverse direction: mask â†’ RTSTRUCT writer (`RtStructWriterService`) and NIfTI volume â†’ DICOM image series (`NiftiImageWriterService`)
+- Reverse direction: mask -> RTSTRUCT writer (`RtStructWriterService`) and NIfTI volume -> DICOM image series (`NiftiImageWriterService`)
 - RT Dose export to `doses/{SeriesDescription}.nii.gz` (one file per dose, filename sanitized) with DoseGridScaling applied
-- Optional per-series `metadata.json` sidecar (DICOM â†’ NIfTI): a tabbed **Images / Structures / Dose** picker selects DICOM attributes and computed values (voxel size, image dimensions, ROI names, max dose, â€¦), written as a sectioned, friendly-name-keyed JSON
+- Optional per-series `metadata.json` sidecar (DICOM -> NIfTI): a tabbed **Images / Structures / Dose** picker selects DICOM attributes and computed values (voxel size, image dimensions, ROI names, max dose, ...), written as a sectioned, friendly-name-keyed JSON
 - ROI Association editor for mapping canonical names to DICOM structure aliases
 - Configurable settings with JSON persistence
 - **Headless CLI** for batch and benchmark integration (see Headless mode below)
-- **Per-ROI parallelization** (`Parallel.ForEach`) in the rasterizer and NIfTI writer for 2-7Ã— speedup on multi-ROI RTSTRUCTs
+- **Per-ROI parallelization** (`Parallel.ForEach`) in the rasterizer and NIfTI writer for 2-7x speedup on multi-ROI RTSTRUCTs
 
 ## Headless mode
 
@@ -67,20 +67,20 @@ DicomRtNifti.Cli --image-reverse --nifti-image PATH --output-folder PATH \
 DicomRtNifti.Cli --version
 ```
 
-- **Exit codes** â€” `0` on success, `1` on conversion failure (with stack trace on stderr), `2` on missing or invalid arguments (usage printed on stderr).
-- **Stdout** â€” a `# rt_mask_validation <mode>` header line followed by the machine-readable results: forward writes one TSV row per ROI (`<ROIName>\t<Volume_cc>\t<mask_path>`); the reverse/image modes write the output path(s).
-- **Stderr** â€” human-readable progress and error messages.
+- **Exit codes** - `0` on success, `1` on conversion failure (with stack trace on stderr), `2` on missing or invalid arguments (usage printed on stderr).
+- **Stdout** - a `# rt_mask_validation <mode>` header line followed by the machine-readable results: forward writes one TSV row per ROI (`<ROIName>\t<Volume_cc>\t<mask_path>`); the reverse/image modes write the output path(s).
+- **Stderr** - human-readable progress and error messages.
 
 The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
 
 ## Dependencies
 
-- **.NET 8** â€” cross-platform runtime (Windows, Linux, macOS)
-- **Avalonia 11** â€” cross-platform desktop UI (GUI only)
-- **fo-dicom 5.2.5** â€” DICOM file parsing and metadata extraction
-- **SimpleITK** â€” image I/O and NIfTI writing (external native library, **not** a NuGet package; see Build)
-- **Newtonsoft.Json 13.0.4** â€” settings and ROI association persistence
-- **CommunityToolkit.Mvvm / .HighPerformance** â€” MVVM commands (GUI) and span helpers (Core)
+- **.NET 8** - cross-platform runtime (Windows, Linux, macOS)
+- **Avalonia 11** - cross-platform desktop UI (GUI only)
+- **fo-dicom 5.2.5** - DICOM file parsing and metadata extraction
+- **SimpleITK** - image I/O and NIfTI writing (external native library, **not** a NuGet package; see Build)
+- **Newtonsoft.Json 13.0.4** - settings and ROI association persistence
+- **CommunityToolkit.Mvvm / .HighPerformance** - MVVM commands (GUI) and span helpers (Core)
 
 ## Build instructions
 
@@ -117,7 +117,7 @@ The mask rasterization converts RT Structure contours from DICOM world coordinat
 2. **Scanline fill**: For each contour polygon on a slice, a scanline algorithm finds all edge-scanline intersections at each integer row, sorts them, and fills between pairs.
 3. **Even-odd rule (XOR)**: Multiple contours on the same slice for the same ROI are handled via XOR toggling, which correctly produces hollow structures (e.g., a ring/shell where an inner contour subtracts from an outer contour).
 
-## Output structure (forward: DICOM â†’ NIfTI)
+## Output structure (forward: DICOM -> NIfTI)
 
 Non-anonymized (one folder per patient, one subfolder per series):
 
@@ -148,10 +148,10 @@ Anonymized (folders named by deterministic per-identifier hashes; a patient's da
         masks/
           {ROI_Name}.nii.gz
   export_manifest.csv
-  AnonymizationKey.json     # three reverse-lookup maps: MRNâ†’PatientHash, StudyUIDâ†’StudyHash, SeriesUIDâ†’SeriesHash
+  AnonymizationKey.json     # three reverse-lookup maps: MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash
 ```
 
-The CSV manifest columns are `PatientID, StudyUID, SeriesUID, SpacingX, SpacingY, SpacingZ` followed by one column per unique canonical ROI name (volume in cc; `-1` where the row's series did not contain that ROI). When anonymizing, the `PatientID`/`StudyUID`/`SeriesUID` cells hold the hashes; otherwise they hold the real identifiers. Every exported folder/file segment is sanitized to be valid on Windows (forbidden characters, reserved device names, trailing dots/spaces), anonymized or not. See the in-app **Help** in the DICOM â†’ NIfTI window for the full per-control reference.
+The CSV manifest columns are `PatientID, StudyUID, SeriesUID, SpacingX, SpacingY, SpacingZ` followed by one column per unique canonical ROI name (volume in cc; `-1` where the row's series did not contain that ROI). When anonymizing, the `PatientID`/`StudyUID`/`SeriesUID` cells hold the hashes; otherwise they hold the real identifiers. Every exported folder/file segment is sanitized to be valid on Windows (forbidden characters, reserved device names, trailing dots/spaces), anonymized or not. See the in-app **Help** in the DICOM -> NIfTI window for the full per-control reference.
 
 ### `metadata.json` sidecar (selected DICOM tags)
 
@@ -165,37 +165,36 @@ When **Export DICOM Metadata** is enabled and at least one tag is selected, each
 }
 ```
 
-Image tags are read from the series' first slice, structure tags from the linked RTSTRUCT, and dose tags from the linked RTDOSE (a section whose source file is missing is written with all-`null` values; a section with no selected tags is omitted). Besides raw DICOM attributes, each tab offers **computed** values â€” Voxel Size and Image Dimensions (image), ROI Names and Number of ROIs (structure), Max Dose and Dose Grid Voxel Size (dose). The picker shows a short curated list per tab by default, with a **Show all tags** toggle to browse the full DICOM dictionary.
+Image tags are read from the series' first slice, structure tags from the linked RTSTRUCT, and dose tags from the linked RTDOSE (a section whose source file is missing is written with all-`null` values; a section with no selected tags is omitted). Besides raw DICOM attributes, each tab offers **computed** values - Voxel Size and Image Dimensions (image), ROI Names and Number of ROIs (structure), Max Dose and Dose Grid Voxel Size (dose). The picker shows a short curated list per tab by default, with a **Show all tags** toggle to browse the full DICOM dictionary.
 
-> **Note:** this forward-export sidecar is a different file from the reverse-mode `metadata.json` described under *Reverse-mode folder layout* below â€” that one carries patient/study/UIDs + rescale slope/intercept to drive NIfTI â†’ DICOM, and is unrelated to the tag selections here.
+> **Note:** this forward-export sidecar is a different file from the reverse-mode `metadata.json` described under *Reverse-mode folder layout* below - that one carries patient/study/UIDs + rescale slope/intercept to drive NIfTI -> DICOM, and is unrelated to the tag selections here.
 
-## Reverse-mode folder layout (NIfTI â†’ DICOM)
+## Reverse-mode folder layout (NIfTI -> DICOM)
 
 Each input folder looks like one of these (every line is optional individually; the folder qualifies if it has at least one of `image.nii.gz`, `masks/*.nii.gz`, or `doses/*.nii.gz`):
 
 ```
 {InputFolder}/
-  image.nii.gz                  # â†’ DICOM CT (or MR / PT) image series, one file per slice
+  image.nii.gz                  # -> DICOM CT (or MR / PT) image series, one file per slice
   metadata.json                 # patient/study/UIDs + rescale slope/intercept; auto-generated with anonymous defaults if absent
   CT.*.dcm or MR.*.dcm ...      # optional: an existing reference DICOM image series in the same folder (overrides image.nii.gz path)
   masks/
-    {ROI_Name}.nii.gz           # â†’ one ROI in a single RT-STRUCT per folder
+    {ROI_Name}.nii.gz           # -> one ROI in a single RT-STRUCT per folder
   doses/
-    {basename}.nii.gz           # â†’ one RT-DOSE per file
+    {basename}.nii.gz           # -> one RT-DOSE per file
 ```
 
-You can point the **NIfTI â†’ DICOM** window (or the headless `--reverse` flag) at a single such folder, or at a parent folder containing many of them side-by-side â€” each first-level subfolder becomes its own job. See the in-app **Help** in the NIfTI â†’ DICOM window for the full `metadata.json` schema and a copy-pasteable sample.
+You can point the **NIfTI -> DICOM** window (or the headless `--reverse` flag) at a single such folder, or at a parent folder containing many of them side-by-side - each first-level subfolder becomes its own job. See the in-app **Help** in the NIfTI -> DICOM window for the full `metadata.json` schema and a copy-pasteable sample.
 
 ## Settings
 
 Stored in `%AppData%\DicomToNifti\`:
 
-- `settings.json` â€” default output directory, auto-open after conversion, global Export Images / Export Structures / Export Dose toggles, output spacing, anonymization salt (`HashSalt`), and the persisted state of the "Limit export to selected ROIs" / "Anonymize export" / "Resample to fixed spacing" checkboxes.
-- `roi_associations.json` â€” ROI canonical-name â†” alias-set mappings used to rename DICOM ROIs to canonical names on export.
+- `settings.json` - default output directory, auto-open after conversion, global Export Images / Export Structures / Export Dose toggles, output spacing, anonymization salt (`HashSalt`), and the persisted state of the "Limit export to selected ROIs" / "Anonymize export" / "Resample to fixed spacing" checkboxes.
+- `roi_associations.json` - ROI canonical-name <-> alias-set mappings used to rename DICOM ROIs to canonical names on export.
 
-`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds three reverse-lookup maps â€” MRNâ†’PatientHash, StudyUIDâ†’StudyHash, SeriesUIDâ†’SeriesHash â€” so anonymized exports can be traced back to their original identifiers. Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
+`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds three reverse-lookup maps - MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash - so anonymized exports can be traced back to their original identifiers. Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
 
 ## History
 
 This project originated inside the manuscript repository [Dicom_RT_Images_Csharp](https://github.com/brianmanderson/Dicom_RT_Images_Csharp), where it serves as the rasterizer benchmarked against other tools. It has been split out so it can be released, cited, and consumed independently of the manuscript / benchmark harness. The manuscript repository continues to pin a specific commit of this repository as a git submodule.
-
