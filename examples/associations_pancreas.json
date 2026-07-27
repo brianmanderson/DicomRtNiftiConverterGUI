@@ -1,0 +1,46 @@
+[
+  {
+    "CanonicalName": "Pancreas",
+    "Aliases": ["pancreas", "Pancreas", "PANCREAS", "Pancreas_Ant", "PancreasBody"]
+  },
+  {
+    "CanonicalName": "Duodenum",
+    "Aliases": ["duodenum", "Duodenum", "DUODENUM", "Duo"]
+  },
+  {
+    "CanonicalName": "Stomach",
+    "Aliases": ["stomach", "Stomach", "STOMACH", "Stomach_Duo"]
+  },
+  {
+    "CanonicalName": "SmallBowel",
+    "Aliases": ["small_bowel", "SmallBowel", "Small Bowel", "Bowel_Small", "SmallBowel_Loop"]
+  },
+  {
+    "CanonicalName": "LargeBowel",
+    "Aliases": ["large_bowel", "LargeBowel", "Large Bowel", "Bowel_Large", "Colon"]
+  },
+  {
+    "CanonicalName": "Liver",
+    "Aliases": ["liver", "Liver", "LIVER"]
+  },
+  {
+    "CanonicalName": "Kidney_L",
+    "Aliases": ["kidney_l", "Kidney_L", "LeftKidney", "Kidney-Left", "L_Kidney", "Kidney L"]
+  },
+  {
+    "CanonicalName": "Kidney_R",
+    "Aliases": ["kidney_r", "Kidney_R", "RightKidney", "Kidney-Right", "R_Kidney", "Kidney R"]
+  },
+  {
+    "CanonicalName": "SpinalCord",
+    "Aliases": ["spinalcord", "SpinalCord", "Spinal_Cord", "Cord", "SpinalCanal"]
+  },
+  {
+    "CanonicalName": "GTV",
+    "Aliases": ["gtv", "GTV", "GTV-1", "GTV1", "GTV_P"]
+  },
+  {
+    "CanonicalName": "PTV",
+    "Aliases": ["ptv", "PTV", "PTV-1", "PTV1", "PTV_5400"]
+  }
+]

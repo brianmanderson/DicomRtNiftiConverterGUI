@@ -97,6 +97,13 @@ namespace DicomRtNifti.Core.Services
             // before linking, since LinkRtDataToImageSeries filters series by modality.
             ReconcileSeriesModalities(seriesLookup, modalityCounts);
 
+            // Impose a deterministic order before linking. Files are scanned in parallel, so
+            // studies and series land in whatever order the races resolve — which would make
+            // "the first image series in the study" (the last-resort linking rule) and the
+            // singular LinkedRtStruct/LinkedRtDose references vary between runs over identical
+            // input. Sorting here makes a rescan reproducible.
+            SortHierarchy(patients.Values);
+
             // Link RTSTRUCT and RTDOSE to their parent image series
             progress?.Report("Linking RT data to image series...");
             LinkRtDataToImageSeries(patients.Values.ToList(), seriesLookup);
@@ -219,10 +226,43 @@ namespace DicomRtNifti.Core.Services
                 return sg;
             });
 
-            // Add file path
+            // Add file path, and capture the per-slice geometry while this header is already
+            // open. Recording it here is what lets SeriesGeometryProbe report slice spacing and
+            // uniformity without a second pass over every file in the tree.
             lock (series.FilePaths)
             {
                 series.FilePaths.Add(filePath);
+
+                if (ds.Contains(DicomTag.ImagePositionPatient))
+                {
+                    try
+                    {
+                        var ipp = ds.GetValues<double>(DicomTag.ImagePositionPatient);
+                        if (ipp != null && ipp.Length >= 3)
+                            series.SlicePositions.Add(ipp[2]);
+                    }
+                    catch { /* malformed IPP: the probe reports non-uniform rather than guessing */ }
+                }
+
+                if (series.PixelSpacing == null && ds.Contains(DicomTag.PixelSpacing))
+                {
+                    try
+                    {
+                        var ps = ds.GetValues<double>(DicomTag.PixelSpacing);
+                        if (ps != null && ps.Length >= 2)
+                            series.PixelSpacing = new[] { ps[0], ps[1] };
+                    }
+                    catch { /* leave null; the probe falls back to reporting no in-plane spacing */ }
+                }
+
+                if (series.SliceThickness == null && ds.Contains(DicomTag.SliceThickness))
+                {
+                    try
+                    {
+                        series.SliceThickness = ds.GetSingleValue<double>(DicomTag.SliceThickness);
+                    }
+                    catch { /* optional; only used as the single-slice fallback */ }
+                }
             }
 
             // Parse RTSTRUCT-specific data
@@ -347,51 +387,29 @@ namespace DicomRtNifti.Core.Services
 
                     foreach (var rtStruct in rtStructSeries)
                     {
-                        // Try to match by referenced SeriesInstanceUID
-                        DicomSeriesGroup matchedImage = null;
-                        if (!string.IsNullOrEmpty(rtStruct.ReferencedSeriesUID))
-                        {
-                            matchedImage = imageSeries.FirstOrDefault(
-                                img => img.SeriesInstanceUID == rtStruct.ReferencedSeriesUID);
-                        }
-
-                        // Fallback: match by FrameOfReferenceUID
-                        if (matchedImage == null && !string.IsNullOrEmpty(rtStruct.FrameOfReferenceUID))
-                        {
-                            matchedImage = imageSeries.FirstOrDefault(
-                                img => img.FrameOfReferenceUID == rtStruct.FrameOfReferenceUID);
-                        }
-
-                        // Fallback: match first image series in same study
-                        if (matchedImage == null && imageSeries.Count > 0)
-                        {
-                            matchedImage = imageSeries[0];
-                        }
-
+                        var matchedImage = MatchRtToImageSeries(rtStruct, imageSeries, out var rule);
                         if (matchedImage != null)
                         {
-                            matchedImage.LinkedRtStruct = rtStruct;
+                            rtStruct.LinkMatchRule = rule;
+
+                            // Capture every structure set. A study can carry more than one (a
+                            // planning-CT set plus per-fraction CBCT sets, successive
+                            // re-contourings), and assigning here instead of appending silently
+                            // dropped all but the last. The legacy singular reference is kept
+                            // pointing at the first for back-compat with consumers not yet
+                            // updated to iterate the list.
+                            matchedImage.LinkedRtStructs.Add(rtStruct);
+                            if (matchedImage.LinkedRtStruct == null)
+                                matchedImage.LinkedRtStruct = rtStruct;
                         }
                     }
 
                     foreach (var rtDose in rtDoseSeries)
                     {
-                        // Match by FrameOfReferenceUID
-                        DicomSeriesGroup matchedImage = null;
-                        if (!string.IsNullOrEmpty(rtDose.FrameOfReferenceUID))
+                        foreach (var matchedImage in MatchDoseToImageSeries(rtDose, imageSeries, out var rule))
                         {
-                            matchedImage = imageSeries.FirstOrDefault(
-                                img => img.FrameOfReferenceUID == rtDose.FrameOfReferenceUID);
-                        }
+                            rtDose.LinkMatchRule = rule;
 
-                        // Fallback: first image series in same study
-                        if (matchedImage == null && imageSeries.Count > 0)
-                        {
-                            matchedImage = imageSeries[0];
-                        }
-
-                        if (matchedImage != null)
-                        {
                             // Capture every dose; a study can carry more than one (per-beam,
                             // plan-sum, multiple plans). The legacy singular reference is kept
                             // pointing at the first for back-compat with consumers not yet
@@ -404,6 +422,157 @@ namespace DicomRtNifti.Core.Services
                 }
             }
         }
+
+        /// <summary>
+        /// Orders studies and series deterministically after the parallel scan. Series sort by
+        /// date then SeriesInstanceUID — roughly chronological, and stable when dates tie or are
+        /// absent. File paths within a series are sorted too, so a series' first slice is always
+        /// the same one.
+        /// </summary>
+        private static void SortHierarchy(IEnumerable<DicomPatientGroup> patients)
+        {
+            foreach (var patient in patients)
+            {
+                patient.Studies.Sort((a, b) =>
+                    string.CompareOrdinal(a.StudyInstanceUID, b.StudyInstanceUID));
+
+                foreach (var study in patient.Studies)
+                {
+                    study.Series.Sort((a, b) =>
+                    {
+                        int byDate = string.CompareOrdinal(a.SeriesDate ?? "", b.SeriesDate ?? "");
+                        if (byDate != 0) return byDate;
+                        return string.CompareOrdinal(a.SeriesInstanceUID, b.SeriesInstanceUID);
+                    });
+
+                    foreach (var series in study.Series)
+                    {
+                        series.FilePaths.Sort(StringComparer.Ordinal);
+                        // Ascending z, so consecutive differences are the slice gaps.
+                        series.SlicePositions.Sort();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Resolves the image series an RT object (RTSTRUCT or RTDOSE) belongs to, trying the
+        /// available identifiers in descending order of confidence and reporting which one hit.
+        ///
+        /// The order matters on studies that hold several image series sharing one frame of
+        /// reference — a planning CT plus CBCTs resampled onto its grid, for example. There the
+        /// FrameOfReferenceUID rule cannot discriminate and would attach every structure set to
+        /// whichever series happens to come first, so the referenced-SeriesInstanceUID rule has
+        /// to be tried first even though it is more often absent.
+        /// </summary>
+        /// <returns>The matched image series, or null when the study holds no image series.</returns>
+        private static DicomSeriesGroup MatchRtToImageSeries(
+            DicomSeriesGroup rtSeries,
+            List<DicomSeriesGroup> imageSeries,
+            out RtLinkMatchRule rule)
+        {
+            if (!string.IsNullOrEmpty(rtSeries.ReferencedSeriesUID))
+            {
+                var byRefUid = imageSeries.FirstOrDefault(
+                    img => img.SeriesInstanceUID == rtSeries.ReferencedSeriesUID);
+                if (byRefUid != null)
+                {
+                    rule = RtLinkMatchRule.ReferencedSeriesUid;
+                    return byRefUid;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(rtSeries.FrameOfReferenceUID))
+            {
+                var sharingFrame = imageSeries
+                    .Where(img => img.FrameOfReferenceUID == rtSeries.FrameOfReferenceUID)
+                    .ToList();
+                if (sharingFrame.Count > 0)
+                {
+                    rule = RtLinkMatchRule.FrameOfReferenceUid;
+                    return Fullest(sharingFrame);
+                }
+            }
+
+            if (imageSeries.Count > 0)
+            {
+                rule = RtLinkMatchRule.LargestSeriesFallback;
+                return Fullest(imageSeries);
+            }
+
+            rule = RtLinkMatchRule.None;
+            return null;
+        }
+
+        /// <summary>
+        /// Resolves the image series an RT-DOSE applies to. Unlike a structure set, a dose can
+        /// legitimately apply to more than one.
+        ///
+        /// A dose names no image series. It references an RT-PLAN, which references a structure
+        /// set, which references the images — but that chain is frequently unavailable (the plan
+        /// is often not exported alongside the dose), leaving only the frame of reference. When
+        /// several image series share one frame — a planning CT plus CBCTs rigidly registered and
+        /// resampled onto its grid — that identifier cannot discriminate, and picking one is a
+        /// coin flip that orphans the dose whenever the caller selects a different series.
+        ///
+        /// Sharing a frame of reference means sharing a patient coordinate system, so the dose is
+        /// spatially valid for every series in that frame. Linking it to all of them is therefore
+        /// correct rather than merely convenient, and it lets series selection — which does have
+        /// the information to choose — decide what actually gets exported.
+        /// </summary>
+        private static List<DicomSeriesGroup> MatchDoseToImageSeries(
+            DicomSeriesGroup rtDose,
+            List<DicomSeriesGroup> imageSeries,
+            out RtLinkMatchRule rule)
+        {
+            if (!string.IsNullOrEmpty(rtDose.ReferencedSeriesUID))
+            {
+                var byRefUid = imageSeries.FirstOrDefault(
+                    img => img.SeriesInstanceUID == rtDose.ReferencedSeriesUID);
+                if (byRefUid != null)
+                {
+                    rule = RtLinkMatchRule.ReferencedSeriesUid;
+                    return new List<DicomSeriesGroup> { byRefUid };
+                }
+            }
+
+            if (!string.IsNullOrEmpty(rtDose.FrameOfReferenceUID))
+            {
+                var sharingFrame = imageSeries
+                    .Where(img => img.FrameOfReferenceUID == rtDose.FrameOfReferenceUID)
+                    .ToList();
+                if (sharingFrame.Count > 0)
+                {
+                    rule = RtLinkMatchRule.FrameOfReferenceUid;
+                    return sharingFrame;
+                }
+            }
+
+            if (imageSeries.Count > 0)
+            {
+                rule = RtLinkMatchRule.LargestSeriesFallback;
+                return new List<DicomSeriesGroup> { Fullest(imageSeries) };
+            }
+
+            rule = RtLinkMatchRule.None;
+            return new List<DicomSeriesGroup>();
+        }
+
+        /// <summary>
+        /// Picks the image series with the most instances, breaking ties on SeriesInstanceUID.
+        ///
+        /// Used when only a weak identifier is available. An RT-DOSE typically carries no
+        /// referenced series UID at all, so a study holding a planning CT plus CBCTs resampled
+        /// onto its grid offers nothing but the shared frame of reference to choose by. The dose
+        /// was computed on the planning CT, and the planning CT is the series that covers the
+        /// most anatomy — so "fullest" recovers the right answer where "first" would attach the
+        /// dose to whichever CBCT happened to sort first.
+        /// </summary>
+        private static DicomSeriesGroup Fullest(List<DicomSeriesGroup> candidates) =>
+            candidates
+                .OrderByDescending(s => s.FilePaths.Count)
+                .ThenBy(s => s.SeriesInstanceUID, StringComparer.Ordinal)
+                .First();
 
         /// <summary>
         /// Image modalities, used to break modality-tally ties toward a real image series.

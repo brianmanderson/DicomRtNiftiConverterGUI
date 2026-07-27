@@ -94,8 +94,26 @@ namespace DicomRtNifti.Cli
                 {
                     return RunImageForward(args);
                 }
+
+                // Cohort modes are checked after the four single-series modes so the older
+                // contract can never be shadowed. They emit a single JSON document on stdout
+                // rather than the "# rt_mask_validation" line format.
+                if (HasFlag(args, "--cohort-scan"))
+                {
+                    return CohortRunner.RunScan(args);
+                }
+                if (HasFlag(args, "--cohort-manifest"))
+                {
+                    return CohortRunner.RunManifest(args);
+                }
+                if (HasFlag(args, "--cohort-convert"))
+                {
+                    return CohortRunner.RunConvert(args);
+                }
+
                 Console.Error.WriteLine(
-                    "Headless mode requires --forward, --reverse, --image-reverse, or --image-forward.");
+                    "Headless mode requires --forward, --reverse, --image-reverse, --image-forward, "
+                    + "--cohort-scan, --cohort-manifest, or --cohort-convert.");
                 PrintUsage();
                 return 2;
             }
@@ -719,26 +737,13 @@ namespace DicomRtNifti.Cli
             catch { return ""; }
         }
 
-        private static bool HasFlag(string[] args, string flag) =>
-            args.Any(a => string.Equals(a, flag, StringComparison.OrdinalIgnoreCase));
+        // Thin aliases over the shared parser so this file reads as it did before CohortRunner
+        // needed the same helpers.
+        private static bool HasFlag(string[] args, string flag) => CliArgs.HasFlag(args, flag);
 
-        private static string RequireArg(string[] args, string name)
-        {
-            string v = OptionalArg(args, name);
-            if (v == null)
-                throw new ArgumentException($"Required argument '{name}' is missing.");
-            return v;
-        }
+        private static string RequireArg(string[] args, string name) => CliArgs.RequireArg(args, name);
 
-        private static string OptionalArg(string[] args, string name)
-        {
-            for (int i = 0; i < args.Length - 1; i++)
-            {
-                if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
-                    return args[i + 1];
-            }
-            return null;
-        }
+        private static string OptionalArg(string[] args, string name) => CliArgs.OptionalArg(args, name);
 
         private static string SanitizeFileName(string name)
         {
@@ -795,6 +800,7 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine("Forward (RTSTRUCT -> per-ROI masks):");
             Console.Error.WriteLine("  --headless --forward --rtstruct PATH --image-folder PATH --output-folder PATH");
             Console.Error.WriteLine("                       [--include-image]      (also write image.nii.gz)");
+            Console.Error.WriteLine("                       [--rtdose PATH]        (also write doses/<description>.nii.gz)");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Reverse (per-ROI masks -> RTSTRUCT) with reference DICOM:");
             Console.Error.WriteLine("  --headless --reverse --image-folder PATH --masks-folder PATH --output PATH");
@@ -813,6 +819,44 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine("Image-forward (DICOM image series -> NIfTI image volume):");
             Console.Error.WriteLine("  --headless --image-forward --image-folder PATH --output PATH");
             Console.Error.WriteLine("                       [--target-spacing X,Y,Z]      (optional resample, mm)");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Cohort modes scan a tree recursively and emit one JSON document on stdout.");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Cohort scan (inventory only; no conversion):");
+            Console.Error.WriteLine("  --cohort-scan --input PATH [--json-out PATH]");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Cohort manifest (survey CSV: spacing + per-ROI volume in cc):");
+            Console.Error.WriteLine("  --cohort-manifest --input PATH --output PATH");
+            Console.Error.WriteLine("                       [--no-volumes]         (skip rasterizing; volumes = -1)");
+            Console.Error.WriteLine("                       [--output-spacing X,Y,Z]  (default: report native spacing)");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Cohort convert (full export to <patient>/<study>/<series>/):");
+            Console.Error.WriteLine("  --cohort-convert --input PATH --output PATH");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Options common to --cohort-manifest and --cohort-convert:");
+            Console.Error.WriteLine("  --associations FILE.json          canonical-name / alias mappings");
+            Console.Error.WriteLine("  --only-associated-rois            drop ROIs that match no association");
+            Console.Error.WriteLine("  --output-spacing X,Y,Z            resample to a fixed grid, mm");
+            Console.Error.WriteLine("  --anonymize [--salt STRING]       hash identifiers; writes AnonymizationKey.json");
+            Console.Error.WriteLine("  --patients ID,ID                  restrict to these PatientIDs");
+            Console.Error.WriteLine("  --series-description SUBSTR       keep image series whose description matches");
+            Console.Error.WriteLine("  --struct-description SUBSTR       keep image series whose linked RTSTRUCT");
+            Console.Error.WriteLine("                                    description matches, and export that one");
+            Console.Error.WriteLine("  --prefer-largest-series           keep only the largest image series per study");
+            Console.Error.WriteLine("                                    (ties break arbitrarily; prefer the filters above)");
+            Console.Error.WriteLine("  --require-structures              skip series with no linked RTSTRUCT");
+            Console.Error.WriteLine("  --require-dose                    skip series with no linked RTDOSE");
+            Console.Error.WriteLine("  --manifest-name NAME              default: export_manifest.csv");
+            Console.Error.WriteLine("  --json-out PATH                   also write the JSON document to a file");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Options for --cohort-convert only:");
+            Console.Error.WriteLine("  --metadata-tags KW,...            metadata.json image section");
+            Console.Error.WriteLine("  --metadata-structure-tags KW,...  metadata.json structure section");
+            Console.Error.WriteLine("  --metadata-dose-tags KW,...       metadata.json dose section");
+            Console.Error.WriteLine("      Keywords are fo-dicom names (PatientAge, KVP, DoseUnits) plus computed");
+            Console.Error.WriteLine("      values (@VoxelSize, @RoiNames, @MaxDose, @DoseVoxelSize).");
+            Console.Error.WriteLine("  --no-images | --no-structures | --no-doses   skip that output");
+            Console.Error.WriteLine("  --fail-fast                       abort on the first failing series");
         }
     }
 }

@@ -83,17 +83,29 @@ namespace DicomRtNifti.Core.Services
         /// applying DoseGridScaling if present. The series description from the
         /// RT-DOSE file is sanitized for filesystem use; an empty description
         /// falls back to "dose".
+        ///
+        /// When a study carries several doses that share a description — plans exported from the
+        /// same TPS commonly all read "Eclipse Doses" — a numeric suffix keeps them from
+        /// overwriting each other, provided the caller passes <paramref name="reservedNames"/>.
         /// </summary>
-        public void ConvertDoseToNifti(
+        /// <param name="reservedNames">
+        /// Names already claimed during *this* export of *this* series, so repeated descriptions
+        /// get suffixed. Must not be reused across runs: disambiguating against files left on
+        /// disk by a previous run would make re-exporting a cohort accumulate a new copy of every
+        /// dose each time instead of refreshing it in place. Null disables suffixing entirely.
+        /// </param>
+        /// <returns>The path written, or null when the dose series had no files.</returns>
+        public string ConvertDoseToNifti(
             DicomSeriesGroup doseSeries,
             string outputDir,
             IProgress<string> progress,
             CancellationToken ct,
-            double[] targetSpacing = null)
+            double[] targetSpacing = null,
+            HashSet<string> reservedNames = null)
         {
             ct.ThrowIfCancellationRequested();
 
-            if (doseSeries.FilePaths.Count == 0) return;
+            if (doseSeries.FilePaths.Count == 0) return null;
 
             string doseFilePath = doseSeries.FilePaths[0];
             Image doseImage = SimpleITK.ReadImage(doseFilePath);
@@ -132,12 +144,25 @@ namespace DicomRtNifti.Core.Services
             string baseName = string.IsNullOrWhiteSpace(doseSeries.SeriesDescription)
                 ? "dose"
                 : doseSeries.SeriesDescription.Trim();
-            string outputPath = Path.Combine(dosesDir, SanitizeFileName(baseName) + ".nii.gz");
+            string safeName = SanitizeFileName(baseName);
+
+            // Disambiguate against names claimed earlier in this same run — never against what is
+            // already on disk, so a re-export overwrites its own previous output.
+            if (reservedNames != null)
+            {
+                string candidate = safeName;
+                for (int suffix = 2; !reservedNames.Add(candidate); suffix++)
+                    candidate = $"{safeName}_{suffix}";
+                safeName = candidate;
+            }
+
+            string outputPath = Path.Combine(dosesDir, safeName + ".nii.gz");
 
             SimpleITK.WriteImage(doseImage, outputPath);
             doseImage.Dispose();
 
             progress?.Report($"  Wrote {outputPath}");
+            return outputPath;
         }
 
         /// <summary>
