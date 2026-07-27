@@ -4,11 +4,14 @@
 # vol_err <= 3%) ship inside the rtmask-conformance package; per-primitive
 # overrides shallow-merge over those.
 #
-# Each relaxation below is documented: what the C# converter currently
-# produces, why, and the path back to the published default. If a
-# rasterizer change lifts the actual metric, the corresponding line here
-# should be removed (or its number tightened) so the conformance gate
-# gets stricter.
+# Each override below is documented: what the C# converter currently
+# produces, why, and where the number should go next. Note the direction —
+# the cube entry is a *tightening* over the shipped default (0.98 > 0.95),
+# pinning the gate just under the measured 0.9833 so a regression in the
+# scanline fill fails the build rather than sliding to the looser default.
+# If a rasterizer change lifts the actual metric, raise the number here.
+# Nothing in this file is currently looser than the package default; if you
+# ever need to add something that is, say so explicitly.
 
 schema_version: 1
 

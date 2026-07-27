@@ -72,10 +72,18 @@ namespace DicomRtNifti.Core.Tests
         /// Writes a minimal RTSTRUCT with a StructureSetROISequence (one item per name) and a
         /// StructureSetLabel, enough to exercise ROI-name/count metadata extraction. Returns the path.
         /// </summary>
+        /// <param name="referencedSeriesUid">
+        /// When supplied, nests a ReferencedFrameOfReferenceSequence &gt; RTReferencedStudySequence
+        /// &gt; RTReferencedSeriesSequence carrying this SeriesInstanceUID, so the scanner can
+        /// resolve the structure set to a specific image series rather than falling back to the
+        /// frame of reference. Omit to model the (common) structure sets that carry no such link.
+        /// </param>
         public static string WriteRtStruct(
             string dir, string fileName,
             string patientId, string studyUid, string seriesUid, string frameUid,
-            string structureSetLabel, string[] roiNames)
+            string structureSetLabel, string[] roiNames,
+            string referencedSeriesUid = null,
+            string seriesDescription = null)
         {
             var ds = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
             {
@@ -87,7 +95,9 @@ namespace DicomRtNifti.Core.Tests
                 { DicomTag.SeriesInstanceUID, seriesUid },
                 { DicomTag.Modality, "RTSTRUCT" },
                 { DicomTag.FrameOfReferenceUID, frameUid },
-                { DicomTag.SeriesDescription, "structures" },
+                // Real structure sets name themselves here, not just in StructureSetLabel — and
+                // SeriesDescription is what selection filters match on, so it must be settable.
+                { DicomTag.SeriesDescription, seriesDescription ?? "structures" },
                 { DicomTag.StructureSetLabel, structureSetLabel },
             };
 
@@ -104,6 +114,27 @@ namespace DicomRtNifti.Core.Tests
                 roiNumber++;
             }
             ds.Add(new DicomSequence(DicomTag.StructureSetROISequence, items.ToArray()));
+
+            if (!string.IsNullOrEmpty(referencedSeriesUid))
+            {
+                var refSeries = new DicomDataset
+                {
+                    { DicomTag.SeriesInstanceUID, referencedSeriesUid },
+                };
+                var refStudy = new DicomDataset
+                {
+                    { DicomTag.ReferencedSOPInstanceUID, studyUid },
+                };
+                refStudy.Add(new DicomSequence(DicomTag.RTReferencedSeriesSequence, refSeries));
+
+                var refFrame = new DicomDataset
+                {
+                    { DicomTag.FrameOfReferenceUID, frameUid },
+                };
+                refFrame.Add(new DicomSequence(DicomTag.RTReferencedStudySequence, refStudy));
+
+                ds.Add(new DicomSequence(DicomTag.ReferencedFrameOfReferenceSequence, refFrame));
+            }
 
             string path = Path.Combine(dir, fileName);
             new DicomFile(ds).Save(path);

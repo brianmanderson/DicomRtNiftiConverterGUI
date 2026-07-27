@@ -6,6 +6,16 @@ The rasterization core handles the five clinically-used DICOM `ContourGeometricT
 
 Methodology borrows from [Dicom_RT_and_Images_to_Mask](https://github.com/brianmanderson/Dicom_RT_and_Images_to_Mask) (DicomRTTool); this implementation extends coverage beyond `CLOSED_PLANAR`-only and adds the reverse direction.
 
+## Start here
+
+**[`examples/Guide.md`](examples/Guide.md)** is a worked, runnable example of the whole toolkit: it
+takes a public cohort with CT, structures **and dose** from raw DICOM to an analysis-ready NIfTI
+dataset, converts the masks back into a DICOM structure set, measures what the round trip cost,
+and verifies the rasterizer against closed-form geometry.
+
+It needs no .NET install — the notebook downloads a self-contained build. If you are evaluating
+this tool, start there rather than here.
+
 ## GUI mode
 
 Launch the GUI with `dotnet run --project src/DicomRtNifti.App` (or run the published `DicomRtNifti.App` executable). It opens a launcher with two buttons:
@@ -72,6 +82,69 @@ DicomRtNifti.Cli --version
 - **Stderr** - human-readable progress and error messages.
 
 The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
+
+> **Note on the forward mode's output layout.** `--forward` writes masks **flat** into
+> `--output-folder`, not into a `masks/` subfolder — it is the single-series mode the conformance
+> harness drives, and that contract is deliberately frozen. The hierarchical
+> `<patient>/<study>/<series>/{image.nii.gz,masks/,doses/}` layout described under
+> [Output structure](#output-structure) is what the GUI and the cohort modes below produce.
+
+## Cohort mode
+
+The modes above each convert one explicitly-named series. The cohort modes scan a tree
+recursively and process everything in it, which is what the GUI's Convert Selected and Export
+Manifest Only commands do — the same `CohortExportService`, driven from a script instead of a
+window.
+
+```bash
+# Inventory: what is in this archive, and how confident is each RTSTRUCT/RTDOSE link?
+DicomRtNifti.Cli --cohort-scan --input ARCHIVE
+
+# Survey: one CSV row per series - spacing plus each ROI's volume in cc
+DicomRtNifti.Cli --cohort-manifest --input ARCHIVE --output OUT
+
+# Convert: image + masks + doses + metadata.json + manifest, for the whole cohort
+DicomRtNifti.Cli --cohort-convert --input ARCHIVE --output OUT \
+    --associations associations.json --only-associated-rois \
+    --output-spacing 1.0,1.0,3.0 \
+    --anonymize --salt "my-cohort-salt" \
+    --metadata-tags PatientAge,KVP,@VoxelSize \
+    --metadata-dose-tags DoseUnits,@MaxDose
+```
+
+Key points:
+
+- **Stdout is exactly one JSON document** for these modes, and nothing else, so it can be piped
+  straight into a parser. There is no `# rt_mask_validation` header — that belongs to the
+  single-series contract above. Progress stays on stderr. Each document carries a `schema` field.
+- **Series selection matters.** A study often holds several series of the same modality — a
+  planning CT plus CBCTs resampled onto its grid, which share its frame of reference, spacing
+  *and* slice count. Prefer `--struct-description SUBSTR`, which selects on the linked structure
+  set's description and exports that set; structure sets are named for what they were drawn on
+  when the images are indistinguishable. `--series-description` works when the image descriptions
+  are reliable, and `--prefer-largest-series` is a last resort that ties (and then picks
+  arbitrarily) exactly in the resampled-sibling case. `--require-structures` / `--require-dose`
+  skip series lacking what you need. Everything excluded is reported with a reason.
+- **Link confidence is reported.** `--cohort-scan` records how each RTSTRUCT and RTDOSE was
+  matched to its image series — `ReferencedSeriesUid` (authoritative), `FrameOfReferenceUid`, or
+  `LargestSeriesFallback` (a guess). A cohort resolved entirely by fallback deserves a look.
+- **Under `--anonymize` the JSON contains hashes only**, including for skipped and unlinked
+  series, so printing it in a notebook cannot leak identifiers. Re-identification lives solely in
+  `AnonymizationKey.json`.
+- **Volumes cost a rasterization pass.** There is no analytic contour-area shortcut;
+  `--no-volumes` skips the work and writes the missing sentinel (`-1`) instead.
+- **The manifest merges.** Re-running extends it — rows are keyed on the three identifier columns,
+  and new ROI columns are appended without disturbing existing ones. With a stable `--salt`, the
+  same patient lands in the same folder, so a cohort grows rather than duplicating. The corollary:
+  **use one salt for every command touching a cohort.** Surveying with real identifiers and then
+  converting with hashed ones does not update those rows, it appends a second set — leaving real
+  identifiers in the cohort root next to an anonymized export.
+- **Dose keeps its own extent.** It is resampled to `--output-spacing`, but its origin and size
+  follow the source dose grid rather than the image, since that grid usually covers only the
+  region around the target. Masks *are* on the image grid. Resample the dose onto the image before
+  combining them.
+
+Run `--help` for the full option list.
 
 ## Dependencies
 

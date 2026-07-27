@@ -1,0 +1,23 @@
+# The notebook downloads a cohort and a CLI binary. None of that belongs in the repository.
+# WORK_DIR defaults outside the tree, but these cover the case where someone points it here.
+work/
+.tool/
+conformance/
+fixture/
+predictions/
+roundtrip/
+
+# Imaging data, in any location under examples/.
+*.nii
+*.nii.gz
+*.dcm
+
+# Re-identification data. Never commit this.
+AnonymizationKey.json
+anonymization_key.json
+
+# Manifests are generated per run.
+export_manifest*.csv
+
+# Notebooks are committed with outputs stripped; these are local artifacts.
+.ipynb_checkpoints/
