@@ -6,8 +6,8 @@
 #
 # Each override below is documented: what the C# converter currently
 # produces, why, and where the number should go next. Note the direction —
-# the cube entry is a *tightening* over the shipped default (0.98 > 0.95),
-# pinning the gate just under the measured 0.9833 so a regression in the
+# the cube entry is a *tightening* over the shipped default (0.99 > 0.95),
+# pinning the gate just under the measured 1.0000 so a regression in the
 # scanline fill fails the build rather than sliding to the looser default.
 # If a rasterizer change lifts the actual metric, raise the number here.
 # Nothing in this file is currently looser than the package default; if you
@@ -17,13 +17,22 @@ schema_version: 1
 
 primitives:
   cube:
-    # The C# scanline polygon fill produces an axis-aligned 60 mm cube with
-    # exact volume (volume_rel_err = 0.00) but ~3500 voxels of symmetric
-    # boundary disagreement vs the partial-volume ground truth — Dice
-    # lands at 0.9833. Surface metrics still hit the published defaults
-    # (sDSC1 = 1.000, HD95 = 1.0 mm, MSD = 0.33 mm) so the cube boundary
-    # is in the right place; the gap is purely a ~half-voxel scanline
-    # rule difference vs the GT's sub-voxel quadrature on the cube faces.
-    # Tighten to dice >= 0.99 once RtStructMaskService's scanline
-    # boundary convention matches the partial-volume GT.
-    dice: 0.98
+    # The C# scanline polygon fill now reproduces the axis-aligned 60 mm cube
+    # exactly: dice = 1.0000, sDSC1 = 1.000, HD95 = 0.0 mm, MSD = 0.0 mm,
+    # volume_rel_err = 0.00.
+    #
+    # It previously sat at 0.9833, which this file described as a symmetric
+    # ~half-voxel scanline rule difference against the ground truth's
+    # sub-voxel quadrature. That reading was wrong. The fill sampled each
+    # scanline at y + 0.5 while the X fill used the raw continuous index,
+    # where TransformPhysicalPointToContinuousIndex puts the centre of voxel
+    # i at index i.0 — so the two axes disagreed and every mask came out
+    # displaced -0.5 voxels in y. On the cube, whose faces land on voxel
+    # boundaries, that rounded to a full voxel: the shape was exact and the
+    # volume error was therefore exactly 0.00, which is precisely why the
+    # displacement hid here. HD95 = 1.0 mm and MSD = 0.33 mm were the
+    # signature of that one-voxel shift, not evidence of a correct boundary.
+    #
+    # Fixed in RtStructMaskService.ScanlineFillPolygon (scanY = y). Every
+    # primitive improved; see the commit for the before/after table.
+    dice: 0.99

@@ -576,8 +576,12 @@ namespace DicomRtNifti.Core.Services
 
             for (int y = minY; y <= maxY; y++)
             {
-                // Scanline at y + 0.5 (pixel center)
-                double scanY = y + 0.5;
+                // Scanline at the row centre. TransformPhysicalPointToContinuousIndex puts the
+                // centre of voxel i at continuous index i.0, so the centre of row y is y, not
+                // y + 0.5. The X fill below already uses that convention (Ceiling/Floor on the
+                // raw index keeps voxels whose centre falls inside the span); sampling Y half a
+                // voxel low made the two axes disagree and shifted every mask -0.5 voxels in y.
+                double scanY = y;
 
                 // Find all X intersections of polygon edges with this scanline
                 var intersections = new List<double>();
