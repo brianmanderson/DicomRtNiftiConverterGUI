@@ -1,0 +1,25 @@
+{
+  "$comment": [
+    "Shared, tracked allowlist for the toolkit repository. Read-only inspection plus",
+    "the .NET build/test/probe commands the conformance gate depends on.",
+    "Machine-local additions belong in the gitignored .claude/settings.local.json."
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git branch:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet publish:*)",
+      "Bash(dotnet --version)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}

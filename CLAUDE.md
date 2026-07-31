@@ -6,6 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cross-platform (.NET 8) toolkit that converts DICOM radiotherapy data — CT/MR/PT image series, RT Structures, and RT Dose — to NIfTI (`.nii.gz`), and performs the reverse (mask → RTSTRUCT, NIfTI → DICOM image series). Ships as a headless CLI (`DicomRtNifti.Cli`) and an Avalonia desktop GUI (`DicomRtNifti.App`) that share one Core library. The rasterizer backs a CMPB software-publication paper, so analytical accuracy is gated in CI (see Conformance below).
 
+This repo is also mounted as a submodule of the research repo
+[Dicom_RT_Images_Csharp](https://github.com/brianmanderson/Dicom_RT_Images_Csharp), which holds the
+cross-tool benchmark and the manuscripts. A rasterization change here moves numbers there — say so
+when you make one.
+
+## Skills
+
+`.claude/skills/` is tracked; the descriptions say when to load each one.
+
+- `conformance-gate` — load before editing `RtStructMaskService` or any rasterization path, before
+  touching `conformance.yaml` thresholds, and to reproduce the three-OS gate locally.
+
 ## Source layout
 
 The solution is **`DicomRtNifti.sln`** at the repo root. Each project owns its source:
@@ -89,3 +101,8 @@ Dependencies: **fo-dicom 5.2.5** (DICOM parsing), **SimpleITK** (image I/O + NIf
 `conformance.yaml` holds per-primitive threshold overrides on top of the package defaults (`dice >= 0.95`, `surface_dice_1mm >= 0.95`, HD95 <= 2 mm, MSD <= 0.5 mm, vol_err <= 3%), each documented with why. Note the direction: the `cube` entry sets `dice >= 0.98`, which is **stricter** than the 0.95 default, not a relaxation — it pins the gate just under the measured 0.9833 so a regression in the scanline fill fails rather than sliding to the looser default. The residual gap to 1.0 is a ~half-voxel scanline boundary convention difference vs the partial-volume ground truth. **If you change `RtStructMaskService`'s rasterization, expect these metrics to move** — raise the number if accuracy improves; investigate before loosening it.
 
 The unit tests synthesize minimal DICOM datasets in-memory with fo-dicom (`tests/.../DicomTestData.cs`) — also no committed fixtures.
+
+**`conformance.yaml` is duplicated byte-for-byte in the parent research repo**, which runs its own
+windows-latest gate against the same thresholds. Editing one copy and not the other silently splits
+the two gates — change both. See the `conformance-gate` skill for the local reproduction and the
+full threshold policy.

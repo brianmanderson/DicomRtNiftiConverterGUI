@@ -4,10 +4,17 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 .idea/
 
-# Claude Code per-user state (settings, worktrees, plan files, transcripts).
-# Each developer's allowlist + worktree layout is personal and should not
-# travel with the repo.
-.claude/
+# Claude Code. The shared parts -- CLAUDE.md, .claude/skills/, and the tracked
+# .claude/settings.json allowlist -- are repository knowledge and DO travel with
+# the repo. Only per-user state is ignored: each developer's personal allowlist,
+# their agent worktrees, plan files and transcripts.
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+.claude/settings.local.json
+.claude/worktrees/
+.claude/plans/
+.claude/history/
 # User-specific files
 *.rsuser
 *.suo
