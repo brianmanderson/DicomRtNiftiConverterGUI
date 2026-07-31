@@ -589,7 +589,12 @@ namespace DicomRtNifti.Core.Services
         /// new series + SOP instance, and ReferencedFrameOfReferenceSequence with
         /// every CT slice listed in ContourImageSequence.
         /// </summary>
-        private static DicomDataset BuildRtStructShell(
+        /// <remarks>
+        /// internal rather than private so the tests can assert the Part 10 File Meta
+        /// Information invariants (see RtWriterFileMetaInfoTests) without a masks folder,
+        /// a reference series, or the SimpleITK native.
+        /// </remarks>
+        internal static DicomDataset BuildRtStructShell(
             DicomDataset refDs,
             DicomSeriesGroup referenceSeries,
             Dictionary<int, (string sopClassUid, string sopInstanceUid)> sliceLookup,
