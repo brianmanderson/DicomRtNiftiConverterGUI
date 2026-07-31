@@ -54,7 +54,7 @@
                   IsEnabled="{Binding AnonymizeExport}"
                   Padding="12,8" Margin="4,4,4,12" FontSize="13"/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource AppMutedText}" Margin="4,0,4,0"
-                     Text="When checked, exports use integer folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions."/>
+                     Text="When checked, exports use hashed folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions."/>
 
           <Separator Margin="0,12"/>
 

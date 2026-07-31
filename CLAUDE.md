@@ -25,8 +25,10 @@ The solution is **`DicomRtNifti.sln`** at the repo root. Each project owns its s
 - `src/DicomRtNifti.Cli` — headless CLI (assembly `DicomRtNifti.Cli`).
 - `src/DicomRtNifti.App` — Avalonia desktop GUI (assembly `DicomRtNifti.App`).
 - `tests/DicomRtNifti.Core.Tests` — xUnit tests for Core.
-- `examples/` — a runnable notebook that drives the CLI end-to-end over a public cohort, plus the
-  GUI walkthrough. Start here when onboarding; it is also the fastest smoke test of a build.
+- `examples/` — `Guide.md` (the map), a runnable notebook that drives the CLI end-to-end over a
+  public cohort, and `GUI_WALKTHROUGH.md`. Start here when onboarding. It is *not* the fast smoke
+  test — the notebook pulls tens of GB from TCIA. For that, use the `rtmask-conformance`
+  generate → `--forward` → verify sequence in README's Headless mode section (~1 min).
 
 Two other trees you will see — don't mistake them for live code:
 - `archive/legacy-wpf/` — the retired .NET Framework 4.8 WPF app. It keeps its own copies of the old service/model files. **Do not edit; it is not built by `DicomRtNifti.sln`.**
@@ -75,7 +77,7 @@ SimpleITK is **not** a NuGet package. The managed wrapper `SimpleITKCSharpManage
 ## Architecture
 
 **One Core, two front-ends.** All conversion logic is UI-agnostic and lives in `src/DicomRtNifti.Core/Services`. Both front-ends build the same `DicomSeriesGroup` model objects and call the same services, so CLI and GUI behavior stay identical:
-- `src/DicomRtNifti.Cli/HeadlessRunner.cs` — parses args, constructs series groups from explicit paths, calls the services. Modes: `--forward` (RTSTRUCT → per-ROI masks), `--reverse` (masks → RTSTRUCT, with or without a reference DICOM series), `--image-reverse` (NIfTI → DICOM image series), `--image-forward` (DICOM series → NIfTI). Machine-readable summary on **stdout**, human progress/errors on **stderr**. Exit codes: 0 ok, 1 conversion failure, 2 bad args.
+- `src/DicomRtNifti.Cli/HeadlessRunner.cs` — parses args, constructs series groups from explicit paths, calls the services. Modes: `--forward` (RTSTRUCT → per-ROI masks), `--reverse` (masks → RTSTRUCT, with or without a reference DICOM series), `--image-reverse` (NIfTI → DICOM image series), `--image-forward` (DICOM series → NIfTI), plus `--cohort-scan` / `--cohort-manifest` / `--cohort-convert` (see `CohortRunner.cs`; one JSON document on stdout, no `# rt_mask_validation` header). Machine-readable summary on **stdout**, human progress/errors on **stderr**. Exit codes: 0 ok, 1 conversion failure, 2 bad args — *intended* contract; today only zero-args and an unknown mode actually return 2, missing/invalid args fall through the blanket catch to 1. Mask → RT-DOSE and the drop-folder watch (server) mode are **GUI-only**; there is no CLI path to either.
 - `src/DicomRtNifti.App` — Avalonia 11 + Fluent theme + `CommunityToolkit.Mvvm`, MVVM. A launcher window opens the forward (DICOM→NIfTI) or reverse (NIfTI→DICOM) window. View-models call Core services directly.
 
 **Namespaces match assemblies.** Core types live in `DicomRtNifti.Core.Services` / `DicomRtNifti.Core.Models`, the CLI in `DicomRtNifti.Cli`, and the GUI in `DicomRtNifti.App` / `.ViewModels` / `.Views`. The App's own platform helpers (`IFolderPicker`, `AppWindows`) sit in `DicomRtNifti.App.Services` — deliberately split from `DicomRtNifti.Core.Services` — so a view-model that uses both a Core service and a folder picker carries both usings. The GUI abstracts platform dialogs behind `IFolderPicker` (Avalonia `IStorageProvider`) rather than referencing WinForms.

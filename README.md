@@ -21,7 +21,7 @@ this tool, start there rather than here.
 Launch the GUI with `dotnet run --project src/DicomRtNifti.App` (or run the published `DicomRtNifti.App` executable). It opens a launcher with two buttons:
 
 - **DICOM -> NIfTI** - opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`).
-- **NIfTI -> DICOM** - opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE).
+- **NIfTI -> DICOM** - opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE). Its **Run Server** button turns the same window into a drop-folder watcher for inference-service pipelines. Both mask -> RT-DOSE and watch mode are **GUI-only**; see the reverse-mode note below.
 
 Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The same material is readable outside the app in [`examples/GUI_WALKTHROUGH.md`](examples/GUI_WALKTHROUGH.md), which also maps every control to its CLI flag. The CLI below is the alternative when scripting batch / benchmark runs.
 
@@ -64,6 +64,12 @@ DicomRtNifti.Cli --reverse --image-folder PATH --masks-folder PATH --output PATH
 DicomRtNifti.Cli --reverse --masks-folder PATH --output PATH \
     [--image-nifti PATH] [--metadata PATH] [--output-image-folder PATH]
 
+# --masks-folder is the folder that DIRECTLY contains the per-ROI *.nii.gz files
+# and is read top-level only. On a case folder exported by the forward direction
+# that is <case>/masks, not <case>. Unlike the GUI's NIfTI -> DICOM window,
+# --reverse handles exactly one job: it accepts neither a case folder nor a
+# parent of many. Loop over --reverse to batch.
+
 # Image-forward: DICOM image series -> NIfTI image volume (no RTSTRUCT needed)
 DicomRtNifti.Cli --image-forward --image-folder PATH --output PATH.nii.gz \
     [--target-spacing X,Y,Z]
@@ -78,7 +84,7 @@ DicomRtNifti.Cli --version
 ```
 
 - **Exit codes** - `0` on success, `1` on conversion failure (with stack trace on stderr), `2` on missing or invalid arguments (usage printed on stderr).
-- **Stdout** - a `# rt_mask_validation <mode>` header line followed by the machine-readable results: forward writes one TSV row per ROI (`<ROIName>\t<Volume_cc>\t<mask_path>`); the reverse/image modes write the output path(s).
+- **Stdout** - a `# rt_mask_validation <mode>` header line followed by the machine-readable results: forward writes one TSV row per ROI (`<ROIName>\t<Volume_cc>\t<mask_path>`); the reverse/image modes write the output path(s). The header is the mode name as run, so the NIfTI-only reverse path emits `# rt_mask_validation reverse (nifti-only)` - match the prefix, not the whole line.
 - **Stderr** - human-readable progress and error messages.
 
 The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
@@ -125,9 +131,18 @@ files sitting beside the slices are fine — they are filtered out by modality. 
 nested, or its files are extensionless, use the [cohort modes](#cohort-mode) below: those scan
 recursively and read every file regardless of extension.
 
-`--reverse` writes a `metadata.json` back into `--masks-folder` when one is not already there, so
-that repeat runs reuse the same UIDs rather than minting a new series each time. That is a write
-into an input folder — expect it.
+**The NIfTI-only `--reverse` path writes a `metadata.json` back into `--masks-folder`**, so that
+repeat runs reuse the same UIDs rather than minting a new series each time. That is a write into
+an input folder — expect it. The reference-DICOM path (`--image-folder`) does not: it takes its
+identifiers from the reference series.
+
+**That `metadata.json` is not the one the forward direction writes.** The forward export's sidecar
+holds selected DICOM *tags* (`ImageAttributes` / `StructureAttributes` / `DoseAttributes`); the
+reverse driver holds patient/study/UIDs and rescale slope/intercept. They share a filename and
+nothing else, and `--metadata` pointed at a forward sidecar is silently ignored — you get freshly
+minted anonymous UIDs, not the original study's. **To make a regenerated RT-STRUCT attach to the
+study the masks came from, use the reference-DICOM path** (`--reverse --image-folder <original
+DICOM series>`), or hand-author the reverse-schema `metadata.json`.
 
 ## Cohort mode
 
@@ -170,7 +185,12 @@ Key points:
   `LargestSeriesFallback` (a guess). A cohort resolved entirely by fallback deserves a look.
 - **Under `--anonymize` the JSON contains hashes only**, including for skipped and unlinked
   series, so printing it in a notebook cannot leak identifiers. Re-identification lives solely in
-  `AnonymizationKey.json`.
+  `AnonymizationKey.json` — which also records the `--salt` in plaintext, so it is re-identification
+  data twice over. Keep it out of version control.
+- **`--anonymize` does not filter `--metadata-tags`.** Selected tags are written to each series'
+  `metadata.json` verbatim, so `--metadata-tags PatientName,PatientID` puts the real identifiers
+  back inside a folder tree whose names you just hashed. Choose the tags accordingly; the GUI's
+  Export Options panel carries the same warning.
 - **Volumes cost a rasterization pass.** There is no analytic contour-area shortcut;
   `--no-volumes` skips the work and writes the missing sentinel (`-1`) instead.
 - **The manifest merges.** Re-running extends it — rows are keyed on the three identifier columns,
@@ -183,6 +203,30 @@ Key points:
   follow the source dose grid rather than the image, since that grid usually covers only the
   region around the target. Masks *are* on the image grid. Resample the dose onto the image before
   combining them.
+- **The two manifest commands write different filenames in the two front-ends.**
+  `--cohort-manifest` and `--cohort-convert` both default to `export_manifest.csv` (override with
+  `--manifest-name`), so a survey and a later conversion into the same output root merge into one
+  file. The GUI's **Export Manifest Only** writes `export_manifest_meta.csv` instead, keeping the
+  survey separate from `export_manifest.csv`. Same columns either way.
+
+### The `--associations` file
+
+`--associations` takes a JSON **array** of canonical-name / alias-set objects — byte-identical to
+what the GUI's *Edit ROI Associations…* editor imports and exports, so you can curate in the app
+and hand the file to an unattended run:
+
+```json
+[
+  { "CanonicalName": "Pancreas", "Aliases": ["pancreas", "PANCREAS", "Pancreas_Ant"] },
+  { "CanonicalName": "SpinalCord", "Aliases": ["cord", "Spinal_Cord", "SpinalCanal"] }
+]
+```
+
+Both keys are required and case-sensitive *as key names*; alias **matching** against the DICOM ROI
+names is case-insensitive. A matched ROI is renamed to its `CanonicalName` on disk and in the
+manifest column header. Unmatched ROIs are exported under their original names unless
+`--only-associated-rois` is given, which drops them. [`examples/associations_pancreas.json`](examples/associations_pancreas.json)
+is a full worked example.
 
 Run `--help` for the full option list.
 
@@ -280,13 +324,21 @@ Non-anonymized (one folder per patient, one subfolder per series):
   export_manifest.csv       # at the output root (or export_manifest_meta.csv for Export Manifest Only)
 ```
 
+> **Windows: keep the output root short.** The non-anonymized layout embeds the full
+> `SeriesDescription` in a folder name, so a deep output root plus a long description plus
+> `masks/<LongRoiName>.nii.gz` crosses the 260-character `MAX_PATH` limit. It surfaces as
+> `ERROR: nifti library failed to write image: <path>` from the NIfTI writer, with no mention of
+> path length, and it fails per-file — short ROI names in the same series are written, long ones
+> are not, and the series is reported as failed. A short root (`C:\rt_out`) or `--anonymize`
+> (fixed-width hash folders) both avoid it.
+
 Anonymized (folders named by deterministic per-identifier hashes; a patient's datasets all nest under one patient hash, each study groups its series):
 
 ```
 {OutputFolder}/
-  {PatientHash}/                # e.g. P1a2b3c4d5e6f  (stable per MRN)
-    {StudyHash}/                # e.g. ST9a8b7c6d5e4f (stable per StudyInstanceUID)
-      {SeriesHash}/             # e.g. SE0011223344ff (stable per SeriesInstanceUID)
+  {PatientHash}/                # e.g. P1a2b3c4d5e   (P + 10 hex, stable per MRN)
+    {StudyHash}/                # e.g. ST9a8b7c6d5e4f (ST + 12 hex, stable per StudyInstanceUID)
+      {SeriesHash}/             # e.g. SE0011223344ff (SE + 12 hex, stable per SeriesInstanceUID)
         image.nii.gz
         metadata.json
         doses/
@@ -294,7 +346,7 @@ Anonymized (folders named by deterministic per-identifier hashes; a patient's da
         masks/
           {ROI_Name}.nii.gz
   export_manifest.csv
-  AnonymizationKey.json     # three reverse-lookup maps: MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash
+  AnonymizationKey.json     # the salt + three reverse-lookup maps: MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash
 ```
 
 The CSV manifest columns are `PatientID, StudyUID, SeriesUID, SpacingX, SpacingY, SpacingZ` followed by one column per unique canonical ROI name (volume in cc; `-1` where the row's series did not contain that ROI). When anonymizing, the `PatientID`/`StudyUID`/`SeriesUID` cells hold the hashes; otherwise they hold the real identifiers. Every exported folder/file segment is sanitized to be valid on Windows (forbidden characters, reserved device names, trailing dots/spaces), anonymized or not. See the in-app **Help** in the DICOM -> NIfTI window for the full per-control reference.
@@ -330,7 +382,14 @@ Each input folder looks like one of these (every line is optional individually; 
     {basename}.nii.gz           # -> one RT-DOSE per file
 ```
 
-You can point the **NIfTI -> DICOM** window (or the headless `--reverse` flag) at a single such folder, or at a parent folder containing many of them side-by-side - each first-level subfolder becomes its own job. See the in-app **Help** in the NIfTI -> DICOM window for the full `metadata.json` schema and a copy-pasteable sample.
+Point the **NIfTI -> DICOM** window at a single such folder, or at a parent folder containing many of them side-by-side - each first-level subfolder becomes its own job. See the in-app **Help** in the NIfTI -> DICOM window for the full `metadata.json` schema and a copy-pasteable sample.
+
+> **This layout is the GUI's contract, not the CLI's.** The headless `--reverse` flag is
+> single-job and mask-only: `--masks-folder` must point *directly* at the `.nii.gz` masks (the
+> `masks/` folder above, read top-level only), and it writes an RT-STRUCT and nothing else - the
+> `doses/` inputs are skipped, because **mask -> RT-DOSE is implemented in the GUI only**. So is
+> the drop-folder **Run Server** watch mode. Scripted RT-DOSE or watch-folder work has no CLI
+> entry point today.
 
 ## Settings
 
@@ -339,7 +398,7 @@ Stored in `%AppData%\DicomToNifti\`:
 - `settings.json` - default output directory, auto-open after conversion, global Export Images / Export Structures / Export Dose toggles, output spacing, anonymization salt (`HashSalt`), and the persisted state of the "Limit export to selected ROIs" / "Anonymize export" / "Resample to fixed spacing" checkboxes.
 - `roi_associations.json` - ROI canonical-name <-> alias-set mappings used to rename DICOM ROIs to canonical names on export.
 
-`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds three reverse-lookup maps - MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash - so anonymized exports can be traced back to their original identifiers. Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
+`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds the salt plus three reverse-lookup maps - MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash - so anonymized exports can be traced back to their original identifiers. **It is re-identification data: store it access-controlled and keep it out of version control.** Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
 
 ## History
 

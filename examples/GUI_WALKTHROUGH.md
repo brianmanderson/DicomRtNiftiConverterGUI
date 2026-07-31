@@ -122,30 +122,50 @@ Selected every output volume is resampled to that grid, and the CSV manifest ref
 
 ## Reference: the controls
 
+Main window:
+
 | Control | What it does | CLI |
 |---|---|---|
 | **Input** | DICOM archive, scanned recursively — every file is opened | `--input` |
 | **Output** | Where `.nii.gz` files and the manifest are written; created if absent | `--output` |
 | **Scan** | Walks the input in parallel and builds the Patient → Study → Series tree | `--cohort-scan` |
 | **Stop** | Aborts an in-progress scan or conversion | — |
+| **Select all** | Ticks every patient in the tree | (the CLI converts everything it plans; narrow it with `--patients`) |
 | **Export Images / Structures / Dose** | Which artifact types to write | `--no-images` / `--no-structures` / `--no-doses` invert these |
-| **Modality scope** | Which image modalities to include | — |
-| **Limit export to selected ROIs** | Drop ROIs that match no association | `--only-associated-rois` |
-| **Edit ROI Associations…** | Canonical-name and alias editor | `--associations FILE.json` |
-| **Resample to fixed spacing** + **Set Spacing…** | Target voxel grid in mm | `--output-spacing X,Y,Z` |
-| **Anonymize export** + **Edit Anonymization Key…** | Hash identifiers; write the key file | `--anonymize --salt` |
+| **Export Options…** | Opens the panel below; stays open while you work | — |
 | **Convert Selected** | Run the full export | `--cohort-convert` |
 | **Export Manifest Only** | Survey without writing volumes | `--cohort-manifest` |
+| **Settings…** | Default output directory; open the output folder after a conversion | — (`%AppData%\DicomToNifti\settings.json`) |
+
+Export Options panel:
+
+| Control | What it does | CLI |
+|---|---|---|
+| **Edit ROI Associations…** | Canonical-name and alias editor; always applies | `--associations FILE.json` |
+| **Limit export to selected ROIs** + **Select ROIs for Export…** | Drop ROIs that match no association; choose which canonical names to keep | `--only-associated-rois` |
+| **Resample to fixed spacing** + **Set Spacing…** | Target voxel grid in mm | `--output-spacing X,Y,Z` |
+| **Anonymize export** + **Edit Anonymization Key…** | Hash identifiers; write (and hand-override) the key file | `--anonymize --salt` |
+| **Write DICOM tag sidecar (metadata.json)** + **Select Metadata Tags…** | Per-series `metadata.json` of chosen DICOM attributes and computed values, in three sections | `--metadata-tags` / `--metadata-structure-tags` / `--metadata-dose-tags` |
 
 The tree shows a checkbox at the patient and series level — studies are a structural grouping
 only — and a modality badge in brackets on each series row.
+
+**Modality scope is fixed, not a control.** Only `CT`, `MR` and `PT` series are linked to
+RT-STRUCT and RT-DOSE during the scan. Other modalities still appear in the tree and still export
+as `image.nii.gz`, but no structures or dose are associated with them.
+
+**Selected tags are written verbatim, even under Anonymize export.** Asking for `PatientName` or
+`PatientID` puts the real identifiers inside a folder tree whose names were just hashed.
 
 ### Selecting among several image series
 
 The GUI shows slice counts in the tree, so you can see at a glance which series is the planning
 CT and which are the shorter aligned CBCTs, and tick accordingly. The CLI has no tree to look at,
-which is why it has `--series-description` and `--prefer-largest-series` instead. Same decision,
-made once in advance rather than interactively.
+which is why it has filters instead — `--struct-description` first (structure sets are named for
+what they were drawn on, and CBCTs resampled onto the planning grid are otherwise
+indistinguishable), then `--series-description`, with `--prefer-largest-series` as a last resort
+that ties exactly in that resampled case. Same decision, made once in advance rather than
+interactively.
 
 ## Output structure
 
@@ -153,16 +173,21 @@ made once in advance rather than interactively.
 
 ```
 {Output}/{PatientID}/{SeriesDate}_{SeriesDescription}/
-    image.nii.gz
-    masks/{ROIName}.nii.gz
-    doses/{SeriesDescription}.nii.gz
-    metadata.json
+    image.nii.gz                     # Export Images
+    masks/{ROIName}.nii.gz           # Export Structures
+    doses/{SeriesDescription}.nii.gz # Export Dose, and a dose is linked
+    metadata.json                    # Write DICOM tag sidecar, with tags selected
 ```
 
-**Anonymized** — the same tree with a three-level hash triple in place of the patient and series
-folders, plus `AnonymizationKey.json` at the output root.
+Each line appears only when its toggle is on, as noted.
 
-The CSV manifest sits at the output root either way. Its first six columns are fixed —
+**Anonymized** — the same tree with a three-level hash triple in place of the patient and series
+folders, plus `AnonymizationKey.json` at the output root. That key file holds the salt as well as
+the hash→identifier maps: it is re-identification data, so keep it out of version control.
+
+The CSV manifest sits at the output root either way — `export_manifest.csv` from Convert Selected,
+`export_manifest_meta.csv` from Export Manifest Only (the CLI writes `export_manifest.csv` for
+both, so a scripted survey and conversion into one root merge into a single file). Its first six columns are fixed —
 `PatientID, StudyUID, SeriesUID, SpacingX, SpacingY, SpacingZ` — and every column after them is
 one ROI's volume in cc, with `-1` marking a structure that series does not have. Re-running merges
 into an existing manifest rather than regenerating it: rows are matched on the three identifier
@@ -174,23 +199,36 @@ columns, and new ROI columns are appended without disturbing the existing ones.
 
 ## Quick start
 
-1. Point **Browse…** at a folder of per-ROI masks, then **Scan**.
-2. The discovered-jobs grid lists what was found and what each job will produce.
+1. Set **Folder** (via **Browse…**) to a case folder — or to a parent holding several of them —
+   then **Scan**. A case folder is one holding at least one of `image.nii.gz`, `masks/*.nii.gz`,
+   or `doses/*.nii.gz` — see [Reverse-mode folder layout](../README.md#reverse-mode-folder-layout-nifti---dicom).
+2. The discovered-jobs grid lists what was found (Folder, Image, Masks, ROI Names, Doses, Dose
+   Files) and a per-case Status.
 3. Tick **Convert Images / Convert Structures / Convert Dose** as needed.
-4. **Convert All**.
+4. **Convert All** — or **Run Server** to watch the folder instead (workflow C). **Stop** aborts
+   either.
 
 ## Workflow walkthroughs
 
 ### A. Round-trip from a prior forward export
 
-Point the reverse window at a case folder produced by the forward direction. `metadata.json` is
-already there, so patient, study and frame-of-reference identifiers carry across and the
-regenerated RT-STRUCT overlays the original study.
+Point the reverse window at a case folder produced by the forward direction and it rebuilds a
+DICOM image series from `image.nii.gz`, then writes an RT-STRUCT against it.
 
 ```bash
---reverse --masks-folder CASE/masks --image-nifti CASE/image.nii.gz \
-          --metadata CASE/metadata.json --output regenerated.dcm
+--reverse --masks-folder CASE/masks --image-nifti CASE/image.nii.gz --output regenerated.dcm
 ```
+
+Note `--masks-folder` is `CASE/masks`, not `CASE`: the CLI reads that folder top-level only and
+converts exactly one job, where the GUI takes a case folder or a parent of many.
+
+> **The result is a new study, not the original one.** The `metadata.json` the forward direction
+> writes is the DICOM-**tag** sidecar (`ImageAttributes` / …); the reverse direction's
+> `metadata.json` is a different schema entirely — patient, study, frame of reference, rescale
+> slope. Nothing in the forward direction writes that one, and passing the tag sidecar to
+> `--metadata` is silently ignored, leaving freshly minted anonymous UIDs. **If the regenerated
+> structure set has to land on the original images, use workflow B** — point at the source DICOM
+> series and the identifiers come from it.
 
 ### B. Masks only, attaching to an existing DICOM image series
 
@@ -203,9 +241,18 @@ Instance UIDs, so the structure set references the actual images rather than a s
 
 ### C. Drop-folder / watch mode
 
-**Run Server** watches a folder and converts new cases as they appear — the shape of an
-inference-service integration, where a model writes masks and the toolkit turns them into
-structure sets without anyone clicking anything. There is no CLI equivalent; run the app.
+**Run Server** watches a folder (every 10 s) and converts each case once its fingerprint — file
+count, total bytes, latest write time across the folder plus `masks/` and `doses/` — is unchanged
+from the previous tick, i.e. the upload has settled. There is no CLI equivalent; run the app.
+
+Server mode names its outputs `RTSTRUCT_<hash12>.dcm` / `RTDOSE_<hash12>.dcm` and skips a case
+whose output file already exists, where **`hash12` is derived from the input file *names* only** —
+lowercased, sorted, joined, SHA-256'd. Adding or removing a mask changes the name and produces a
+new file alongside the old one. **Overwriting a mask in place does not**: `masks/PTV.nii.gz`
+replaced by a corrected prediction hashes identically, so the next tick sees the output present
+and keeps the stale structure set. Delete the existing `RTSTRUCT_*.dcm` / `RTDOSE_*.dcm` to force
+a rebuild. (Convert All sidesteps this entirely — it timestamps every output,
+`RTSTRUCT_YYYYMMDD_HHmmss.dcm`, and is therefore never idempotent.)
 
 ### D. Batch over many patient folders
 

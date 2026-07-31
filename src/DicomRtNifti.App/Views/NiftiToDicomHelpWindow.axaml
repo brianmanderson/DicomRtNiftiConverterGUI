@@ -129,7 +129,7 @@
               tick is skipped (the next tick re-checks).
             <LineBreak/>
             <LineBreak/>
-            Outputs use content-derived filenames (see <Run FontWeight="SemiBold">Output details</Run>
+            Outputs use name-derived filenames (see <Run FontWeight="SemiBold">Output details</Run>
             below), so server mode is idempotent: re-running on the same inputs skips files that
             already exist; adding a new mask or dose changes the hash and produces a new output
             without overwriting prior ones. Click <Run FontWeight="SemiBold">Stop Server</Run> to
@@ -375,7 +375,7 @@
             Toggles a periodic watcher (every 10 seconds). The button text flips from
             <Run FontWeight="SemiBold">Run Server</Run> to
             <Run FontWeight="SemiBold">Stop Server</Run> while the watcher is active. See workflow C
-            above for the per-tick logic. Server mode writes content-derived filenames so re-running
+            above for the per-tick logic. Server mode writes name-derived filenames so re-running
             on identical inputs is idempotent — see <Run FontWeight="SemiBold">Output details</Run>
             below.
           </TextBlock>
