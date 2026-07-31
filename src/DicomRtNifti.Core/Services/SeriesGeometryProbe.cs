@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using DicomRtNifti.Core.Models;
 
@@ -66,6 +67,64 @@ namespace DicomRtNifti.Core.Services
             geometry.ExtentMm = positions[positions.Count - 1] - positions[0];
 
             return true;
+        }
+
+        /// <summary>
+        /// Builds the warning a conversion should emit for a series whose slice gaps are mixed,
+        /// or returns false when the series is uniform (or carries no positions to judge by).
+        ///
+        /// NIfTI stores one spacing per axis, so a mixed-gap series is flattened to a single
+        /// number on the way out — the ImageSeriesReader's endpoint average, which is not any gap
+        /// the scan actually has. The mask geometry is still rasterized against the true per-slice
+        /// positions, but every volume derived from the written spacing is scaled by
+        /// averageGap/trueGap. That is a silent multiple-fold error on a number people publish, so
+        /// it has to be said out loud even though the conversion itself succeeds.
+        /// </summary>
+        /// <param name="warning">The message to log, or null when there is nothing to warn about.</param>
+        /// <returns>True when <paramref name="warning"/> was set.</returns>
+        public static bool TryBuildNonUniformSpacingWarning(DicomSeriesGroup series, out string warning)
+        {
+            warning = null;
+
+            SeriesGeometry geometry;
+            if (!TryDescribe(series, out geometry) || geometry.Uniform)
+                return false;
+
+            var gaps = geometry.DistinctGaps;
+            if (gaps == null || gaps.Length < 2)
+                return false;
+
+            // TryDescribe only reports non-uniform when it differenced at least two positions,
+            // so the divisor below is always >= 1.
+            int sliceCount = series.SlicePositions.Count;
+
+            warning = BuildNonUniformSpacingMessage(
+                series.SeriesInstanceUID,
+                sliceCount,
+                gaps[0],
+                gaps[gaps.Length - 1],
+                geometry.ExtentMm / (sliceCount - 1));
+            return true;
+        }
+
+        /// <summary>
+        /// Wording for <see cref="TryBuildNonUniformSpacingWarning"/>. Internal and static so the
+        /// numbers in it are unit-tested without a DICOM tree. Formatted invariantly: this goes to
+        /// stderr, which harnesses parse.
+        /// </summary>
+        internal static string BuildNonUniformSpacingMessage(
+            string seriesInstanceUid, int sliceCount, double minGap, double maxGap, double writtenSpacing)
+        {
+            string uid = string.IsNullOrEmpty(seriesInstanceUid) ? "(unknown UID)" : seriesInstanceUid;
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "WARNING: series {0} has non-uniform slice spacing — {1} slices with gaps from " +
+                "{2:0.###} mm to {3:0.###} mm. NIfTI carries one spacing per axis, so the output " +
+                "will be written at {4:0.###} mm throughout and any volume computed from it will " +
+                "be off by up to {5:0.##}x. Resample the series to a uniform grid before " +
+                "converting if the geometry matters.",
+                uid, sliceCount, minGap, maxGap, writtenSpacing,
+                minGap > 0 ? writtenSpacing / minGap : maxGap / writtenSpacing);
         }
 
         /// <summary>

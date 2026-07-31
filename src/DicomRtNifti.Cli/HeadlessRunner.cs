@@ -150,6 +150,7 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine($"  Image series: {imageSeries.FilePaths.Count} files in {imageFolder}");
             Console.Error.WriteLine($"  RTSTRUCT:    {rtstructPath} ({rtStructSeries.RoiNames.Count} ROIs)");
             Console.Error.WriteLine($"  Output:      {outputFolder}");
+            WarnIfSliceSpacingNonUniform(imageSeries);
 
             var maskService       = new RtStructMaskService();
             var conversionService = new NiftiConversionService(maskService);
@@ -557,6 +558,7 @@ namespace DicomRtNifti.Cli
                 if (targetSpacing != null)
                     Console.Error.WriteLine($"  Target spacing: {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
                 Console.Error.WriteLine($"  Output:       {outputPath}");
+                WarnIfSliceSpacingNonUniform(imageSeries);
 
                 var maskService = new RtStructMaskService();
                 var conversionService = new NiftiConversionService(maskService);
@@ -601,6 +603,12 @@ namespace DicomRtNifti.Cli
             // image slices in the same folder -- ImageSeriesReader cannot ingest them
             // and would crash with a GDCM read error.
             var imageFiles = new List<string>();
+            // Per-slice geometry captured while each header is already open, so
+            // SeriesGeometryProbe can judge slice-spacing uniformity without a second pass.
+            // DicomScannerService fills the same three fields for the cohort modes.
+            var slicePositions = new List<double>();
+            double[] pixelSpacing = null;
+            double? sliceThickness = null;
             DicomDataset firstImage = null;
             foreach (var path in Directory.EnumerateFiles(folder, "*.dcm", SearchOption.TopDirectoryOnly)
                                           .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
@@ -623,6 +631,31 @@ namespace DicomRtNifti.Cli
 
                 imageFiles.Add(path);
                 if (firstImage == null) firstImage = ds;
+
+                try
+                {
+                    var ipp = ds.GetValues<double>(DicomTag.ImagePositionPatient);
+                    if (ipp != null && ipp.Length >= 3)
+                        slicePositions.Add(ipp[2]);
+                }
+                catch { /* malformed IPP: the probe reports non-uniform rather than guessing */ }
+
+                if (pixelSpacing == null && ds.Contains(DicomTag.PixelSpacing))
+                {
+                    try
+                    {
+                        var ps = ds.GetValues<double>(DicomTag.PixelSpacing);
+                        if (ps != null && ps.Length >= 2)
+                            pixelSpacing = new[] { ps[0], ps[1] };
+                    }
+                    catch { /* leave null; the probe just reports no in-plane spacing */ }
+                }
+
+                if (sliceThickness == null && ds.Contains(DicomTag.SliceThickness))
+                {
+                    try { sliceThickness = ds.GetSingleValue<double>(DicomTag.SliceThickness); }
+                    catch { /* optional; only the single-slice fallback uses it */ }
+                }
             }
             if (imageFiles.Count == 0 || firstImage == null)
                 throw new InvalidOperationException($"No image (.dcm) slices in {folder}.");
@@ -635,7 +668,26 @@ namespace DicomRtNifti.Cli
                 SeriesDate           = GetStringOrEmpty(firstImage, DicomTag.SeriesDate),
                 FrameOfReferenceUID  = GetStringOrEmpty(firstImage, DicomTag.FrameOfReferenceUID),
                 FilePaths            = imageFiles,
+                SlicePositions       = slicePositions,
+                PixelSpacing         = pixelSpacing,
+                SliceThickness       = sliceThickness,
             };
+        }
+
+        /// <summary>
+        /// Emits SeriesGeometryProbe's non-uniform-spacing warning on stderr, if there is one.
+        ///
+        /// The probe existed but only the cohort-scan mode ever consulted it, so a mixed-gap
+        /// series went through --forward / --image-forward with exit 0 and no message naming the
+        /// spacing it had just been flattened to. Deliberately non-fatal: the conversion is still
+        /// the best available answer, and the geometry written is left exactly as it was — the
+        /// caller just gets told what it is.
+        /// </summary>
+        private static void WarnIfSliceSpacingNonUniform(DicomSeriesGroup imageSeries)
+        {
+            string warning;
+            if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(imageSeries, out warning))
+                Console.Error.WriteLine("  " + warning);
         }
 
         private static DicomSeriesGroup BuildRtDoseSeriesFromFile(string rtdosePath)
