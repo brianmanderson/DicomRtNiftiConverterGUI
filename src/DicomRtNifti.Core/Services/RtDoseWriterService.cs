@@ -286,7 +286,12 @@ namespace DicomRtNifti.Core.Services
         /// Builds the RT-DOSE-level metadata: patient + study copied from refDs, fresh series + SOP,
         /// FrameOfReferenceUID, and modality fields. Pixel-module fields are added by the caller.
         /// </summary>
-        private static DicomDataset BuildRtDoseShell(
+        /// <remarks>
+        /// internal rather than private so the tests can assert the Part 10 File Meta
+        /// Information invariants (see RtWriterFileMetaInfoTests) without a dose NIfTI,
+        /// a reference series, or the SimpleITK native.
+        /// </remarks>
+        internal static DicomDataset BuildRtDoseShell(
             DicomDataset refDs,
             DicomSeriesGroup referenceSeries,
             string baseName,
