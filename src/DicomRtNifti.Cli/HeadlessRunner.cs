@@ -203,10 +203,14 @@ namespace DicomRtNifti.Cli
             }
 
             // Machine-readable summary on stdout: one row per ROI: <name>\t<volume_cc>\t<path>.
+            // The file names come from the same order-independent helper the writer used, so ROIs
+            // whose names sanitize to the same string are reported at the paths they were actually
+            // written to rather than all three claiming one file.
+            var maskFileNames = NiftiConversionService.BuildUniqueMaskFileNames(roiVolumes.Keys);
             Console.Out.WriteLine("# rt_mask_validation forward");
             foreach (var kvp in roiVolumes)
             {
-                string maskPath = Path.Combine(outputFolder, SanitizeFileName(kvp.Key) + ".nii.gz");
+                string maskPath = Path.Combine(outputFolder, maskFileNames[kvp.Key] + ".nii.gz");
                 Console.Out.WriteLine($"{kvp.Key}\t{kvp.Value:G}\t{maskPath}");
             }
             return 0;

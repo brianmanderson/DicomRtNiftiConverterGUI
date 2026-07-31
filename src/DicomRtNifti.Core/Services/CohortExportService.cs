@@ -456,6 +456,9 @@ namespace DicomRtNifti.Core.Services
 
                 if (roiVolumes != null)
                 {
+                    // Same order-independent naming the writer used, so ROI names that sanitize to
+                    // the same string are recorded at the distinct paths they were written to.
+                    var maskFileNames = NiftiConversionService.BuildUniqueMaskFileNames(roiVolumes.Keys);
                     foreach (var kv in roiVolumes.OrderBy(k => k.Key, StringComparer.Ordinal))
                     {
                         seriesResult.Masks.Add(new MaskExportResult
@@ -464,7 +467,7 @@ namespace DicomRtNifti.Core.Services
                             VolumeCc = kv.Value,
                             File = writeFiles
                                 ? Join(planned.RelativeOutputDir, "masks",
-                                       WindowsPathSanitizer.SanitizeName(kv.Key) + ".nii.gz")
+                                       maskFileNames[kv.Key] + ".nii.gz")
                                 : null,
                         });
                     }

@@ -201,6 +201,157 @@ namespace DicomRtNifti.Core.Tests
             return path;
         }
 
+        /// <summary>
+        /// Writes an axial CT series that SimpleITK's ImageSeriesReader can actually load: real
+        /// 16-bit PixelData, IOP/IPP/PixelSpacing, one slice per <paramref name="sliceCount"/> at a
+        /// uniform <paramref name="sliceGapMm"/>. With a 1 mm grid whose origin is (0,0,0), a
+        /// physical coordinate in mm equals its continuous voxel index, which keeps the contour
+        /// fixtures below readable.
+        /// </summary>
+        /// <returns>The folder holding the slices.</returns>
+        public static string WriteCtSeriesWithPixels(
+            string dir, string seriesUid, string frameUid,
+            int sliceCount = 4, int size = 16,
+            double inPlaneSpacingMm = 1.0, double sliceGapMm = 1.0,
+            string studyUid = null, string patientId = "PAT001")
+        {
+            studyUid = studyUid ?? NewUid();
+            Directory.CreateDirectory(dir);
+
+            var pixels = new ushort[size * size];
+            for (int i = 0; i < pixels.Length; i++) pixels[i] = 1000;
+            byte[] bytes = new byte[pixels.Length * 2];
+            System.Buffer.BlockCopy(pixels, 0, bytes, 0, bytes.Length);
+
+            for (int s = 0; s < sliceCount; s++)
+            {
+                double z = s * sliceGapMm;
+                var ds = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
+                {
+                    { DicomTag.SOPClassUID, DicomUID.CTImageStorage },
+                    { DicomTag.SOPInstanceUID, DicomUIDGenerator.GenerateDerivedFromUUID() },
+                    { DicomTag.PatientID, patientId },
+                    { DicomTag.PatientName, "Test^Patient" },
+                    { DicomTag.StudyInstanceUID, studyUid },
+                    { DicomTag.SeriesInstanceUID, seriesUid },
+                    { DicomTag.FrameOfReferenceUID, frameUid },
+                    { DicomTag.StudyID, "1" },
+                    { DicomTag.SeriesNumber, "1" },
+                    { DicomTag.InstanceNumber, (s + 1).ToString(CultureInfo.InvariantCulture) },
+                    { DicomTag.Modality, "CT" },
+                    { DicomTag.SeriesDescription, "CT series" },
+                    { DicomTag.SamplesPerPixel, (ushort)1 },
+                    { DicomTag.PhotometricInterpretation, "MONOCHROME2" },
+                    { DicomTag.BitsAllocated, (ushort)16 },
+                    { DicomTag.BitsStored, (ushort)16 },
+                    { DicomTag.HighBit, (ushort)15 },
+                    { DicomTag.PixelRepresentation, (ushort)0 },
+                    { DicomTag.Rows, (ushort)size },
+                    { DicomTag.Columns, (ushort)size },
+                    { DicomTag.RescaleIntercept, "0" },
+                    { DicomTag.RescaleSlope, "1" },
+                };
+
+                ds.Add(DicomTag.ImagePositionPatient,
+                    "0", "0", z.ToString(CultureInfo.InvariantCulture));
+                ds.Add(DicomTag.ImageOrientationPatient, "1", "0", "0", "0", "1", "0");
+                ds.Add(DicomTag.PixelSpacing,
+                    inPlaneSpacingMm.ToString(CultureInfo.InvariantCulture),
+                    inPlaneSpacingMm.ToString(CultureInfo.InvariantCulture));
+                ds.Add(DicomTag.SliceThickness, sliceGapMm.ToString(CultureInfo.InvariantCulture));
+                ds.Add(new DicomOtherWord(DicomTag.PixelData, new MemoryByteBuffer(bytes)));
+
+                new DicomFile(ds).Save(Path.Combine(dir, $"ct_{s:D3}.dcm"));
+            }
+
+            return dir;
+        }
+
+        /// <summary>
+        /// Writes an RTSTRUCT carrying one CLOSED_PLANAR contour per entry in
+        /// <paramref name="roiContours"/> — ROI name paired with a flat ContourData array
+        /// [x0,y0,z0, x1,y1,z1, ...] in patient mm. Enough to drive
+        /// <see cref="DicomRtNifti.Core.Services.RtStructMaskService"/> end to end.
+        /// </summary>
+        public static string WriteRtStructWithContours(
+            string dir, string fileName,
+            string studyUid, string seriesUid, string frameUid,
+            IList<KeyValuePair<string, double[]>> roiContours,
+            string patientId = "PAT001")
+        {
+            var ds = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
+            {
+                { DicomTag.SOPClassUID, DicomUID.RTStructureSetStorage },
+                { DicomTag.SOPInstanceUID, DicomUIDGenerator.GenerateDerivedFromUUID() },
+                { DicomTag.PatientID, patientId },
+                { DicomTag.PatientName, "Test^Patient" },
+                { DicomTag.StudyInstanceUID, studyUid },
+                { DicomTag.SeriesInstanceUID, seriesUid },
+                { DicomTag.Modality, "RTSTRUCT" },
+                { DicomTag.FrameOfReferenceUID, frameUid },
+                { DicomTag.SeriesDescription, "structures" },
+                { DicomTag.StructureSetLabel, "TEST" },
+            };
+
+            var roiItems = new List<DicomDataset>();
+            var contourItems = new List<DicomDataset>();
+
+            int roiNumber = 1;
+            foreach (var entry in roiContours)
+            {
+                roiItems.Add(new DicomDataset
+                {
+                    { DicomTag.ROINumber, roiNumber.ToString(CultureInfo.InvariantCulture) },
+                    { DicomTag.ReferencedFrameOfReferenceUID, frameUid },
+                    { DicomTag.ROIName, entry.Key },
+                });
+
+                double[] points = entry.Value;
+                string[] contourData = new string[points.Length];
+                for (int i = 0; i < points.Length; i++)
+                    contourData[i] = points[i].ToString("0.####", CultureInfo.InvariantCulture);
+
+                var contour = new DicomDataset
+                {
+                    { DicomTag.ContourGeometricType, "CLOSED_PLANAR" },
+                    { DicomTag.NumberOfContourPoints, (points.Length / 3).ToString(CultureInfo.InvariantCulture) },
+                };
+                contour.Add(DicomTag.ContourData, contourData);
+
+                var roiContour = new DicomDataset
+                {
+                    { DicomTag.ReferencedROINumber, roiNumber.ToString(CultureInfo.InvariantCulture) },
+                };
+                roiContour.Add(DicomTag.ROIDisplayColor, "255", "0", "0");
+                roiContour.Add(new DicomSequence(DicomTag.ContourSequence, contour));
+                contourItems.Add(roiContour);
+
+                roiNumber++;
+            }
+
+            ds.Add(new DicomSequence(DicomTag.StructureSetROISequence, roiItems.ToArray()));
+            ds.Add(new DicomSequence(DicomTag.ROIContourSequence, contourItems.ToArray()));
+
+            string path = Path.Combine(dir, fileName);
+            new DicomFile(ds).Save(path);
+            return path;
+        }
+
+        /// <summary>
+        /// A closed axial square contour, corners at (<paramref name="min"/>,<paramref name="min"/>)
+        /// and (<paramref name="max"/>,<paramref name="max"/>) mm, on the plane z = <paramref name="z"/>.
+        /// </summary>
+        public static double[] SquareContour(double min, double max, double z)
+        {
+            return new[]
+            {
+                min, min, z,
+                max, min, z,
+                max, max, z,
+                min, max, z,
+            };
+        }
+
         public static string NewUid() => DicomUIDGenerator.GenerateDerivedFromUUID().UID;
     }
 }

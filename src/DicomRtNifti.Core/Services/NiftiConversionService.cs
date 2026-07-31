@@ -236,6 +236,23 @@ namespace DicomRtNifti.Core.Services
             }
 
             var maskList = masks.ToList();
+
+            // Resolve every output file name up front, and disambiguate the ones that collide.
+            // Two ROIs whose names differ only in characters the sanitizer strips ("PTV:1",
+            // "PTV*1") both resolve to PTV_1.nii.gz: one file on disk, several volumes reported
+            // against it, and -- because this loop is parallel -- two threads writing the same
+            // path at once. Same failure the dose path already guards against above.
+            var maskFileNames = BuildUniqueMaskFileNames(maskList.Select(m => m.Key));
+            foreach (var entry in maskFileNames)
+            {
+                if (!string.Equals(entry.Value, SanitizeFileName(entry.Key), StringComparison.Ordinal))
+                {
+                    progress?.Report(
+                        $"  ROI '{entry.Key}' sanitizes to a file name another ROI already claimed; " +
+                        $"writing it as {entry.Value}.nii.gz.");
+                }
+            }
+
             var parallelOpts = new ParallelOptions
             {
                 CancellationToken = ct,
@@ -263,7 +280,7 @@ namespace DicomRtNifti.Core.Services
                 double voxelCount = stats.GetSum(); // binary mask: sum == count of 1-voxels
                 roiVolumes[kvp.Key] = voxelCount * effectiveVoxelVolume / 1000; // convert to cc
 
-                string safeName = SanitizeFileName(kvp.Key);
+                string safeName = maskFileNames[kvp.Key];
                 string maskPath = Path.Combine(masksDir, safeName + ".nii.gz");
                 SimpleITK.WriteImage(maskToWrite, maskPath);
                 maskToWrite.Dispose();
@@ -501,6 +518,46 @@ namespace DicomRtNifti.Core.Services
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Maps each ROI output name to the base name (no extension) its mask is written under.
+        ///
+        /// Sanitizing is many-to-one — "PTV:1", "PTV*1" and "PTV?1" all become "PTV_1" — so
+        /// deriving a file name from an ROI name in isolation is not safe. Repeats get a numeric
+        /// suffix, the same convention <see cref="ConvertDoseToNifti"/> uses for doses that share
+        /// a series description.
+        ///
+        /// Assignment is driven by an ordinal sort of the ROI names, not by the order they happen
+        /// to arrive in, so every caller that needs to name the same set of files — the writer
+        /// here, the CLI's stdout summary, the cohort manifest — computes the identical answer
+        /// from the same ROI names without having to share state.
+        /// </summary>
+        /// <param name="roiNames">ROI output names, as returned by the conversion entry points.</param>
+        /// <returns>ROI output name -> mask file base name, without the ".nii.gz" suffix.</returns>
+        public static Dictionary<string, string> BuildUniqueMaskFileNames(IEnumerable<string> roiNames)
+        {
+            var result = new Dictionary<string, string>();
+            if (roiNames == null)
+                return result;
+
+            // Case-insensitive: the collisions this exists to prevent are collisions on disk, and
+            // "PTV_1" and "ptv_1" are one file on Windows and macOS.
+            var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var name in roiNames.OrderBy(n => n, StringComparer.Ordinal))
+            {
+                if (name == null || result.ContainsKey(name))
+                    continue;
+
+                string safe = SanitizeFileName(name);
+                string candidate = safe;
+                for (int suffix = 2; !reserved.Add(candidate); suffix++)
+                    candidate = $"{safe}_{suffix}";
+                result[name] = candidate;
+            }
+
+            return result;
         }
 
         /// <summary>
