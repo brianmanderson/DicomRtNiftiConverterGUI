@@ -24,36 +24,22 @@ namespace DicomRtNifti.Core.Services
         };
 
         /// <summary>
-        /// Ensures the application data directory exists.
-        /// </summary>
-        private void EnsureDirectory()
-        {
-            if (!Directory.Exists(AppDataFolder))
-            {
-                Directory.CreateDirectory(AppDataFolder);
-            }
-        }
-
-        /// <summary>
         /// Loads application settings from disk. Returns defaults if the file does not exist.
         /// </summary>
+        /// <exception cref="InvalidDataException">
+        /// settings.json exists but cannot be read or parsed. Returning defaults instead used to
+        /// look harmless, but the next <see cref="SaveSettings"/> rewrites the file from those
+        /// defaults, so a single truncated write silently discarded every stored preference with
+        /// no way to tell it had happened.
+        /// </exception>
         public AppSettings LoadSettings()
         {
-            try
-            {
-                if (File.Exists(SettingsFilePath))
-                {
-                    string json = File.ReadAllText(SettingsFilePath);
-                    var settings = JsonConvert.DeserializeObject<AppSettings>(json) ?? new AppSettings();
-                    MigrateMetadataTagKeywords(settings);
-                    return settings;
-                }
-            }
-            catch (Exception)
-            {
-                // Return defaults on any read/parse error
-            }
-            return new AppSettings();
+            if (!File.Exists(SettingsFilePath))
+                return new AppSettings();
+
+            var settings = ReadJson<AppSettings>(SettingsFilePath, "application settings");
+            MigrateMetadataTagKeywords(settings);
+            return settings;
         }
 
         /// <summary>
@@ -81,43 +67,93 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
-        /// Saves application settings to disk.
+        /// Saves application settings to disk. The write is atomic (temp file + replace) so a
+        /// crash cannot leave behind the truncated settings.json that <see cref="LoadSettings"/>
+        /// now refuses to load.
         /// </summary>
         public void SaveSettings(AppSettings settings)
         {
-            EnsureDirectory();
             string json = JsonConvert.SerializeObject(settings, JsonSettings);
-            File.WriteAllText(SettingsFilePath, json);
+            AtomicFileWriter.WriteAllText(SettingsFilePath, json);
         }
 
         /// <summary>
         /// Loads ROI associations from disk. Returns an empty list if the file does not exist.
         /// </summary>
+        /// <exception cref="InvalidDataException">
+        /// roi_associations.json exists but cannot be read or parsed. These are hand-curated
+        /// canonical-name/alias sets that nothing else can reconstruct, so silently substituting
+        /// an empty list — which the next <see cref="SaveAssociations"/> then writes over the
+        /// original — destroys user data.
+        /// </exception>
         public List<RoiAssociation> LoadAssociations()
         {
-            try
-            {
-                if (File.Exists(AssociationsFilePath))
-                {
-                    string json = File.ReadAllText(AssociationsFilePath);
-                    return JsonConvert.DeserializeObject<List<RoiAssociation>>(json) ?? new List<RoiAssociation>();
-                }
-            }
-            catch (Exception)
-            {
-                // Return empty on any read/parse error
-            }
-            return new List<RoiAssociation>();
+            if (!File.Exists(AssociationsFilePath))
+                return new List<RoiAssociation>();
+
+            return ReadJson<List<RoiAssociation>>(AssociationsFilePath, "ROI associations");
         }
 
         /// <summary>
-        /// Saves ROI associations to disk.
+        /// Saves ROI associations to disk. Atomic, for the same reason as
+        /// <see cref="SaveSettings"/>.
         /// </summary>
         public void SaveAssociations(List<RoiAssociation> associations)
         {
-            EnsureDirectory();
             string json = JsonConvert.SerializeObject(associations, JsonSettings);
-            File.WriteAllText(AssociationsFilePath, json);
+            AtomicFileWriter.WriteAllText(AssociationsFilePath, json);
+        }
+
+        /// <summary>
+        /// Reads and deserializes one of the app's own JSON state files, turning any failure into
+        /// an <see cref="InvalidDataException"/> that names the path and the remedy. An empty file
+        /// and a literal JSON null both deserialize to null without throwing, and an empty file is
+        /// the classic truncated-write artefact, so a null result counts as unusable too.
+        ///
+        /// Internal rather than private so the refusal can be unit-tested against a temp file:
+        /// the public entry points are hard-wired to %AppData%, which tests must not touch.
+        /// </summary>
+        internal static T ReadJson<T>(string path, string what) where T : class
+        {
+            string json;
+            try
+            {
+                json = File.ReadAllText(path);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException(BuildUnusableFileMessage(path, what, ex.Message), ex);
+            }
+
+            T value;
+            try
+            {
+                value = JsonConvert.DeserializeObject<T>(json);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException(BuildUnusableFileMessage(path, what, ex.Message), ex);
+            }
+
+            if (value == null)
+            {
+                throw new InvalidDataException(BuildUnusableFileMessage(
+                    path, what, "the file is empty or contains a JSON null"));
+            }
+
+            return value;
+        }
+
+        /// <summary>
+        /// The message shown when one of the app's JSON state files exists but cannot be used.
+        /// Internal so the wording is testable without touching %AppData%.
+        /// </summary>
+        internal static string BuildUnusableFileMessage(string path, string what, string detail)
+        {
+            return
+                $"The {what} file '{path}' exists but could not be read ({detail}). " +
+                "Refusing to continue with defaults: saving over it would discard whatever it " +
+                "still holds. Move the file aside (or restore a backup) and try again.";
         }
 
         /// <summary>
@@ -135,7 +171,7 @@ namespace DicomRtNifti.Core.Services
         public void ExportAssociations(List<RoiAssociation> associations, string filePath)
         {
             string json = JsonConvert.SerializeObject(associations, JsonSettings);
-            File.WriteAllText(filePath, json);
+            AtomicFileWriter.WriteAllText(filePath, json);
         }
     }
 }

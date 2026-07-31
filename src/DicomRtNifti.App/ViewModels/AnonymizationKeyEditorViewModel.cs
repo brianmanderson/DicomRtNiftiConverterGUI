@@ -45,6 +45,12 @@ namespace DicomRtNifti.App.ViewModels
         private readonly string _salt;
         private string _errorText = "";
 
+        /// <summary>
+        /// Set when the existing key file could not be read. The editor is showing an empty set of
+        /// mappings that is not what is on disk, so writing it back would destroy the real key.
+        /// </summary>
+        private bool _saveBlocked;
+
         public AnonymizationKeyEditorViewModel(string keyFilePath, string salt)
         {
             _keyFilePath = keyFilePath;
@@ -106,7 +112,19 @@ namespace DicomRtNifti.App.ViewModels
 
         private void Load()
         {
-            var keyFile = AnonymizationService.LoadKeyFile(_keyFilePath);
+            AnonymizationKeyFile keyFile;
+            try
+            {
+                keyFile = AnonymizationService.LoadKeyFile(_keyFilePath);
+            }
+            catch (InvalidDataException ex)
+            {
+                // An unreadable key file used to open as an empty editor, and the first Save
+                // wrote that emptiness over the file. Show the problem and refuse to save.
+                _saveBlocked = true;
+                ErrorText = ex.Message;
+                return;
+            }
             if (keyFile == null) return;
 
             if (keyFile.Patients != null)
@@ -126,6 +144,13 @@ namespace DicomRtNifti.App.ViewModels
         /// </summary>
         public bool TrySave()
         {
+            if (_saveBlocked)
+            {
+                ErrorText = "Not saved — the existing key file could not be read and is being " +
+                            "preserved. Move it aside (or restore a backup) first.";
+                return false;
+            }
+
             if (!TryBuild(Patients, "patient", out var patients)) return false;
             if (!TryBuild(Studies, "study", out var studies)) return false;
             if (!TryBuild(Series, "series", out var series)) return false;

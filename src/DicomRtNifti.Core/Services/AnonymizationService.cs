@@ -27,6 +27,12 @@ namespace DicomRtNifti.Core.Services
         /// given path, loads it so previously assigned hashes are reused. Old-format key files
         /// (composite ExportID entries) deserialize to empty maps and are treated as a fresh start.
         /// </summary>
+        /// <exception cref="InvalidDataException">
+        /// The key file exists but cannot be read or parsed. Constructing anyway would start from
+        /// empty maps and the first <see cref="Save"/> would overwrite the damaged file, so every
+        /// mapping it still held would be lost and already-exported patients would come back under
+        /// a second pseudonym — the same patient in two identities is a train/validation leak.
+        /// </exception>
         public AnonymizationService(string keyFilePath, string salt)
         {
             _keyFilePath = keyFilePath;
@@ -124,42 +130,81 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
-        /// Loads an AnonymizationKeyFile from the given path. Returns null if file does not exist or is invalid.
+        /// Loads an AnonymizationKeyFile from the given path. Returns null when no file exists
+        /// there — that is the legitimate "first run" case.
         /// </summary>
+        /// <exception cref="InvalidDataException">
+        /// The file exists but cannot be read or does not parse as a key file. This used to be
+        /// swallowed into a null return, which the caller could not tell apart from "no file yet":
+        /// a truncated key file therefore silently became an empty one and was overwritten on the
+        /// next save, losing every recorded mapping. Refusing loudly is the only safe answer,
+        /// because the damage is irreversible and invisible in the export output.
+        /// </exception>
         public static AnonymizationKeyFile LoadKeyFile(string path)
         {
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
                 return null;
 
+            string json;
             try
             {
-                string json = File.ReadAllText(path);
-                var keyFile = JsonConvert.DeserializeObject<AnonymizationKeyFile>(json);
-                return keyFile;
+                json = File.ReadAllText(path);
             }
-            catch
+            catch (Exception ex)
             {
-                return null;
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(path, ex.Message), ex);
             }
+
+            AnonymizationKeyFile keyFile;
+            try
+            {
+                keyFile = JsonConvert.DeserializeObject<AnonymizationKeyFile>(json);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(path, ex.Message), ex);
+            }
+
+            // An empty file (the classic truncation artefact) and a literal JSON null both
+            // deserialize to null without throwing, so they need their own check.
+            if (keyFile == null)
+            {
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(
+                    path, "the file is empty or contains a JSON null"));
+            }
+
+            return keyFile;
+        }
+
+        /// <summary>
+        /// The message shown when an existing key file cannot be used. Names the path and the
+        /// remedy, because the only safe recovery is a human decision: the mappings in a damaged
+        /// key cannot be regenerated from the exported data.
+        /// </summary>
+        internal static string BuildUnusableKeyFileMessage(string path, string detail)
+        {
+            return
+                $"Anonymization key file '{path}' exists but could not be read as a key file ({detail}). " +
+                "Refusing to continue: starting from an empty key would assign a second pseudonym to " +
+                "patients that were already exported, and the next save would overwrite whatever " +
+                "mappings the file still holds. Move the file aside (or restore a backup) and re-run.";
         }
 
         /// <summary>
         /// Saves an AnonymizationKeyFile to the given path as formatted JSON.
+        ///
+        /// The write goes through <see cref="AtomicFileWriter"/>: a crash midway through a plain
+        /// <c>File.WriteAllText</c> leaves the key truncated, which is exactly the state
+        /// <see cref="LoadKeyFile"/> now has to refuse.
         /// </summary>
         public static void SaveKeyFile(string path, AnonymizationKeyFile keyFile)
         {
-            string dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
             var settings = new JsonSerializerSettings
             {
                 Formatting = Formatting.Indented
             };
             string json = JsonConvert.SerializeObject(keyFile, settings);
-            File.WriteAllText(path, json);
+            AtomicFileWriter.WriteAllText(path, json);
         }
     }
 

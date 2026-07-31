@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using CommunityToolkit.Mvvm.Input;
@@ -21,6 +22,12 @@ namespace DicomRtNifti.App.ViewModels
     public class RoiAssociationViewModel : INotifyPropertyChanged
     {
         private readonly SettingsService _settingsService;
+
+        /// <summary>
+        /// Set when the existing associations file could not be read. Saving would replace it
+        /// with whatever is on screen, which is not what the user has.
+        /// </summary>
+        private bool _saveBlocked;
         private readonly List<DiscoveredRoiName> _allDiscoveredRoiNames;
         private RoiAssociationItemViewModel _selectedAssociation;
         private string _roiSearchText = "";
@@ -48,8 +55,18 @@ namespace DicomRtNifti.App.ViewModels
             AddDiscoveredNameAsAliasCommand = new RelayCommand<string>(AddDiscoveredNameAsAlias);
             AddCustomAliasCommand = new RelayCommand(AddCustomAlias);
 
-            foreach (var assoc in _settingsService.LoadAssociations())
-                Associations.Add(new RoiAssociationItemViewModel(assoc));
+            // An unreadable roi_associations.json must not present itself as "no associations
+            // yet" — the user would hit Save and overwrite the real file with an empty list.
+            try
+            {
+                foreach (var assoc in _settingsService.LoadAssociations())
+                    Associations.Add(new RoiAssociationItemViewModel(assoc));
+            }
+            catch (InvalidDataException ex)
+            {
+                _saveBlocked = true;
+                StatusText = ex.Message;
+            }
             SelectedAssociation = Associations.FirstOrDefault();
 
             // Track every edit that can change whether a discovered name is covered (associations
@@ -202,6 +219,13 @@ namespace DicomRtNifti.App.ViewModels
         /// <summary>Persists the current associations to the app's roi_associations.json.</summary>
         public void Save()
         {
+            if (_saveBlocked)
+            {
+                StatusText = "Not saved — the existing roi_associations.json could not be read " +
+                             "and is being preserved. Move it aside first.";
+                return;
+            }
+
             try
             {
                 _settingsService.SaveAssociations(Associations.Select(a => a.ToModel()).ToList());
