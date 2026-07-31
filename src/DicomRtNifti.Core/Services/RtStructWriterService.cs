@@ -20,6 +20,12 @@ namespace DicomRtNifti.Core.Services
         // SOP Class UID for RT Structure Set Storage
         private const string RtStructSopClassUid = "1.2.840.10008.5.1.4.1.1.481.3";
 
+        /// <summary>Character cap on ROIName (3006,0026), VR = LO. PS3.5 Table 6.2-1.</summary>
+        internal const int RoiNameMaxLength = 64;
+
+        /// <summary>Character cap on ROIObservationLabel (3006,0085), VR = SH.</summary>
+        internal const int ObservationLabelMaxLength = 16;
+
         // Cycle palette for ROIDisplayColor (R\G\B)
         private static readonly int[][] ColorPalette = new int[][]
         {
@@ -167,12 +173,26 @@ namespace DicomRtNifti.Core.Services
                     continue;
                 }
 
-                // StructureSetROI item
+                // StructureSetROI item. ROIName has VR=LO, a 64-character cap that fo-dicom
+                // enforces when the element is constructed. An unvalidated 65-character mask
+                // basename therefore threw partway through building the sequence, and because
+                // that happens before anything is written, a single over-long file name aborted
+                // the entire reverse run and discarded every other ROI with it. A truncated name
+                // is plainly better than no RTSTRUCT, and it is what ROIObservationLabel below
+                // has always done for its own 16-character limit.
+                string storedRoiName = TruncateToVrLimit(roiName, RoiNameMaxLength);
+                if (!ReferenceEquals(storedRoiName, roiName))
+                {
+                    progress?.Report(
+                        $"  '{roiName}' is {roiName.Length} characters; ROIName (VR LO) allows " +
+                        $"{RoiNameMaxLength}, so it is stored as '{storedRoiName}'.");
+                }
+
                 var ssRoi = new DicomDataset
                 {
                     { DicomTag.ROINumber, roiNumber },
                     { DicomTag.ReferencedFrameOfReferenceUID, frameOfRefUid },
-                    { DicomTag.ROIName, roiName },
+                    { DicomTag.ROIName, storedRoiName },
                     { DicomTag.ROIGenerationAlgorithm, "MANUAL" }
                 };
                 structureSetROISeq.Items.Add(ssRoi);
@@ -199,7 +219,7 @@ namespace DicomRtNifti.Core.Services
                 // ROIObservationLabel has VR=SH (16-char cap). Truncate ROI names that exceed
                 // the limit -- this tag is Type 3 (optional) so a truncated label is preferable
                 // to a validation crash that prevents the whole RTSTRUCT from being written.
-                string obsLabel = roiName.Length <= 16 ? roiName : roiName.Substring(0, 16);
+                string obsLabel = TruncateToVrLimit(roiName, ObservationLabelMaxLength);
                 obsItem.Add(new DicomShortString(DicomTag.ROIObservationLabelRETIRED, obsLabel));
                 observationsSeq.Items.Add(obsItem);
 
@@ -822,6 +842,21 @@ namespace DicomRtNifti.Core.Services
             if (n.Contains("SUPPORT") || n.Contains("COUCH") || n.Contains("TABLE")) return "SUPPORT";
             if (n.Contains("FIXATION") || n.Contains("HEADREST")) return "FIXATION";
             return "ORGAN";
+        }
+
+        /// <summary>
+        /// Clips <paramref name="value"/> to a VR's character limit, returning the original
+        /// instance untouched when it already fits — so a caller can detect truncation with a
+        /// reference comparison and say so, rather than re-measuring.
+        ///
+        /// Internal so the caps themselves are covered by a test: exceeding one is a hard
+        /// fo-dicom validation failure, not a warning, and it aborts the whole write.
+        /// </summary>
+        internal static string TruncateToVrLimit(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+                return value;
+            return value.Substring(0, maxLength);
         }
 
         private static string GetStringTag(DicomDataset ds, DicomTag tag, string defaultValue)
