@@ -35,12 +35,16 @@ By the end you should be able to:
 
 ## Quick start
 
-1. **Open the notebook** and run it top to bottom.
+1. **Open the notebook** and run it top to bottom. You need Python 3.10+ and Jupyter; the first
+   cell `pip install`s everything else it uses (`tcia_utils`, `SimpleITK`, `pandas`,
+   `matplotlib`, `numpy`, `pydicom`).
 2. **You do not need .NET installed.** Section 0 downloads a self-contained CLI build for your
    platform, with the SimpleITK native already inside it. Set `USE_LOCAL_BUILD = True` only if
-   you are developing the toolkit itself.
-3. **Start small.** `N_PATIENTS` defaults to 30 of the collection's 40. Drop it to 2 or 3 for a
-   first pass — everything downstream behaves identically, just faster.
+   you are developing the toolkit itself — and then run Jupyter from this `examples/` folder,
+   because that path uses a relative `--project ../src/DicomRtNifti.Cli`.
+3. **Start small.** `N_PATIENTS` defaults to 30 of the collection's 40, which is tens of GB and
+   can take over an hour to pull from TCIA. Drop it to 2 or 3 for a first pass — everything
+   downstream behaves identically, just faster.
 
 > **Windows path length.** `WORK_DIR` defaults to `C:/rt_ex` rather than somewhere under this
 > repository, deliberately. The downloaded tree nests a 64-character `SeriesInstanceUID` below
@@ -65,8 +69,8 @@ Chosen over the more common lung cohorts for two reasons:
   decision, not a formality, and §3 is about making it deliberately.
 
 Despite the name, the segmentations are **RT structure sets, not DICOM SEG objects**. See
-`DicomSegOverview.md` in the parent repository for how the two formats differ and when you would
-want each.
+[`DicomSegOverview.md`](https://github.com/brianmanderson/Dicom_RT_Images_Csharp/blob/main/DicomSegOverview.md)
+in the research repository for how the two formats differ and when you would want each.
 
 ---
 

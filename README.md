@@ -23,7 +23,7 @@ Launch the GUI with `dotnet run --project src/DicomRtNifti.App` (or run the publ
 - **DICOM -> NIfTI** - opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`).
 - **NIfTI -> DICOM** - opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE).
 
-Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The CLI below is the alternative when scripting batch / benchmark runs.
+Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The same material is readable outside the app in [`examples/GUI_WALKTHROUGH.md`](examples/GUI_WALKTHROUGH.md), which also maps every control to its CLI flag. The CLI below is the alternative when scripting batch / benchmark runs.
 
 ## Features
 
@@ -83,11 +83,51 @@ DicomRtNifti.Cli --version
 
 The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
 
+**No DICOM handy?** No test data is committed, but the conformance package generates a complete
+synthetic CT + RTSTRUCT, which makes the fastest end-to-end smoke test of a fresh build:
+
+```
+pip install "git+https://github.com/brianmanderson/RTMaskConformanceTest"
+rtmask-conformance generate ./fixture --n-quadrature 2
+
+DicomRtNifti.Cli --forward \
+    --rtstruct ./fixture/rtstruct/primitives_planar.dcm \
+    --image-folder ./fixture/refct \
+    --output-folder ./predictions
+```
+
+That writes one `.nii.gz` per primitive into `./predictions`. To score them against the analytic
+ground truth exactly as the CI accuracy gate does — Dice, HD95, mean surface distance and volume
+error, with this repository's documented per-primitive thresholds:
+
+```
+rtmask-conformance verify --predictions ./predictions \
+    --groundtruth ./fixture/groundtruth --config ./conformance.yaml
+```
+
+The gate itself lives in
+[`.github/workflows/conformance-crossplatform.yml`](.github/workflows/conformance-crossplatform.yml),
+which runs the same three commands on Windows, Linux and macOS against a SHA-pinned revision of
+the fixture generator.
+
 > **Note on the forward mode's output layout.** `--forward` writes masks **flat** into
 > `--output-folder`, not into a `masks/` subfolder — it is the single-series mode the conformance
 > harness drives, and that contract is deliberately frozen. The hierarchical
 > `<patient>/<study>/<series>/{image.nii.gz,masks/,doses/}` layout described under
-> [Output structure](#output-structure) is what the GUI and the cohort modes below produce.
+> [Output structure](#output-structure-forward-dicom---nifti) is what the GUI and the cohort
+> modes below produce.
+
+**What the single-series modes expect of `--image-folder`.** These modes take one explicitly
+named series, so they do no scanning: they read files matching `*.dcm` **in that folder only**,
+not in subfolders. Slices with another extension (or none, as some archives ship them) are not
+seen, and the run stops with `No image (.dcm) slices in <folder>`. RT-STRUCT / RT-DOSE / RT-PLAN
+files sitting beside the slices are fine — they are filtered out by modality. If your archive is
+nested, or its files are extensionless, use the [cohort modes](#cohort-mode) below: those scan
+recursively and read every file regardless of extension.
+
+`--reverse` writes a `metadata.json` back into `--masks-folder` when one is not already there, so
+that repeat runs reuse the same UIDs rather than minting a new series each time. That is a write
+into an input folder — expect it.
 
 ## Cohort mode
 
@@ -157,25 +197,58 @@ Run `--help` for the full option list.
 
 ## Build instructions
 
-Requires the **.NET 8 SDK**. From the repository root:
+> **Not building from source?** Prebuilt, self-contained binaries for Windows / Linux / macOS —
+> SimpleITK native included, no .NET install needed — are on the
+> [releases page](https://github.com/brianmanderson/DicomRtNiftiConverterGUI/releases). The
+> [notebook](examples/Pancreatic_CT_CBCT_DICOM_RT_RoundTrip.ipynb) downloads one automatically.
+
+Requires the **.NET 8 SDK**.
+
+### Step 1 — stage SimpleITK first (do this before you build)
+
+**SimpleITK is not a NuGet package**, and nothing restores it for you. The managed wrapper
+`SimpleITKCSharpManaged.dll` is referenced by `src/SimpleITK.props`, and the matching native
+library (`SimpleITKCSharpNative.dll` / `libSimpleITKCSharpNative.so` / `.dylib`) is copied into
+the build output so it loads at runtime. Stage both at **`../SimpleITK/`** (one level above the
+repository root; override with `-p:SitkDir=...`):
+
+1. Download a C# release from the [SimpleITK releases](https://github.com/SimpleITK/SimpleITK/releases) (e.g. `SimpleITK-2.5.0-CSharp-win64-x64.zip`), matching your OS *and* architecture.
+2. Extract so the two libraries live **directly** under `../SimpleITK/`. The archive unpacks into a version-named top-level folder — flatten it; a `../SimpleITK/SimpleITK-2.5.0-CSharp-win64-x64/` subfolder will not be found.
+
+### Step 2 — build and test
+
+From the repository root:
 
 ```
 dotnet build DicomRtNifti.sln -c Release
 dotnet test  tests/DicomRtNifti.Core.Tests/DicomRtNifti.Core.Tests.csproj -c Release
 ```
 
-**SimpleITK** is not a NuGet package. The managed wrapper `SimpleITKCSharpManaged.dll`
-is referenced by `src/SimpleITK.props`, and the matching native library
-(`SimpleITKCSharpNative.dll` / `libSimpleITKCSharpNative.so` / `.dylib`) is copied
-into the build output so it loads at runtime. Stage both at **`../SimpleITK/`**
-(one level above the repository root; override with `-p:SitkDir=...`):
+The built CLI lands at `src/DicomRtNifti.Cli/bin/Release/net8.0/DicomRtNifti.Cli` (`.exe` on
+Windows); the GUI at `src/DicomRtNifti.App/bin/Release/net8.0/DicomRtNifti.App`.
 
-1. Download a C# release from the [SimpleITK releases](https://github.com/SimpleITK/SimpleITK/releases) (e.g. `SimpleITK-2.5.0-CSharp-win64-x64.zip`).
-2. Extract so the two DLLs live directly under `../SimpleITK/` (no version subfolder).
-3. Verify the native loaded: `dotnet run --project src/DicomRtNifti.Cli -- --version` prints `SimpleITK native: OK`.
+### Step 3 — verify the native actually loaded
 
-To produce a self-contained build that needs no .NET install on the target
-machine (rid = `win-x64` | `linux-x64` | `osx-arm64`):
+```
+dotnet run --project src/DicomRtNifti.Cli -- --version
+```
+
+It should print `SimpleITK native: OK (1-voxel probe)`. **`--version` exits 0 either way** — it
+reports a load failure in its output rather than in its exit code — so a script must grep the
+text, as CI does, not just check the status.
+
+### Troubleshooting the SimpleITK dependency
+
+| Symptom | Cause |
+|---|---|
+| Build fails with a wall of `CS0246: The type or namespace name 'itk' could not be found`, preceded by one `MSB3245: Could not resolve this reference ... "SimpleITKCSharpManaged"` | Step 1 was skipped, or `SitkDir` points somewhere without the DLLs. The MSB3245 warning is the real error; the CS0246 flood is downstream noise. |
+| `--version` prints `SimpleITK native: FAILED TO LOAD -- TypeInitializationException ... DllNotFoundException` | The managed wrapper resolved but the per-OS native did not. Check that the native for *this* OS/architecture is in `SitkDir` and got copied next to the output assembly. |
+| Everything builds, then a conversion throws from `itk.simple` | Same as above — run `--version` first to confirm, before reading it as a conversion bug. |
+
+### Self-contained publish
+
+To produce a build that needs no .NET install on the target machine
+(rid = `win-x64` | `linux-x64` | `osx-arm64`):
 
 ```
 dotnet publish src/DicomRtNifti.App/DicomRtNifti.App.csproj -c Release -r <rid> --self-contained

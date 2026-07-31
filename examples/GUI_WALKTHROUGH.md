@@ -4,8 +4,9 @@ The [notebook](Pancreatic_CT_CBCT_DICOM_RT_RoundTrip.ipynb) drives the headless 
 notebook needs a scriptable interface. Every one of those steps also exists as a point-and-click
 workflow in the desktop app, and for a one-off conversion the GUI is usually the faster route.
 
-This document mirrors the app's built-in **Help** windows (the `?` button in each direction's
-window), with the equivalent CLI flag noted alongside each control so you can move between them.
+This document mirrors the app's built-in **Help** windows (the **Help** button at the top right of
+each direction's window), with the equivalent CLI flag noted alongside each control so you can
+move between them.
 
 > The app's Help windows remain the authoritative reference and are updated with the UI. This
 > file exists so the same material is linkable, diffable, and readable without launching the
