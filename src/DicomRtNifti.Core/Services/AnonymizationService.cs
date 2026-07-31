@@ -33,6 +33,10 @@ namespace DicomRtNifti.Core.Services
         /// mapping it still held would be lost and already-exported patients would come back under
         /// a second pseudonym — the same patient in two identities is a train/validation leak.
         /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The key file records a different salt than <paramref name="salt"/>; see
+        /// <see cref="BuildSaltMismatchMessage"/>.
+        /// </exception>
         public AnonymizationService(string keyFilePath, string salt)
         {
             _keyFilePath = keyFilePath;
@@ -41,6 +45,7 @@ namespace DicomRtNifti.Core.Services
             var keyFile = LoadKeyFile(_keyFilePath);
             if (keyFile != null)
             {
+                EnsureSaltMatches(_keyFilePath, keyFile.Salt, _salt);
                 _patients = keyFile.Patients ?? new Dictionary<string, string>();
                 _studies = keyFile.Studies ?? new Dictionary<string, string>();
                 _series = keyFile.Series ?? new Dictionary<string, string>();
@@ -174,6 +179,46 @@ namespace DicomRtNifti.Core.Services
             }
 
             return keyFile;
+        }
+
+        /// <summary>
+        /// Rejects a caller salt that disagrees with the one the key file records.
+        ///
+        /// The salt is half of every hash the file contains. Continuing with a different one and
+        /// then letting <see cref="Save"/> stamp the new salt into the file produces a key whose
+        /// recorded salt no longer reproduces its own older entries, and an export in which some
+        /// patients carry salt-A pseudonyms and the rest salt-B — the two sets are unlinkable, so
+        /// the same patient can appear twice and no later run can tell which hash came from where.
+        /// A changed salt is always a mistake or a deliberate restart; either way it needs a human.
+        ///
+        /// A key file that omits Salt deserializes to <see cref="AnonymizationKeyFile"/>'s default,
+        /// which is the same "DicomToNifti" the callers default to, so files predating the field
+        /// still load on an unconfigured install. An explicitly blank salt is not checkable and is
+        /// accepted as-is.
+        /// </summary>
+        private static void EnsureSaltMatches(string path, string recordedSalt, string suppliedSalt)
+        {
+            if (string.IsNullOrEmpty(recordedSalt))
+                return;
+            if (string.Equals(recordedSalt, suppliedSalt, StringComparison.Ordinal))
+                return;
+
+            throw new InvalidOperationException(
+                BuildSaltMismatchMessage(path, recordedSalt, suppliedSalt));
+        }
+
+        /// <summary>
+        /// The message shown when the supplied salt disagrees with the key file's. Internal so the
+        /// wording is covered by a test.
+        /// </summary>
+        internal static string BuildSaltMismatchMessage(string path, string recordedSalt, string suppliedSalt)
+        {
+            return
+                $"Anonymization key file '{path}' was written with salt '{recordedSalt}', but this " +
+                $"run supplies '{suppliedSalt}'. Refusing to continue: the salt is part of every " +
+                "hash in that file, so re-using it under a different salt would give already-exported " +
+                "patients a second, unlinkable pseudonym. Restore the original salt, or point at a " +
+                "different key file to start a fresh anonymization.";
         }
 
         /// <summary>

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using DicomRtNifti.Core.Models;
@@ -74,6 +75,70 @@ namespace DicomRtNifti.Core.Tests
             }
 
             Assert.Equal(before, File.ReadAllBytes(keyPath));
+        }
+
+        // ---------- salt mismatch ----------
+
+        /// <summary>
+        /// The salt is half of every hash in the key file. Accepting a different one and letting
+        /// Save() stamp it over the recorded value produced a key that no longer reproduced its own
+        /// entries, and an export split across two unlinkable pseudonym spaces.
+        /// </summary>
+        [Fact]
+        public void Ctor_Throws_WhenSuppliedSaltDiffersFromTheRecordedOne()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            var keyFile = new AnonymizationKeyFile { Salt = "original-salt" };
+            keyFile.Patients["MRN-1"] = "Pdeadbeef01";
+            AnonymizationService.SaveKeyFile(keyPath, keyFile);
+
+            var ex = Assert.Throws<InvalidOperationException>(
+                () => new AnonymizationService(keyPath, "different-salt"));
+
+            Assert.Contains("original-salt", ex.Message);
+            Assert.Contains("different-salt", ex.Message);
+        }
+
+        /// <summary>
+        /// Refusing must not also rewrite the recorded salt — that was the second half of the bug.
+        /// </summary>
+        [Fact]
+        public void RecordedSalt_SurvivesAMismatchedRun()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            AnonymizationService.SaveKeyFile(keyPath, new AnonymizationKeyFile { Salt = "original-salt" });
+
+            try
+            {
+                var svc = new AnonymizationService(keyPath, "different-salt");
+                svc.GetPatientHash("MRN-9");
+                svc.Save();
+            }
+            catch (InvalidOperationException)
+            {
+                // Expected; the assertion is about the file.
+            }
+
+            Assert.Equal("original-salt", AnonymizationService.LoadKeyFile(keyPath).Salt);
+        }
+
+        /// <summary>
+        /// The check must not fire on the cases that are fine: the same salt, and a key file that
+        /// omits Salt entirely — those deserialize to the same "DicomToNifti" the services default
+        /// to, so an unconfigured install keeps loading its own history.
+        /// </summary>
+        [Fact]
+        public void MatchingSalt_IsAccepted()
+        {
+            string dir = DicomTestData.NewTempDir();
+
+            string matching = Path.Combine(dir, "matching.json");
+            AnonymizationService.SaveKeyFile(matching, new AnonymizationKeyFile { Salt = "s" });
+            Assert.NotNull(new AnonymizationService(matching, "s"));
+
+            string noSaltField = Path.Combine(dir, "no-salt-field.json");
+            File.WriteAllText(noSaltField, "{\"Patients\": {\"MRN-1\": \"Pabc\"}}");
+            Assert.Equal("Pabc", new AnonymizationService(noSaltField, null).GetPatientHash("MRN-1"));
         }
 
         [Fact]
