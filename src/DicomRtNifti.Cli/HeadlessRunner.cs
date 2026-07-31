@@ -19,7 +19,7 @@ namespace DicomRtNifti.Cli
     /// Usage:
     ///
     ///   Forward (RTSTRUCT -> per-ROI binary masks; optionally also image.nii.gz and doses/):
-    ///       DicomRtNifti.Cli--forward
+    ///       DicomRtNifti.Cli --forward
     ///           --rtstruct PATH
     ///           --image-folder PATH
     ///           --output-folder PATH
@@ -27,13 +27,13 @@ namespace DicomRtNifti.Cli
     ///           [--rtdose PATH]      (also write doses/&lt;series description&gt;.nii.gz)
     ///
     ///   Reverse (per-ROI binary masks -> RTSTRUCT):
-    ///       DicomRtNifti.Cli--reverse
+    ///       DicomRtNifti.Cli --reverse
     ///           --image-folder PATH
     ///           --masks-folder PATH
     ///           --output PATH
     ///
     ///   Image-reverse (NIfTI image volume -> DICOM image series):
-    ///       DicomRtNifti.Cli--image-reverse
+    ///       DicomRtNifti.Cli --image-reverse
     ///           --nifti-image PATH
     ///           --output-folder PATH
     ///           [--modality {CT|MR|PT|auto}]  (default: auto -- infers from
@@ -43,7 +43,7 @@ namespace DicomRtNifti.Cli
     ///           [--ref-dicom-folder PATH] (template for patient/study metadata)
     ///
     ///   Image-forward (DICOM image series -> NIfTI image volume):
-    ///       DicomRtNifti.Cli--image-forward
+    ///       DicomRtNifti.Cli --image-forward
     ///           --image-folder PATH
     ///           --output PATH             (.nii.gz output file)
     ///           [--target-spacing X,Y,Z]  (optional resample, mm)
@@ -830,22 +830,28 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine("                       [--no-volumes]         (skip rasterizing; volumes = -1)");
             Console.Error.WriteLine("                       [--output-spacing X,Y,Z]  (default: report native spacing)");
             Console.Error.WriteLine();
-            Console.Error.WriteLine("Cohort convert (full export to <patient>/<study>/<series>/):");
+            Console.Error.WriteLine("Cohort convert (full export, one folder per series):");
             Console.Error.WriteLine("  --cohort-convert --input PATH --output PATH");
+            Console.Error.WriteLine("    Layout: <patient>/<seriesDate>_<seriesDescription>/, or");
+            Console.Error.WriteLine("            <patient>/<study>/<series>/ (hashes) under --anonymize.");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Options common to --cohort-manifest and --cohort-convert:");
             Console.Error.WriteLine("  --associations FILE.json          canonical-name / alias mappings");
             Console.Error.WriteLine("  --only-associated-rois            drop ROIs that match no association");
             Console.Error.WriteLine("  --output-spacing X,Y,Z            resample to a fixed grid, mm");
+            Console.Error.WriteLine("                                    (--target-spacing is accepted as an alias)");
             Console.Error.WriteLine("  --anonymize [--salt STRING]       hash identifiers; writes AnonymizationKey.json");
             Console.Error.WriteLine("  --patients ID,ID                  restrict to these PatientIDs");
             Console.Error.WriteLine("  --series-description SUBSTR       keep image series whose description matches");
             Console.Error.WriteLine("  --struct-description SUBSTR       keep image series whose linked RTSTRUCT");
             Console.Error.WriteLine("                                    description matches, and export that one");
             Console.Error.WriteLine("  --prefer-largest-series           keep only the largest image series per study");
-            Console.Error.WriteLine("                                    (ties break arbitrarily; prefer the filters above)");
+            Console.Error.WriteLine("                                    (equal slice counts break on SeriesInstanceUID, so");
+            Console.Error.WriteLine("                                    repeated runs pick the same series; prefer the");
+            Console.Error.WriteLine("                                    filters above when the choice matters)");
             Console.Error.WriteLine("  --require-structures              skip series with no linked RTSTRUCT");
             Console.Error.WriteLine("  --require-dose                    skip series with no linked RTDOSE");
+            Console.Error.WriteLine("  --fail-fast                       abort on the first failing series");
             Console.Error.WriteLine("  --manifest-name NAME              default: export_manifest.csv");
             Console.Error.WriteLine("  --json-out PATH                   also write the JSON document to a file");
             Console.Error.WriteLine();
@@ -856,7 +862,6 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine("      Keywords are fo-dicom names (PatientAge, KVP, DoseUnits) plus computed");
             Console.Error.WriteLine("      values (@VoxelSize, @RoiNames, @MaxDose, @DoseVoxelSize).");
             Console.Error.WriteLine("  --no-images | --no-structures | --no-doses   skip that output");
-            Console.Error.WriteLine("  --fail-fast                       abort on the first failing series");
         }
     }
 }

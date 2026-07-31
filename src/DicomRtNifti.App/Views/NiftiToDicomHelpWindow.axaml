@@ -139,11 +139,14 @@
           <TextBlock Classes="h2" Text="D. Batch over many patient folders"/>
           <TextBlock Classes="body">
             Point at a <Run FontStyle="Italic">parent</Run> folder containing several patient
-            folders side-by-side. <Run FontWeight="SemiBold">Scan</Run> walks the parent and its
-            first-level subfolders; each subfolder with at least one of
-            <Run FontFamily="Consolas">image.nii.gz</Run>, <Run FontFamily="Consolas">masks/*.nii.gz</Run>,
-            or <Run FontFamily="Consolas">doses/*.nii.gz</Run> becomes its own row.
-            <Run FontWeight="SemiBold">Convert All</Run> processes them in sequence.
+            folders. <Run FontWeight="SemiBold">Scan</Run> walks the parent and
+            <Run FontWeight="SemiBold">every</Run> folder beneath it, to any depth; each folder
+            with at least one of <Run FontFamily="Consolas">image.nii.gz</Run>,
+            <Run FontFamily="Consolas">masks/*.nii.gz</Run>, or
+            <Run FontFamily="Consolas">doses/*.nii.gz</Run> becomes its own row. Nested layouts
+            such as <Run FontFamily="Consolas">Cohort/Patient/Study/Series/</Run> are therefore
+            picked up as well. <Run FontWeight="SemiBold">Convert All</Run> processes them in
+            sequence.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Required folder layout"/>
@@ -152,7 +155,10 @@
             <Run FontFamily="Consolas">image.nii.gz</Run>,
             <Run FontFamily="Consolas">masks/*.nii.gz</Run>, or
             <Run FontFamily="Consolas">doses/*.nii.gz</Run>. Scan checks the path you provide
-            <Run FontWeight="SemiBold">and</Run> its first-level subfolders.
+            <Run FontWeight="SemiBold">and every subfolder beneath it, recursively</Run> — except
+            that folders named <Run FontFamily="Consolas">masks</Run> or
+            <Run FontFamily="Consolas">doses</Run> are never treated as jobs and are not descended
+            into (they hold a parent job's NIfTI inputs).
           </TextBlock>
           <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
@@ -325,12 +331,14 @@
 
           <TextBlock Classes="h2" Text="Scan"/>
           <TextBlock Classes="body">
-            Walks the chosen folder and its first-level subdirectories, looking for jobs (folders
-            with <Run FontFamily="Consolas">image.nii.gz</Run> and/or
+            Walks the chosen folder and all of its subdirectories, to any depth, looking for jobs
+            (folders with <Run FontFamily="Consolas">image.nii.gz</Run> and/or
             <Run FontFamily="Consolas">masks/*.nii.gz</Run> and/or
-            <Run FontFamily="Consolas">doses/*.nii.gz</Run>). Each match becomes one row in the
-            grid. Click Scan again any time after editing the folder path or adding/removing files
-            to refresh the list.
+            <Run FontFamily="Consolas">doses/*.nii.gz</Run>);
+            <Run FontFamily="Consolas">masks</Run> and <Run FontFamily="Consolas">doses</Run>
+            folders are skipped, and unreadable directories are passed over silently rather than
+            failing the scan. Each match becomes one row in the grid. Click Scan again any time
+            after editing the folder path or adding/removing files to refresh the list.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Convert Images / Convert Structures / Convert Dose"/>

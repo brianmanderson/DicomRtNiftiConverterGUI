@@ -115,7 +115,7 @@ namespace DicomRtNifti.Cli
                     series_instance_uid = rs.SeriesInstanceUID,
                     series_description = rs.SeriesDescription,
                     // How confident the link is. A study whose structure sets all resolved by
-                    // FirstSeriesFallback needs a human to look at it.
+                    // LargestSeriesFallback needs a human to look at it.
                     match_rule = rs.LinkMatchRule.ToString(),
                     roi_names = rs.RoiNames,
                 }).ToList(),

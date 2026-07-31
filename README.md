@@ -177,8 +177,9 @@ Key points:
   *and* slice count. Prefer `--struct-description SUBSTR`, which selects on the linked structure
   set's description and exports that set; structure sets are named for what they were drawn on
   when the images are indistinguishable. `--series-description` works when the image descriptions
-  are reliable, and `--prefer-largest-series` is a last resort that ties (and then picks
-  arbitrarily) exactly in the resampled-sibling case. `--require-structures` / `--require-dose`
+  are reliable, and `--prefer-largest-series` is a last resort that ties exactly in the
+  resampled-sibling case — an equal slice count then breaks on SeriesInstanceUID, so the choice
+  is *repeatable* but not *meaningful*. `--require-structures` / `--require-dose`
   skip series lacking what you need. Everything excluded is reported with a reason.
 - **Link confidence is reported.** `--cohort-scan` records how each RTSTRUCT and RTDOSE was
   matched to its image series — `ReferencedSeriesUid` (authoritative), `FrameOfReferenceUid`, or
@@ -382,7 +383,7 @@ Each input folder looks like one of these (every line is optional individually; 
     {basename}.nii.gz           # -> one RT-DOSE per file
 ```
 
-Point the **NIfTI -> DICOM** window at a single such folder, or at a parent folder containing many of them side-by-side - each first-level subfolder becomes its own job. See the in-app **Help** in the NIfTI -> DICOM window for the full `metadata.json` schema and a copy-pasteable sample.
+Point the **NIfTI -> DICOM** window at a single such folder, or at a parent folder containing many of them - **Scan recurses to any depth**, and every folder holding at least one of `image.nii.gz`, `masks/*.nii.gz`, or `doses/*.nii.gz` becomes its own job (folders named `masks` or `doses` are skipped, since they hold a parent job's inputs). Nested `Cohort/Patient/Study/Series/` trees are picked up as well as flat side-by-side ones. See the in-app **Help** in the NIfTI -> DICOM window for the full `metadata.json` schema and a copy-pasteable sample.
 
 > **This layout is the GUI's contract, not the CLI's.** The headless `--reverse` flag is
 > single-job and mask-only: `--masks-folder` must point *directly* at the `.nii.gz` masks (the
