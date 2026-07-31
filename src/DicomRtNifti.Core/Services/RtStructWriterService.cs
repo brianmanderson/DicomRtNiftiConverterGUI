@@ -602,11 +602,13 @@ namespace DicomRtNifti.Core.Services
             string nowDate = DateTime.Now.ToString("yyyyMMdd");
             string nowTime = DateTime.Now.ToString("HHmmss");
 
-            // SOP common
+            // SOP common (MediaStorageSOPClassUID/SOPInstanceUID are Group 0002
+            // File Meta Information tags — fo-dicom populates them automatically
+            // when DicomFile is constructed from the dataset. Putting them in the
+            // dataset body makes them appear after the File Meta Info boundary,
+            // which violates DICOM Part 10 and makes Eclipse reject the file.)
             ds.AddOrUpdate(DicomTag.SOPClassUID, RtStructSopClassUid);
             ds.AddOrUpdate(DicomTag.SOPInstanceUID, sopInstanceUid);
-            ds.AddOrUpdate(DicomTag.MediaStorageSOPClassUID, RtStructSopClassUid);
-            ds.AddOrUpdate(DicomTag.MediaStorageSOPInstanceUID, sopInstanceUid);
 
             // SpecificCharacterSet is Type 1C in SOP Common; fo-dicom writes string VRs as
             // UTF-8 by default. Declaring ISO_IR 192 keeps Eclipse and other strict readers
