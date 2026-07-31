@@ -404,3 +404,16 @@ Stored in `%AppData%\DicomToNifti\`:
 ## History
 
 This project originated inside the manuscript repository [Dicom_RT_Images_Csharp](https://github.com/brianmanderson/Dicom_RT_Images_Csharp), where it serves as the rasterizer benchmarked against other tools. It has been split out so it can be released, cited, and consumed independently of the manuscript / benchmark harness. The manuscript repository continues to pin a specific commit of this repository as a git submodule.
+
+## License
+
+Released under the **MIT License** - see [LICENSE](LICENSE).
+
+The self-contained release bundles redistribute third-party binaries that carry their own terms -
+SimpleITK (Apache-2.0), fo-dicom (MS-PL), Avalonia / SkiaSharp / Newtonsoft.Json /
+CommunityToolkit and the .NET 8 runtime (MIT), plus ANGLE and Skia natives (BSD-3-Clause).
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists every one with its pinned version and
+upstream license, and reproduces the notices those licenses require.
+
+If you use this toolkit in published work, cite it with the metadata in
+[CITATION.cff](CITATION.cff).
