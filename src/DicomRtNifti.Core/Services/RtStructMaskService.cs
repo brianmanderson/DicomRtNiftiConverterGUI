@@ -382,7 +382,13 @@ namespace DicomRtNifti.Core.Services
             // For each slice the polygon spans, compute the cross-section
             for (int sz = sliceMin; sz <= sliceMax; sz++)
             {
-                double planeZ = sz + 0.5; // slice center
+                // Slice centre. TransformPhysicalPointToContinuousIndex puts the centre of
+                // slice sz at continuous index sz.0, not sz + 0.5 -- the same convention the
+                // in-plane fill uses. This carried the identical off-by-half that displaced
+                // every planar mask in y until it was corrected; it survived here because no
+                // CLOSED_NONPLANAR primitive exists in the analytic registry, so neither the
+                // conformance gate nor any unit test exercises this path.
+                double planeZ = sz;
 
                 // Find intersections of each 3D edge with this z-plane
                 var crossX = new List<double>();
