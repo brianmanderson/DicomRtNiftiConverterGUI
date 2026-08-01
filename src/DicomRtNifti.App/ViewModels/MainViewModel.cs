@@ -102,8 +102,8 @@ namespace DicomRtNifti.App.ViewModels
             OpenMetadataTagsCommand = new AsyncRelayCommand(OpenMetadataTagsAsync);
             OpenHelpCommand = new RelayCommand(OpenHelp);
 
-            _settings = _settingsService.LoadSettings();
-            _associations = _settingsService.LoadAssociations();
+            _settings = LoadSettingsGuarded();
+            _associations = LoadAssociationsGuarded();
 
             if (!string.IsNullOrEmpty(_settings.DefaultOutputDirectory))
                 _outputFolder = _settings.DefaultOutputDirectory;
@@ -354,9 +354,9 @@ namespace DicomRtNifti.App.ViewModels
             _settings.MetadataImageTagKeywords = _metadataImageTagKeywords;
             _settings.MetadataStructureTagKeywords = _metadataStructureTagKeywords;
             _settings.MetadataDoseTagKeywords = _metadataDoseTagKeywords;
-            _settingsService.SaveSettings(_settings);
+            SaveSettingsGuarded();
 
-            _associations = _settingsService.LoadAssociations();
+            _associations = LoadAssociationsGuarded();
 
             double[] targetSpacing = SpecifyOutputSpacing
                 ? new[] { OutputSpacingX, OutputSpacingY, OutputSpacingZ }
@@ -437,6 +437,17 @@ namespace DicomRtNifti.App.ViewModels
                     }
 
                     Directory.CreateDirectory(outputDir);
+
+                    // Mixed slice gaps are flattened to one spacing on the way into NIfTI. The CLI
+                    // has said so on its single-series modes for a while; the GUI — where nobody is
+                    // reading stderr — said nothing on any path. Log it and carry on: the export is
+                    // still the best available answer and the geometry written is untouched.
+                    string spacingWarning;
+                    if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
+                            model, targetSpacing, out spacingWarning))
+                    {
+                        AppendLog("  " + spacingWarning);
+                    }
 
                     double[] seriesSpacing = null;
                     if (ExportImages)
@@ -591,7 +602,7 @@ namespace DicomRtNifti.App.ViewModels
 
             IsConverting = true;
             _cts = new CancellationTokenSource();
-            _associations = _settingsService.LoadAssociations();
+            _associations = LoadAssociationsGuarded();
 
             double[] targetSpacing = SpecifyOutputSpacing
                 ? new[] { OutputSpacingX, OutputSpacingY, OutputSpacingZ }
@@ -724,14 +735,14 @@ namespace DicomRtNifti.App.ViewModels
                 _settings.OutputSpacingX = OutputSpacingX;
                 _settings.OutputSpacingY = OutputSpacingY;
                 _settings.OutputSpacingZ = OutputSpacingZ;
-                _settingsService.SaveSettings(_settings);
+                SaveSettingsGuarded();
                 AppendLog($"Output spacing set to {OutputSpacingX} x {OutputSpacingY} x {OutputSpacingZ} mm");
             }
         }
 
         private async Task OpenRoiSelectionAsync()
         {
-            _associations = _settingsService.LoadAssociations();
+            _associations = LoadAssociationsGuarded();
             var discoveredNames = AllDiscoveredRoiNames.ToList();
 
             var perPatientRoiNames = new Dictionary<string, List<string>>();
@@ -788,10 +799,18 @@ namespace DicomRtNifti.App.ViewModels
 
         private async Task OpenSettingsAsync()
         {
+            // The dialog writes settings.json on Save; don't offer it while an unreadable file is
+            // being preserved, or that Save would overwrite it with in-memory defaults.
+            if (_settingsPersistenceBlocked)
+            {
+                AppendLog("Settings cannot be edited while an unreadable settings file is being preserved.");
+                return;
+            }
+
             var window = new SettingsWindow(_settingsService, _settings);
             if (await window.ShowDialog<bool>(AppWindows.Active))
             {
-                _settings = _settingsService.LoadSettings();
+                _settings = LoadSettingsGuarded();
                 if (!string.IsNullOrEmpty(_settings.DefaultOutputDirectory) && string.IsNullOrEmpty(OutputFolder))
                     OutputFolder = _settings.DefaultOutputDirectory;
             }
@@ -806,7 +825,7 @@ namespace DicomRtNifti.App.ViewModels
             await window.ShowDialog<bool>(AppWindows.Active);
 
             // The editor persists on Save; reload so a subsequent export/ROI-selection picks up edits.
-            _associations = _settingsService.LoadAssociations();
+            _associations = LoadAssociationsGuarded();
             AppendLog($"ROI Associations editor closed. {_associations.Count} association(s) loaded.");
         }
 
@@ -868,7 +887,7 @@ namespace DicomRtNifti.App.ViewModels
                 _settings.MetadataImageTagKeywords = _metadataImageTagKeywords;
                 _settings.MetadataStructureTagKeywords = _metadataStructureTagKeywords;
                 _settings.MetadataDoseTagKeywords = _metadataDoseTagKeywords;
-                _settingsService.SaveSettings(_settings);
+                SaveSettingsGuarded();
                 AppendLog($"Metadata tags selected: {_metadataImageTagKeywords.Count} image, " +
                           $"{_metadataStructureTagKeywords.Count} structure, {_metadataDoseTagKeywords.Count} dose.");
             }
@@ -913,6 +932,45 @@ namespace DicomRtNifti.App.ViewModels
         {
             string timestamp = DateTime.Now.ToString("HH:mm:ss");
             LogText += $"[{timestamp}] {message}\n";
+        }
+
+        // ── settings / associations persistence guards ─────────────────────────────────────
+        //
+        // SettingsService now throws when settings.json or roi_associations.json exists but does
+        // not parse, instead of quietly handing back defaults that the next save would write over
+        // the damaged original. The GUI must stay usable in that state, so it falls back to
+        // defaults *in memory only* and stops writing to disk until the user has dealt with the
+        // file — turning silent data loss into a visible, recoverable message.
+
+        private bool _settingsPersistenceBlocked;
+
+        private AppSettings LoadSettingsGuarded()
+        {
+            try { return _settingsService.LoadSettings(); }
+            catch (InvalidDataException ex) { BlockSettingsPersistence(ex); return new AppSettings(); }
+        }
+
+        private List<RoiAssociation> LoadAssociationsGuarded()
+        {
+            try { return _settingsService.LoadAssociations(); }
+            catch (InvalidDataException ex) { BlockSettingsPersistence(ex); return new List<RoiAssociation>(); }
+        }
+
+        private void SaveSettingsGuarded()
+        {
+            if (_settingsPersistenceBlocked)
+            {
+                AppendLog("Settings not saved — an unreadable settings file is being preserved.");
+                return;
+            }
+            _settingsService.SaveSettings(_settings);
+        }
+
+        private void BlockSettingsPersistence(InvalidDataException ex)
+        {
+            _settingsPersistenceBlocked = true;
+            StatusText = ex.Message;
+            AppendLog(ex.Message);
         }
 
         /// <summary>

@@ -63,8 +63,8 @@ even-odd XOR across contours on a slice for hollow shapes.
 
 **Any change here moves the metrics. Expect it, and check it before claiming done:**
 
-1. Run the local gate above and compare against the current numbers — cube 0.9833, sphere 0.9898,
-   cylinder 0.9872, ellipsoid 0.9912, torus 0.9850, hollow_sphere 0.9857, straw 0.9821.
+1. Run the local gate above and compare against the current numbers — cube 1.0000, sphere 0.9964,
+   cylinder 0.9885, ellipsoid 0.9954, torus 0.9915, hollow_sphere 0.9952, straw 0.9910.
 2. Run the Core unit tests: `dotnet test tests/DicomRtNifti.Core.Tests/DicomRtNifti.Core.Tests.csproj -c Release`
 3. If accuracy **improved**, raise the affected threshold in `conformance.yaml` to just under the
    new measured value and update its inline comment. That is how the gate ratchets.
@@ -77,13 +77,22 @@ even-odd XOR across contours on a slice for hollow shapes.
 `conformance.yaml` overrides shallow-merge over the package defaults (`dice >= 0.95`,
 `surface_dice_1mm >= 0.95`, HD95 <= 2 mm, MSD <= 0.5 mm, vol_err <= 3%).
 
-The `cube` entry sets `dice: 0.98` — **stricter than the 0.95 default, not a relaxation.** It is
-pinned just under the measured 0.9833 so a scanline-fill regression fails the build rather than
-sliding down to the looser default. The residual gap to 1.0 is a known ~half-voxel scanline
-boundary-convention difference against the partial-volume ground truth: the cube's volume error is
-exactly 0.00 and its surface metrics are perfect (sDSC1 = 1.000, HD95 = 1.0 mm, MSD = 0.33 mm), so
-the boundary is in the right place. **Documented and intentional — not an open bug.** Tighten to
-0.99 only once the scanline boundary convention matches the partial-volume GT.
+The `cube` entry sets `dice: 0.99` — **stricter than the 0.95 default, not a relaxation.** It is
+pinned just under the measured 1.0000 so a scanline-fill regression fails the build rather than
+sliding down to the looser default.
+
+**A cautionary note, because this file got it wrong for a long time.** The cube used to measure
+0.9833, and this section asserted that the gap was "a known ~half-voxel scanline boundary-convention
+difference", reasoning that the volume error was exactly 0.00 and the surface metrics were fine, so
+"the boundary is in the right place — documented and intentional, not an open bug." It was a bug.
+The fill sampled each row at `y + 0.5` while the X fill sampled at the voxel centre, displacing every
+mask −0.5 voxels in y. The cube hid it best: its faces land on voxel boundaries, so the shift rounded
+to a whole voxel, leaving the shape exact and the volume error at exactly 0.00. The HD95 of 1.0 mm
+and MSD of 0.33 mm cited as proof of correct placement were the displacement's signature. Fixed
+(`scanY = y`); every primitive improved and the cube became an exact match.
+
+The lesson worth keeping: a volume-error metric is translation-invariant, so it cannot see a rigid
+shift. When a residual is explained away as a convention, check a metric that *can* see position.
 
 Nothing in the file is currently looser than the package default. If you ever need to add
 something that is, say so explicitly and raise it with the user.

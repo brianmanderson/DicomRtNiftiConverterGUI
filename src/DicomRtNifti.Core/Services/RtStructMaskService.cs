@@ -263,6 +263,8 @@ namespace DicomRtNifti.Core.Services
                 sliceZSumMm += contourData[i * 3 + 2];
             }
 
+            if (!IsInPlaneContourUsable(polyX, polyY, pointCount, rows, cols)) return false;
+
             int sliceIdx = ResolveSliceIndex(
                 avgZIndex: sliceZSumIndex / pointCount,
                 avgZMm: sliceZSumMm / pointCount,
@@ -300,6 +302,8 @@ namespace DicomRtNifti.Core.Services
                 sliceZSumMm += contourData[i * 3 + 2];
             }
 
+            if (!IsInPlaneContourUsable(polyX, polyY, pointCount, rows, cols)) return false;
+
             int sliceIdx = ResolveSliceIndex(
                 avgZIndex: sliceZSumIndex / pointCount,
                 avgZMm: sliceZSumMm / pointCount,
@@ -332,6 +336,7 @@ namespace DicomRtNifti.Core.Services
             {
                 points[i] = PhysicalToIndex(contourData, i, referenceImage);
                 if (points[i] == null) return false;
+                if (!IsIndexUsable(points[i], rows, cols, slices)) return false;
             }
 
             // Draw 3D line segments between consecutive points
@@ -364,19 +369,26 @@ namespace DicomRtNifti.Core.Services
             {
                 points[i] = PhysicalToIndex(contourData, i, referenceImage);
                 if (points[i] == null) return false;
+                if (!IsIndexUsable(points[i], rows, cols, slices)) return false;
                 if (points[i][2] < minZ) minZ = points[i][2];
                 if (points[i][2] > maxZ) maxZ = points[i][2];
             }
 
-            int sliceMin = Math.Max(0, (int)Math.Floor(minZ));
-            int sliceMax = Math.Min(slices - 1, (int)Math.Ceiling(maxZ));
+            int sliceMin = Math.Max(0, SaturatingToInt(Math.Floor(minZ)));
+            int sliceMax = Math.Min(slices - 1, SaturatingToInt(Math.Ceiling(maxZ)));
 
             bool anyFilled = false;
 
             // For each slice the polygon spans, compute the cross-section
             for (int sz = sliceMin; sz <= sliceMax; sz++)
             {
-                double planeZ = sz + 0.5; // slice center
+                // Slice centre. TransformPhysicalPointToContinuousIndex puts the centre of
+                // slice sz at continuous index sz.0, not sz + 0.5 -- the same convention the
+                // in-plane fill uses. This carried the identical off-by-half that displaced
+                // every planar mask in y until it was corrected; it survived here because no
+                // CLOSED_NONPLANAR primitive exists in the analytic registry, so neither the
+                // conformance gate nor any unit test exercises this path.
+                double planeZ = sz;
 
                 // Find intersections of each 3D edge with this z-plane
                 var crossX = new List<double>();
@@ -464,10 +476,11 @@ namespace DicomRtNifti.Core.Services
             {
                 var idx = PhysicalToIndex(contourData, i, referenceImage);
                 if (idx == null) continue;
+                if (!IsIndexUsable(idx, rows, cols, slices)) continue;
 
-                int x = (int)Math.Round(idx[0]);
-                int y = (int)Math.Round(idx[1]);
-                int z = (int)Math.Round(idx[2]);
+                int x = SaturatingToInt(Math.Round(idx[0]));
+                int y = SaturatingToInt(Math.Round(idx[1]));
+                int z = SaturatingToInt(Math.Round(idx[2]));
 
                 if (x < 0 || x >= cols || y < 0 || y >= rows || z < 0 || z >= slices)
                     continue;
@@ -506,6 +519,89 @@ namespace DicomRtNifti.Core.Services
             {
                 return null;
             }
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  Continuous-index bounds validation
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// How far outside the reference grid a contour vertex may lie, as a multiple of the grid
+        /// dimension along that axis. 1.0 allows a whole image width or height past each edge.
+        ///
+        /// Deliberately generous rather than tight. Real contours do spill past the reconstructed
+        /// field of view — a body contour clipped by the FOV, couch and immobilisation structures —
+        /// and rejecting those would lose data the converter handles correctly today. What this
+        /// has to catch is coordinates that are not geometry for this series at all, and those miss
+        /// by orders of magnitude, not by a margin.
+        /// </summary>
+        private const double OutsideGridAllowance = 1.0;
+
+        /// <summary>
+        /// Whether a scanline-filled polygon's vertices are close enough to the reference grid to
+        /// be treated as geometry for it.
+        ///
+        /// <see cref="ScanlineFillPolygon"/> clamps its loop bounds to the grid, which means an
+        /// absurd contour is not rejected by the clamp — it is accepted, and fills whatever the
+        /// clamped range covers. A contour at ±1e9 mm spans the entire slice and fills every voxel
+        /// in it; at 1e12 mm the double→int cast leaves int's range and the mask comes out empty
+        /// instead. Both report success, and a fully-set or fully-clear mask on one structure is
+        /// easy to miss in a cohort of hundreds.
+        ///
+        /// Rejecting here rather than inside the fill is what makes it visible: the caller counts
+        /// the contour into the existing <c>unhandled</c> bucket, whose message already names the
+        /// two causes this indicates — an RTSTRUCT matched to the wrong image series, or contour
+        /// data that does not belong to the reference geometry.
+        /// </summary>
+        private static bool IsInPlaneContourUsable(
+            double[] polyX, double[] polyY, int pointCount, int rows, int cols)
+        {
+            for (int i = 0; i < pointCount; i++)
+            {
+                if (!IsWithinAllowance(polyX[i], cols)) return false;
+                if (!IsWithinAllowance(polyY[i], rows)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// The same check for a 3D continuous index [x, y, z], used by the non-planar and point
+        /// geometries whose coordinates reach Math.Round casts of their own.
+        /// </summary>
+        private static bool IsIndexUsable(double[] index, int rows, int cols, int slices)
+        {
+            return IsWithinAllowance(index[0], cols)
+                && IsWithinAllowance(index[1], rows)
+                && IsWithinAllowance(index[2], slices);
+        }
+
+        /// <summary>
+        /// One axis: finite, and no further than <see cref="OutsideGridAllowance"/> grid lengths
+        /// outside [0, <paramref name="dimension"/> - 1].
+        /// </summary>
+        private static bool IsWithinAllowance(double index, int dimension)
+        {
+            if (double.IsNaN(index) || double.IsInfinity(index))
+                return false;
+
+            double allowance = OutsideGridAllowance * dimension;
+            return index >= -allowance && index <= (dimension - 1) + allowance;
+        }
+
+        /// <summary>
+        /// double → int that saturates instead of overflowing. A plain cast of a value outside
+        /// int's range is unspecified in C# — on x64 it yields int.MinValue, which is what turned
+        /// a contour at 1e12 mm into an all-zero mask rather than an obviously bad one. Saturating
+        /// keeps the Math.Max / Math.Min clamps around each call site meaningful for any input;
+        /// for values that already fit, the result is identical to the cast it replaces, so the
+        /// fill convention is untouched.
+        /// </summary>
+        private static int SaturatingToInt(double value)
+        {
+            if (double.IsNaN(value)) return 0;
+            if (value <= int.MinValue) return int.MinValue;
+            if (value >= int.MaxValue) return int.MaxValue;
+            return (int)value;
         }
 
         /// <summary>
@@ -571,13 +667,19 @@ namespace DicomRtNifti.Core.Services
                 if (polyY[i] > maxYd) maxYd = polyY[i];
             }
 
-            int minY = Math.Max(0, (int)Math.Floor(minYd));
-            int maxY = Math.Min(rows - 1, (int)Math.Ceiling(maxYd));
+            // Saturating casts, not plain ones: the Math.Max / Math.Min clamps below can only do
+            // their job if the conversion that feeds them stays inside int's range.
+            int minY = Math.Max(0, SaturatingToInt(Math.Floor(minYd)));
+            int maxY = Math.Min(rows - 1, SaturatingToInt(Math.Ceiling(maxYd)));
 
             for (int y = minY; y <= maxY; y++)
             {
-                // Scanline at y + 0.5 (pixel center)
-                double scanY = y + 0.5;
+                // Scanline at the row centre. TransformPhysicalPointToContinuousIndex puts the
+                // centre of voxel i at continuous index i.0, so the centre of row y is y, not
+                // y + 0.5. The X fill below already uses that convention (Ceiling/Floor on the
+                // raw index keeps voxels whose centre falls inside the span); sampling Y half a
+                // voxel low made the two axes disagree and shifted every mask -0.5 voxels in y.
+                double scanY = y;
 
                 // Find all X intersections of polygon edges with this scanline
                 var intersections = new List<double>();
@@ -602,8 +704,8 @@ namespace DicomRtNifti.Core.Services
                 int rowOffset = sliceOffset + y * cols;
                 for (int k = 0; k + 1 < intersections.Count; k += 2)
                 {
-                    int xStart = Math.Max(0, (int)Math.Ceiling(intersections[k]));
-                    int xEnd = Math.Min(cols - 1, (int)Math.Floor(intersections[k + 1]));
+                    int xStart = Math.Max(0, SaturatingToInt(Math.Ceiling(intersections[k])));
+                    int xEnd = Math.Min(cols - 1, SaturatingToInt(Math.Floor(intersections[k + 1])));
 
                     for (int x = xStart; x <= xEnd; x++)
                     {

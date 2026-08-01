@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "DicomRtNiftiConverterGUI: a cross-platform DICOM-RT to NIfTI conversion toolkit"
+abstract: >-
+  A cross-platform .NET 8 toolkit that converts DICOM radiotherapy data - CT/MR/PT image
+  series, RT Structures and RT Dose - to NIfTI, and performs the reverse conversion
+  (mask to RTSTRUCT, NIfTI to DICOM image series). It ships as an Avalonia desktop GUI
+  and a headless CLI sharing one core conversion library, and its contour rasterization
+  is validated against analytic ground truth in continuous integration.
+type: software
+authors:
+  - given-names: "Brian Mark"
+    family-names: "Anderson"
+    affiliation: "Department of Radiation Medicine and Applied Sciences, University of California San Diego"
+repository-code: "https://github.com/brianmanderson/DicomRtNiftiConverterGUI"
+license: MIT
+version: "1.0.0"
+keywords:
+  - DICOM
+  - DICOM-RT
+  - RTSTRUCT
+  - NIfTI
+  - radiotherapy
+  - medical imaging
+  - segmentation
+  - rasterization

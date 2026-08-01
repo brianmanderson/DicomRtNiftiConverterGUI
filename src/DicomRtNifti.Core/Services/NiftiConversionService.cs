@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using DicomRtNifti.Core.Models;
@@ -236,6 +238,29 @@ namespace DicomRtNifti.Core.Services
             }
 
             var maskList = masks.ToList();
+
+            // Resolve every output file name up front, and disambiguate the ones that collide.
+            // Two ROIs whose names differ only in characters the sanitizer strips ("PTV:1",
+            // "PTV*1") both resolve to PTV_1.nii.gz: one file on disk, several volumes reported
+            // against it, and -- because this loop is parallel -- two threads writing the same
+            // path at once. Same failure the dose path already guards against above.
+            var maskFileNames = BuildUniqueMaskFileNames(maskList.Select(m => m.Key));
+            foreach (var entry in maskFileNames)
+            {
+                if (!string.Equals(entry.Value, SanitizeFileName(entry.Key), StringComparison.Ordinal))
+                {
+                    progress?.Report(
+                        $"  ROI '{entry.Key}' is not a valid file name on its own, and the sanitized " +
+                        $"form is not unique; writing it as {entry.Value}.nii.gz.");
+                }
+            }
+
+            // Output folders are never pruned, so a narrower re-export leaves the masks of the ROIs
+            // it no longer covers sitting next to the ones it just wrote. Each of those files still
+            // holds the ROI its name claims — that is what the naming rule above buys — but it is
+            // older than the run that produced the rest of the folder, and nothing else says so.
+            ReportStaleMaskFiles(masksDir, maskFileNames.Values, flatOutput, progress);
+
             var parallelOpts = new ParallelOptions
             {
                 CancellationToken = ct,
@@ -263,7 +288,7 @@ namespace DicomRtNifti.Core.Services
                 double voxelCount = stats.GetSum(); // binary mask: sum == count of 1-voxels
                 roiVolumes[kvp.Key] = voxelCount * effectiveVoxelVolume / 1000; // convert to cc
 
-                string safeName = SanitizeFileName(kvp.Key);
+                string safeName = maskFileNames[kvp.Key];
                 string maskPath = Path.Combine(masksDir, safeName + ".nii.gz");
                 SimpleITK.WriteImage(maskToWrite, maskPath);
                 maskToWrite.Dispose();
@@ -500,6 +525,150 @@ namespace DicomRtNifti.Core.Services
             catch
             {
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Maps each ROI output name to the base name (no extension) its mask is written under.
+        ///
+        /// Sanitizing is many-to-one — "PTV:1", "PTV*1" and "PTV?1" all become "PTV_1" — so
+        /// deriving a file name from an ROI name by sanitizing alone is not safe.
+        ///
+        /// <b>The mapping is a pure function of the single ROI name.</b> An ROI whose name is
+        /// already a valid file name keeps it verbatim; one that had to be sanitized is written as
+        /// <c>&lt;sanitized&gt;_&lt;8 hex of SHA256 of the exact ROI name&gt;</c>. Nothing depends
+        /// on which other ROIs were selected.
+        ///
+        /// That is the fix for a worse failure than the collision it replaced. Suffixes used to be
+        /// handed out by rank in an ordinal sort of the *selected* set, and output folders are
+        /// never pruned: exporting {"GTV:1", "GTV*1"} wrote GTV_1 = the second ROI and GTV_1_2 =
+        /// the first, and re-exporting only "GTV:1" wrote GTV_1 = that ROI while the stale GTV_1_2
+        /// stayed on disk. Run 1's manifest then named a file holding a different ROI's mask —
+        /// silently, and indistinguishably from a correct manifest. Under a name-local rule a
+        /// stale file left by a wider selection still holds the ROI its name claims, so an old
+        /// manifest is at worst pointing at an old copy, never at the wrong structure.
+        ///
+        /// The only set-dependent case left is two ROI names that are both already valid file
+        /// names and differ only in case ("PTV_1" / "ptv_1") — one file on Windows and macOS.
+        /// Neither can keep the bare name, so both take the hashed form; that is symmetric, so
+        /// there is still no "winner" whose name changes when the other is deselected.
+        /// </summary>
+        /// <param name="roiNames">ROI output names, as returned by the conversion entry points.</param>
+        /// <returns>ROI output name -> mask file base name, without the ".nii.gz" suffix.</returns>
+        public static Dictionary<string, string> BuildUniqueMaskFileNames(IEnumerable<string> roiNames)
+        {
+            var result = new Dictionary<string, string>();
+            if (roiNames == null)
+                return result;
+
+            var preferred = new Dictionary<string, string>();
+            foreach (var name in roiNames.OrderBy(n => n, StringComparer.Ordinal))
+            {
+                if (name == null || preferred.ContainsKey(name))
+                    continue;
+                preferred[name] = PreferredMaskFileName(name);
+            }
+
+            // Case-insensitive: the collisions this exists to prevent are collisions on disk, and
+            // "PTV_1" and "ptv_1" are one file on Windows and macOS.
+            var claims = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in preferred)
+            {
+                claims.TryGetValue(entry.Value, out int count);
+                claims[entry.Value] = count + 1;
+            }
+
+            foreach (var entry in preferred)
+            {
+                result[entry.Key] = claims[entry.Value] > 1
+                    ? HashedMaskFileName(entry.Key)
+                    : entry.Value;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Names the mask files already in <paramref name="masksDir"/> that this run is not going
+        /// to write. Reported, not deleted: the folder is the caller's, and a mask left by an
+        /// earlier, wider selection is still valid data — it is only its currency that is in
+        /// question. In flat mode the same folder legitimately holds image/dose volumes, so those
+        /// are excluded rather than announced on every forward run.
+        /// </summary>
+        private static void ReportStaleMaskFiles(
+            string masksDir,
+            IEnumerable<string> writtenBaseNames,
+            bool flatOutput,
+            IProgress<string> progress)
+        {
+            if (progress == null || string.IsNullOrEmpty(masksDir) || !Directory.Exists(masksDir))
+                return;
+
+            var written = new HashSet<string>(writtenBaseNames, StringComparer.OrdinalIgnoreCase);
+
+            var stale = new List<string>();
+            foreach (var path in NiftiFileNaming.EnumerateNiftiFiles(masksDir))
+            {
+                string baseName = NiftiFileNaming.StripNiftiExtension(Path.GetFileName(path));
+                if (written.Contains(baseName))
+                    continue;
+                if (flatOutput && IsNonMaskVolumeName(baseName))
+                    continue;
+                stale.Add(Path.GetFileName(path));
+            }
+
+            if (stale.Count == 0)
+                return;
+
+            stale.Sort(StringComparer.OrdinalIgnoreCase);
+            progress.Report(
+                $"  {stale.Count} pre-existing mask file(s) in {masksDir} were not written by this " +
+                $"export and are left untouched: {string.Join(", ", stale)}. They are from an " +
+                "earlier run with a different ROI selection — delete them if a manifest of this " +
+                "run is meant to describe the whole folder.");
+        }
+
+        /// <summary>The volumes a flat forward export writes alongside the masks.</summary>
+        private static bool IsNonMaskVolumeName(string baseName)
+        {
+            return string.Equals(baseName, "image", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(baseName, "dose", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// The file name an ROI takes when nothing else contests it: its own name when that is
+        /// already a valid file name, otherwise the hashed form. Two distinct ROI names can only
+        /// produce the same unsanitized answer if they are the same string, so this is injective
+        /// except for the case-only clash <see cref="BuildUniqueMaskFileNames"/> resolves.
+        /// </summary>
+        private static string PreferredMaskFileName(string roiName)
+        {
+            string safe = SanitizeFileName(roiName);
+            return string.Equals(safe, roiName, StringComparison.Ordinal)
+                ? safe
+                : HashedMaskFileName(roiName);
+        }
+
+        /// <summary>
+        /// Sanitized name plus a short digest of the exact ROI name — the disambiguator that does
+        /// not depend on what else was selected.
+        /// </summary>
+        private static string HashedMaskFileName(string roiName)
+        {
+            return SanitizeFileName(roiName) + "_" + ShortRoiNameHash(roiName);
+        }
+
+        /// <summary>
+        /// First 4 bytes of SHA256(ROI name) as lowercase hex. Long enough that a clash between
+        /// two ROI names in one structure set is not a practical concern, short enough to leave
+        /// the file name readable.
+        /// </summary>
+        internal static string ShortRoiNameHash(string roiName)
+        {
+            using (var sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(roiName ?? ""));
+                return BitConverter.ToString(hash, 0, 4).Replace("-", "").ToLowerInvariant();
             }
         }
 

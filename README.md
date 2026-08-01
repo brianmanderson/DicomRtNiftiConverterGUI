@@ -21,9 +21,9 @@ this tool, start there rather than here.
 Launch the GUI with `dotnet run --project src/DicomRtNifti.App` (or run the published `DicomRtNifti.App` executable). It opens a launcher with two buttons:
 
 - **DICOM -> NIfTI** - opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`).
-- **NIfTI -> DICOM** - opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE).
+- **NIfTI -> DICOM** - opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE). Its **Run Server** button turns the same window into a drop-folder watcher for inference-service pipelines. Both mask -> RT-DOSE and watch mode are **GUI-only**; see the reverse-mode note below.
 
-Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The CLI below is the alternative when scripting batch / benchmark runs.
+Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The same material is readable outside the app in [`examples/GUI_WALKTHROUGH.md`](examples/GUI_WALKTHROUGH.md), which also maps every control to its CLI flag. The CLI below is the alternative when scripting batch / benchmark runs.
 
 ## Features
 
@@ -64,6 +64,12 @@ DicomRtNifti.Cli --reverse --image-folder PATH --masks-folder PATH --output PATH
 DicomRtNifti.Cli --reverse --masks-folder PATH --output PATH \
     [--image-nifti PATH] [--metadata PATH] [--output-image-folder PATH]
 
+# --masks-folder is the folder that DIRECTLY contains the per-ROI *.nii.gz files
+# and is read top-level only. On a case folder exported by the forward direction
+# that is <case>/masks, not <case>. Unlike the GUI's NIfTI -> DICOM window,
+# --reverse handles exactly one job: it accepts neither a case folder nor a
+# parent of many. Loop over --reverse to batch.
+
 # Image-forward: DICOM image series -> NIfTI image volume (no RTSTRUCT needed)
 DicomRtNifti.Cli --image-forward --image-folder PATH --output PATH.nii.gz \
     [--target-spacing X,Y,Z]
@@ -78,16 +84,75 @@ DicomRtNifti.Cli --version
 ```
 
 - **Exit codes** - `0` on success, `1` on conversion failure (with stack trace on stderr), `2` on missing or invalid arguments (usage printed on stderr).
-- **Stdout** - a `# rt_mask_validation <mode>` header line followed by the machine-readable results: forward writes one TSV row per ROI (`<ROIName>\t<Volume_cc>\t<mask_path>`); the reverse/image modes write the output path(s).
+- **Stdout** - a `# rt_mask_validation <mode>` header line followed by the machine-readable results: forward writes one TSV row per ROI (`<ROIName>\t<Volume_cc>\t<mask_path>`); the reverse/image modes write the output path(s). The header is the mode name as run, so the NIfTI-only reverse path emits `# rt_mask_validation reverse (nifti-only)` - match the prefix, not the whole line.
 - **Stderr** - human-readable progress and error messages.
 
+> **Read the mask path from stdout; do not rebuild it from the ROI name.** Mask file names are
+> sanitized for Windows, and sanitizing is many-to-one - `PTV:1`, `PTV*1` and `PTV?1` all reduce to
+> `PTV_1`. When two ROIs in one structure set collide this way, the repeats take a numeric suffix
+> (`PTV_1.nii.gz`, `PTV_1_2.nii.gz`) and a line naming the substitution goes to stderr. Suffixes are
+> assigned from an ordinal sort of the ROI names, so the stdout rows, the cohort JSON `file` fields
+> and the manifest all agree within a run - but the assignment depends on *which* ROIs are in that
+> run, so a later run with a different `--associations` / `--only-associated-rois` selection can put
+> a different ROI under the same suffixed name. Output folders are never pruned between runs, so
+> clean the target directory when narrowing a selection.
+
 The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
+
+**No DICOM handy?** No test data is committed, but the conformance package generates a complete
+synthetic CT + RTSTRUCT, which makes the fastest end-to-end smoke test of a fresh build:
+
+```
+pip install "git+https://github.com/brianmanderson/RTMaskConformanceTest"
+rtmask-conformance generate ./fixture --n-quadrature 2
+
+DicomRtNifti.Cli --forward \
+    --rtstruct ./fixture/rtstruct/primitives_planar.dcm \
+    --image-folder ./fixture/refct \
+    --output-folder ./predictions
+```
+
+That writes one `.nii.gz` per primitive into `./predictions`. To score them against the analytic
+ground truth exactly as the CI accuracy gate does — Dice, HD95, mean surface distance and volume
+error, with this repository's documented per-primitive thresholds:
+
+```
+rtmask-conformance verify --predictions ./predictions \
+    --groundtruth ./fixture/groundtruth --config ./conformance.yaml
+```
+
+The gate itself lives in
+[`.github/workflows/conformance-crossplatform.yml`](.github/workflows/conformance-crossplatform.yml),
+which runs the same three commands on Windows, Linux and macOS against a SHA-pinned revision of
+the fixture generator.
 
 > **Note on the forward mode's output layout.** `--forward` writes masks **flat** into
 > `--output-folder`, not into a `masks/` subfolder — it is the single-series mode the conformance
 > harness drives, and that contract is deliberately frozen. The hierarchical
 > `<patient>/<study>/<series>/{image.nii.gz,masks/,doses/}` layout described under
-> [Output structure](#output-structure) is what the GUI and the cohort modes below produce.
+> [Output structure](#output-structure-forward-dicom---nifti) is what the GUI and the cohort
+> modes below produce.
+
+**What the single-series modes expect of `--image-folder`.** These modes take one explicitly
+named series, so they do no scanning: they read files matching `*.dcm` **in that folder only**,
+not in subfolders. Slices with another extension (or none, as some archives ship them) are not
+seen, and the run stops with `No image (.dcm) slices in <folder>`. RT-STRUCT / RT-DOSE / RT-PLAN
+files sitting beside the slices are fine — they are filtered out by modality. If your archive is
+nested, or its files are extensionless, use the [cohort modes](#cohort-mode) below: those scan
+recursively and read every file regardless of extension.
+
+**The NIfTI-only `--reverse` path writes a `metadata.json` back into `--masks-folder`**, so that
+repeat runs reuse the same UIDs rather than minting a new series each time. That is a write into
+an input folder — expect it. The reference-DICOM path (`--image-folder`) does not: it takes its
+identifiers from the reference series.
+
+**That `metadata.json` is not the one the forward direction writes.** The forward export's sidecar
+holds selected DICOM *tags* (`ImageAttributes` / `StructureAttributes` / `DoseAttributes`); the
+reverse driver holds patient/study/UIDs and rescale slope/intercept. They share a filename and
+nothing else, and `--metadata` pointed at a forward sidecar is silently ignored — you get freshly
+minted anonymous UIDs, not the original study's. **To make a regenerated RT-STRUCT attach to the
+study the masks came from, use the reference-DICOM path** (`--reverse --image-folder <original
+DICOM series>`), or hand-author the reverse-schema `metadata.json`.
 
 ## Cohort mode
 
@@ -122,15 +187,21 @@ Key points:
   *and* slice count. Prefer `--struct-description SUBSTR`, which selects on the linked structure
   set's description and exports that set; structure sets are named for what they were drawn on
   when the images are indistinguishable. `--series-description` works when the image descriptions
-  are reliable, and `--prefer-largest-series` is a last resort that ties (and then picks
-  arbitrarily) exactly in the resampled-sibling case. `--require-structures` / `--require-dose`
+  are reliable, and `--prefer-largest-series` is a last resort that ties exactly in the
+  resampled-sibling case — an equal slice count then breaks on SeriesInstanceUID, so the choice
+  is *repeatable* but not *meaningful*. `--require-structures` / `--require-dose`
   skip series lacking what you need. Everything excluded is reported with a reason.
 - **Link confidence is reported.** `--cohort-scan` records how each RTSTRUCT and RTDOSE was
   matched to its image series — `ReferencedSeriesUid` (authoritative), `FrameOfReferenceUid`, or
   `LargestSeriesFallback` (a guess). A cohort resolved entirely by fallback deserves a look.
 - **Under `--anonymize` the JSON contains hashes only**, including for skipped and unlinked
   series, so printing it in a notebook cannot leak identifiers. Re-identification lives solely in
-  `AnonymizationKey.json`.
+  `AnonymizationKey.json` — which also records the `--salt` in plaintext, so it is re-identification
+  data twice over. Keep it out of version control.
+- **`--anonymize` does not filter `--metadata-tags`.** Selected tags are written to each series'
+  `metadata.json` verbatim, so `--metadata-tags PatientName,PatientID` puts the real identifiers
+  back inside a folder tree whose names you just hashed. Choose the tags accordingly; the GUI's
+  Export Options panel carries the same warning.
 - **Volumes cost a rasterization pass.** There is no analytic contour-area shortcut;
   `--no-volumes` skips the work and writes the missing sentinel (`-1`) instead.
 - **The manifest merges.** Re-running extends it — rows are keyed on the three identifier columns,
@@ -143,6 +214,30 @@ Key points:
   follow the source dose grid rather than the image, since that grid usually covers only the
   region around the target. Masks *are* on the image grid. Resample the dose onto the image before
   combining them.
+- **The two manifest commands write different filenames in the two front-ends.**
+  `--cohort-manifest` and `--cohort-convert` both default to `export_manifest.csv` (override with
+  `--manifest-name`), so a survey and a later conversion into the same output root merge into one
+  file. The GUI's **Export Manifest Only** writes `export_manifest_meta.csv` instead, keeping the
+  survey separate from `export_manifest.csv`. Same columns either way.
+
+### The `--associations` file
+
+`--associations` takes a JSON **array** of canonical-name / alias-set objects — byte-identical to
+what the GUI's *Edit ROI Associations…* editor imports and exports, so you can curate in the app
+and hand the file to an unattended run:
+
+```json
+[
+  { "CanonicalName": "Pancreas", "Aliases": ["pancreas", "PANCREAS", "Pancreas_Ant"] },
+  { "CanonicalName": "SpinalCord", "Aliases": ["cord", "Spinal_Cord", "SpinalCanal"] }
+]
+```
+
+Both keys are required and case-sensitive *as key names*; alias **matching** against the DICOM ROI
+names is case-insensitive. A matched ROI is renamed to its `CanonicalName` on disk and in the
+manifest column header. Unmatched ROIs are exported under their original names unless
+`--only-associated-rois` is given, which drops them. [`examples/associations_pancreas.json`](examples/associations_pancreas.json)
+is a full worked example.
 
 Run `--help` for the full option list.
 
@@ -157,25 +252,58 @@ Run `--help` for the full option list.
 
 ## Build instructions
 
-Requires the **.NET 8 SDK**. From the repository root:
+> **Not building from source?** Prebuilt, self-contained binaries for Windows / Linux / macOS —
+> SimpleITK native included, no .NET install needed — are on the
+> [releases page](https://github.com/brianmanderson/DicomRtNiftiConverterGUI/releases). The
+> [notebook](examples/Pancreatic_CT_CBCT_DICOM_RT_RoundTrip.ipynb) downloads one automatically.
+
+Requires the **.NET 8 SDK**.
+
+### Step 1 — stage SimpleITK first (do this before you build)
+
+**SimpleITK is not a NuGet package**, and nothing restores it for you. The managed wrapper
+`SimpleITKCSharpManaged.dll` is referenced by `src/SimpleITK.props`, and the matching native
+library (`SimpleITKCSharpNative.dll` / `libSimpleITKCSharpNative.so` / `.dylib`) is copied into
+the build output so it loads at runtime. Stage both at **`../SimpleITK/`** (one level above the
+repository root; override with `-p:SitkDir=...`):
+
+1. Download a C# release from the [SimpleITK releases](https://github.com/SimpleITK/SimpleITK/releases) (e.g. `SimpleITK-2.5.0-CSharp-win64-x64.zip`), matching your OS *and* architecture.
+2. Extract so the two libraries live **directly** under `../SimpleITK/`. The archive unpacks into a version-named top-level folder — flatten it; a `../SimpleITK/SimpleITK-2.5.0-CSharp-win64-x64/` subfolder will not be found.
+
+### Step 2 — build and test
+
+From the repository root:
 
 ```
 dotnet build DicomRtNifti.sln -c Release
 dotnet test  tests/DicomRtNifti.Core.Tests/DicomRtNifti.Core.Tests.csproj -c Release
 ```
 
-**SimpleITK** is not a NuGet package. The managed wrapper `SimpleITKCSharpManaged.dll`
-is referenced by `src/SimpleITK.props`, and the matching native library
-(`SimpleITKCSharpNative.dll` / `libSimpleITKCSharpNative.so` / `.dylib`) is copied
-into the build output so it loads at runtime. Stage both at **`../SimpleITK/`**
-(one level above the repository root; override with `-p:SitkDir=...`):
+The built CLI lands at `src/DicomRtNifti.Cli/bin/Release/net8.0/DicomRtNifti.Cli` (`.exe` on
+Windows); the GUI at `src/DicomRtNifti.App/bin/Release/net8.0/DicomRtNifti.App`.
 
-1. Download a C# release from the [SimpleITK releases](https://github.com/SimpleITK/SimpleITK/releases) (e.g. `SimpleITK-2.5.0-CSharp-win64-x64.zip`).
-2. Extract so the two DLLs live directly under `../SimpleITK/` (no version subfolder).
-3. Verify the native loaded: `dotnet run --project src/DicomRtNifti.Cli -- --version` prints `SimpleITK native: OK`.
+### Step 3 — verify the native actually loaded
 
-To produce a self-contained build that needs no .NET install on the target
-machine (rid = `win-x64` | `linux-x64` | `osx-arm64`):
+```
+dotnet run --project src/DicomRtNifti.Cli -- --version
+```
+
+It should print `SimpleITK native: OK (1-voxel probe)`. **`--version` exits 0 either way** — it
+reports a load failure in its output rather than in its exit code — so a script must grep the
+text, as CI does, not just check the status.
+
+### Troubleshooting the SimpleITK dependency
+
+| Symptom | Cause |
+|---|---|
+| Build fails with a wall of `CS0246: The type or namespace name 'itk' could not be found`, preceded by one `MSB3245: Could not resolve this reference ... "SimpleITKCSharpManaged"` | Step 1 was skipped, or `SitkDir` points somewhere without the DLLs. The MSB3245 warning is the real error; the CS0246 flood is downstream noise. |
+| `--version` prints `SimpleITK native: FAILED TO LOAD -- TypeInitializationException ... DllNotFoundException` | The managed wrapper resolved but the per-OS native did not. Check that the native for *this* OS/architecture is in `SitkDir` and got copied next to the output assembly. |
+| Everything builds, then a conversion throws from `itk.simple` | Same as above — run `--version` first to confirm, before reading it as a conversion bug. |
+
+### Self-contained publish
+
+To produce a build that needs no .NET install on the target machine
+(rid = `win-x64` | `linux-x64` | `osx-arm64`):
 
 ```
 dotnet publish src/DicomRtNifti.App/DicomRtNifti.App.csproj -c Release -r <rid> --self-contained
@@ -207,13 +335,21 @@ Non-anonymized (one folder per patient, one subfolder per series):
   export_manifest.csv       # at the output root (or export_manifest_meta.csv for Export Manifest Only)
 ```
 
+> **Windows: keep the output root short.** The non-anonymized layout embeds the full
+> `SeriesDescription` in a folder name, so a deep output root plus a long description plus
+> `masks/<LongRoiName>.nii.gz` crosses the 260-character `MAX_PATH` limit. It surfaces as
+> `ERROR: nifti library failed to write image: <path>` from the NIfTI writer, with no mention of
+> path length, and it fails per-file — short ROI names in the same series are written, long ones
+> are not, and the series is reported as failed. A short root (`C:\rt_out`) or `--anonymize`
+> (fixed-width hash folders) both avoid it.
+
 Anonymized (folders named by deterministic per-identifier hashes; a patient's datasets all nest under one patient hash, each study groups its series):
 
 ```
 {OutputFolder}/
-  {PatientHash}/                # e.g. P1a2b3c4d5e6f  (stable per MRN)
-    {StudyHash}/                # e.g. ST9a8b7c6d5e4f (stable per StudyInstanceUID)
-      {SeriesHash}/             # e.g. SE0011223344ff (stable per SeriesInstanceUID)
+  {PatientHash}/                # e.g. P1a2b3c4d5e   (P + 10 hex, stable per MRN)
+    {StudyHash}/                # e.g. ST9a8b7c6d5e4f (ST + 12 hex, stable per StudyInstanceUID)
+      {SeriesHash}/             # e.g. SE0011223344ff (SE + 12 hex, stable per SeriesInstanceUID)
         image.nii.gz
         metadata.json
         doses/
@@ -221,7 +357,7 @@ Anonymized (folders named by deterministic per-identifier hashes; a patient's da
         masks/
           {ROI_Name}.nii.gz
   export_manifest.csv
-  AnonymizationKey.json     # three reverse-lookup maps: MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash
+  AnonymizationKey.json     # the salt + three reverse-lookup maps: MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash
 ```
 
 The CSV manifest columns are `PatientID, StudyUID, SeriesUID, SpacingX, SpacingY, SpacingZ` followed by one column per unique canonical ROI name (volume in cc; `-1` where the row's series did not contain that ROI). When anonymizing, the `PatientID`/`StudyUID`/`SeriesUID` cells hold the hashes; otherwise they hold the real identifiers. Every exported folder/file segment is sanitized to be valid on Windows (forbidden characters, reserved device names, trailing dots/spaces), anonymized or not. See the in-app **Help** in the DICOM -> NIfTI window for the full per-control reference.
@@ -257,7 +393,26 @@ Each input folder looks like one of these (every line is optional individually; 
     {basename}.nii.gz           # -> one RT-DOSE per file
 ```
 
-You can point the **NIfTI -> DICOM** window (or the headless `--reverse` flag) at a single such folder, or at a parent folder containing many of them side-by-side - each first-level subfolder becomes its own job. See the in-app **Help** in the NIfTI -> DICOM window for the full `metadata.json` schema and a copy-pasteable sample.
+Point the **NIfTI -> DICOM** window at a single such folder, or at a parent folder containing many of them - **Scan recurses to any depth**, and every folder holding at least one of `image.nii.gz`, `masks/*.nii.gz`, or `doses/*.nii.gz` becomes its own job (folders named `masks` or `doses` are skipped, since they hold a parent job's inputs). Nested `Cohort/Patient/Study/Series/` trees are picked up as well as flat side-by-side ones. See the in-app **Help** in the NIfTI -> DICOM window for the full `metadata.json` schema and a copy-pasteable sample.
+
+> **This layout is the GUI's contract, not the CLI's.** The headless `--reverse` flag is
+> single-job and mask-only: `--masks-folder` must point *directly* at the `.nii.gz` masks (the
+> `masks/` folder above, read top-level only), and it writes an RT-STRUCT and nothing else - the
+> `doses/` inputs are skipped, because **mask -> RT-DOSE is implemented in the GUI only**. So is
+> the drop-folder **Run Server** watch mode. Scripted RT-DOSE or watch-folder work has no CLI
+> entry point today.
+
+> **Windows: mask file names on the reverse path have their own length budget, and a short input
+> root does not help.** Both `--reverse` forms copy their masks into a temporary mirror under
+> `%TEMP%\rt_mask_validation_stage_<random>\masks\` first, so it is the *staged* path - not the one you
+> passed - that has to fit inside `MAX_PATH`. With a default `%TEMP%` that leaves roughly **173
+> characters** for the mask basename; at 174 the copy is still made but SimpleITK cannot open it.
+> The ROI is dropped with a `Failed to read ...` line quoting the internal staging path (buried
+> under a wall of HDF5 diagnostics), the RT-STRUCT is written **without** that ROI, and the run
+> still **exits 0** - so check the reported ROI count, not just the exit code. ROI names over 64
+> characters are handled: `ROIName` (VR LO) is truncated to its 64-character cap with a warning
+> rather than aborting the run. Shortening the mask file names is the only fix for the staging
+> limit.
 
 ## Settings
 
@@ -266,8 +421,21 @@ Stored in `%AppData%\DicomToNifti\`:
 - `settings.json` - default output directory, auto-open after conversion, global Export Images / Export Structures / Export Dose toggles, output spacing, anonymization salt (`HashSalt`), and the persisted state of the "Limit export to selected ROIs" / "Anonymize export" / "Resample to fixed spacing" checkboxes.
 - `roi_associations.json` - ROI canonical-name <-> alias-set mappings used to rename DICOM ROIs to canonical names on export.
 
-`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds three reverse-lookup maps - MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash - so anonymized exports can be traced back to their original identifiers. Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
+`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds the salt plus three reverse-lookup maps - MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash - so anonymized exports can be traced back to their original identifiers. **It is re-identification data: store it access-controlled and keep it out of version control.** Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
 
 ## History
 
 This project originated inside the manuscript repository [Dicom_RT_Images_Csharp](https://github.com/brianmanderson/Dicom_RT_Images_Csharp), where it serves as the rasterizer benchmarked against other tools. It has been split out so it can be released, cited, and consumed independently of the manuscript / benchmark harness. The manuscript repository continues to pin a specific commit of this repository as a git submodule.
+
+## License
+
+Released under the **MIT License** - see [LICENSE](LICENSE).
+
+The self-contained release bundles redistribute third-party binaries that carry their own terms -
+SimpleITK (Apache-2.0), fo-dicom (MS-PL), Avalonia / SkiaSharp / Newtonsoft.Json /
+CommunityToolkit and the .NET 8 runtime (MIT), plus ANGLE and Skia natives (BSD-3-Clause).
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists every one with its pinned version and
+upstream license, and reproduces the notices those licenses require.
+
+If you use this toolkit in published work, cite it with the metadata in
+[CITATION.cff](CITATION.cff).

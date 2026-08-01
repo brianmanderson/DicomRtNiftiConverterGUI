@@ -4,6 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace DicomRtNifti.Core.Services
 {
@@ -27,6 +28,16 @@ namespace DicomRtNifti.Core.Services
         /// given path, loads it so previously assigned hashes are reused. Old-format key files
         /// (composite ExportID entries) deserialize to empty maps and are treated as a fresh start.
         /// </summary>
+        /// <exception cref="InvalidDataException">
+        /// The key file exists but cannot be read or parsed. Constructing anyway would start from
+        /// empty maps and the first <see cref="Save"/> would overwrite the damaged file, so every
+        /// mapping it still held would be lost and already-exported patients would come back under
+        /// a second pseudonym — the same patient in two identities is a train/validation leak.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The key file records a different salt than <paramref name="salt"/>; see
+        /// <see cref="BuildSaltMismatchMessage"/>.
+        /// </exception>
         public AnonymizationService(string keyFilePath, string salt)
         {
             _keyFilePath = keyFilePath;
@@ -35,6 +46,7 @@ namespace DicomRtNifti.Core.Services
             var keyFile = LoadKeyFile(_keyFilePath);
             if (keyFile != null)
             {
+                EnsureSaltMatches(_keyFilePath, keyFile.Salt, _salt, HasAnyMapping(keyFile));
                 _patients = keyFile.Patients ?? new Dictionary<string, string>();
                 _studies = keyFile.Studies ?? new Dictionary<string, string>();
                 _series = keyFile.Series ?? new Dictionary<string, string>();
@@ -124,42 +136,223 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
-        /// Loads an AnonymizationKeyFile from the given path. Returns null if file does not exist or is invalid.
+        /// Loads an AnonymizationKeyFile from the given path. Returns null when no file exists
+        /// there — that is the legitimate "first run" case.
         /// </summary>
+        /// <exception cref="InvalidDataException">
+        /// The file exists but cannot be read or does not parse as a key file. This used to be
+        /// swallowed into a null return, which the caller could not tell apart from "no file yet":
+        /// a truncated key file therefore silently became an empty one and was overwritten on the
+        /// next save, losing every recorded mapping. Refusing loudly is the only safe answer,
+        /// because the damage is irreversible and invisible in the export output.
+        /// </exception>
         public static AnonymizationKeyFile LoadKeyFile(string path)
         {
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
                 return null;
 
+            string json;
             try
             {
-                string json = File.ReadAllText(path);
-                var keyFile = JsonConvert.DeserializeObject<AnonymizationKeyFile>(json);
-                return keyFile;
+                json = File.ReadAllText(path);
             }
-            catch
+            catch (Exception ex)
             {
-                return null;
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(path, ex.Message), ex);
             }
+
+            AnonymizationKeyFile keyFile;
+            try
+            {
+                keyFile = JsonConvert.DeserializeObject<AnonymizationKeyFile>(json);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(path, ex.Message), ex);
+            }
+
+            // An empty file (the classic truncation artefact) and a literal JSON null both
+            // deserialize to null without throwing, so they need their own check.
+            if (keyFile == null)
+            {
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(
+                    path, "the file is empty or contains a JSON null"));
+            }
+
+            // A file that parses but carries no mapping *section* is damaged in the same way and
+            // was previously just as destructive: the model's inline initializers leave the maps
+            // empty rather than null, so the service started blank and the first Save() replaced
+            // the file -- losing every recorded mapping, including manual overrides, and
+            // re-exporting the same patient under a second pseudonym. Truncating a valid key
+            // mid-write lands here at least as often as it lands on a parse error.
+            //
+            // Test for the *presence* of the properties, not their contents. A run that legitimately
+            // converts nothing writes all three sections empty, and must still load; and a
+            // hand-authored key pinning only `Patients` is a documented way to fix overrides, so
+            // requiring every section would break the workflow the overrides exist for. SaveKeyFile
+            // always serializes all three, so a file carrying none of them did not come from here.
+            JObject raw;
+            try
+            {
+                raw = JObject.Parse(json);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(path, ex.Message), ex);
+            }
+
+            if (raw.Property(nameof(AnonymizationKeyFile.Patients), StringComparison.OrdinalIgnoreCase) == null
+                && raw.Property(nameof(AnonymizationKeyFile.Studies), StringComparison.OrdinalIgnoreCase) == null
+                && raw.Property(nameof(AnonymizationKeyFile.Series), StringComparison.OrdinalIgnoreCase) == null)
+            {
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(
+                    path, "the file carries no Patients, Studies or Series section"));
+            }
+
+            return keyFile;
+        }
+
+        /// <summary>
+        /// Rejects a caller salt that disagrees with the one the key file records.
+        ///
+        /// The salt is half of every hash the file contains. Continuing with a different one and
+        /// then letting <see cref="Save"/> stamp the new salt into the file produces a key whose
+        /// recorded salt no longer reproduces its own older entries, and an export in which some
+        /// patients carry salt-A pseudonyms and the rest salt-B — the two sets are unlinkable, so
+        /// the same patient can appear twice and no later run can tell which hash came from where.
+        /// A changed salt is always a mistake or a deliberate restart; either way it needs a human.
+        ///
+        /// A key file that omits Salt deserializes to <see cref="AnonymizationKeyFile"/>'s default,
+        /// which is the same "DicomToNifti" the callers default to, so files predating the field
+        /// still load on an unconfigured install.
+        ///
+        /// A blank or null recorded salt used to return early here, which was a hole rather than a
+        /// concession: <see cref="Save"/> then stamped the caller's salt over it, and a file that
+        /// had already recorded a patient hashed under the blank salt came back claiming the new
+        /// one — two patients under two salts, one of them unreproducible. It is reachable from
+        /// settings (<c>"HashSalt": ""</c>) and from a hand-edited key (<c>"Salt": null</c>), so it
+        /// is now checked like any other value. The one case that is genuinely safe is a file that
+        /// records no salt *and* no mappings: nothing has been hashed yet, so adopting the caller's
+        /// salt loses nothing.
+        /// </summary>
+        private static void EnsureSaltMatches(
+            string path, string recordedSalt, string suppliedSalt, bool recordsMappings)
+        {
+            string recorded = recordedSalt ?? "";
+            string supplied = suppliedSalt ?? "";
+
+            if (string.Equals(recorded, supplied, StringComparison.Ordinal))
+                return;
+            if (recorded.Length == 0 && !recordsMappings)
+                return;
+
+            throw new InvalidOperationException(
+                BuildSaltMismatchMessage(path, recordedSalt, suppliedSalt));
+        }
+
+        /// <summary>True when the key file records at least one identifier mapping.</summary>
+        private static bool HasAnyMapping(AnonymizationKeyFile keyFile)
+        {
+            return (keyFile.Patients != null && keyFile.Patients.Count > 0)
+                || (keyFile.Studies != null && keyFile.Studies.Count > 0)
+                || (keyFile.Series != null && keyFile.Series.Count > 0);
+        }
+
+        /// <summary>
+        /// Rejects a save that would replace the salt an existing key file records.
+        ///
+        /// <see cref="EnsureSaltMatches"/> lived only on the constructor, and the anonymization-key
+        /// editor never constructs a service — it calls <see cref="SaveKeyFile"/> directly with a
+        /// salt read from settings. Opening a key recorded under one salt while settings named
+        /// another therefore rewrote the recorded salt on save, leaving every hash in the file
+        /// built under a salt the file no longer names. Putting the guard on the write closes both
+        /// entry points at once, including any future caller of the static path.
+        ///
+        /// Deliberately tolerant of an unreadable existing file: refusing to *read* one is
+        /// <see cref="LoadKeyFile"/>'s job, and re-deciding it here would change what a plain save
+        /// does on a damaged file.
+        /// </summary>
+        public static void EnsureKeyFileSaltMatches(string path, string salt)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                return;
+
+            AnonymizationKeyFile existing;
+            try
+            {
+                existing = LoadKeyFile(path);
+            }
+            catch (InvalidDataException)
+            {
+                return;
+            }
+            if (existing == null)
+                return;
+
+            EnsureSaltMatches(path, existing.Salt, salt, HasAnyMapping(existing));
+        }
+
+        /// <summary>
+        /// The message shown when the supplied salt disagrees with the key file's. Internal so the
+        /// wording is covered by a test.
+        /// </summary>
+        internal static string BuildSaltMismatchMessage(string path, string recordedSalt, string suppliedSalt)
+        {
+            return
+                $"Anonymization key file '{path}' was written with salt {Describe(recordedSalt)}, but this " +
+                $"run supplies {Describe(suppliedSalt)}. Refusing to continue: the salt is part of every " +
+                "hash in that file, so re-using it under a different salt would give already-exported " +
+                "patients a second, unlinkable pseudonym. Restore the original salt, or point at a " +
+                "different key file to start a fresh anonymization.";
+        }
+
+        /// <summary>Renders a salt for the message; a blank one has to read as blank, not as ''.</summary>
+        private static string Describe(string salt)
+        {
+            if (salt == null) return "(none recorded)";
+            if (salt.Length == 0) return "(blank)";
+            return "'" + salt + "'";
+        }
+
+        /// <summary>
+        /// The message shown when an existing key file cannot be used. Names the path and the
+        /// remedy, because the only safe recovery is a human decision: the mappings in a damaged
+        /// key cannot be regenerated from the exported data.
+        /// </summary>
+        internal static string BuildUnusableKeyFileMessage(string path, string detail)
+        {
+            return
+                $"Anonymization key file '{path}' exists but could not be read as a key file ({detail}). " +
+                "Refusing to continue: starting from an empty key would assign a second pseudonym to " +
+                "patients that were already exported, and the next save would overwrite whatever " +
+                "mappings the file still holds. Move the file aside (or restore a backup) and re-run.";
         }
 
         /// <summary>
         /// Saves an AnonymizationKeyFile to the given path as formatted JSON.
+        ///
+        /// The write goes through <see cref="AtomicFileWriter"/>: a crash midway through a plain
+        /// <c>File.WriteAllText</c> leaves the key truncated, which is exactly the state
+        /// <see cref="LoadKeyFile"/> now has to refuse.
+        ///
+        /// The salt guard runs here too — see <see cref="EnsureKeyFileSaltMatches"/> — so it covers
+        /// every writer, not just the ones that go through the constructor.
         /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// An existing key file at <paramref name="path"/> records a different salt.
+        /// </exception>
         public static void SaveKeyFile(string path, AnonymizationKeyFile keyFile)
         {
-            string dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
+            if (keyFile == null) throw new ArgumentNullException(nameof(keyFile));
+
+            EnsureKeyFileSaltMatches(path, keyFile.Salt);
 
             var settings = new JsonSerializerSettings
             {
                 Formatting = Formatting.Indented
             };
             string json = JsonConvert.SerializeObject(keyFile, settings);
-            File.WriteAllText(path, json);
+            AtomicFileWriter.WriteAllText(path, json);
         }
     }
 

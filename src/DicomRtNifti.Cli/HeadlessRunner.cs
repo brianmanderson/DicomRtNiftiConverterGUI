@@ -19,7 +19,7 @@ namespace DicomRtNifti.Cli
     /// Usage:
     ///
     ///   Forward (RTSTRUCT -> per-ROI binary masks; optionally also image.nii.gz and doses/):
-    ///       DicomRtNifti.Cli--forward
+    ///       DicomRtNifti.Cli --forward
     ///           --rtstruct PATH
     ///           --image-folder PATH
     ///           --output-folder PATH
@@ -27,13 +27,13 @@ namespace DicomRtNifti.Cli
     ///           [--rtdose PATH]      (also write doses/&lt;series description&gt;.nii.gz)
     ///
     ///   Reverse (per-ROI binary masks -> RTSTRUCT):
-    ///       DicomRtNifti.Cli--reverse
+    ///       DicomRtNifti.Cli --reverse
     ///           --image-folder PATH
     ///           --masks-folder PATH
     ///           --output PATH
     ///
     ///   Image-reverse (NIfTI image volume -> DICOM image series):
-    ///       DicomRtNifti.Cli--image-reverse
+    ///       DicomRtNifti.Cli --image-reverse
     ///           --nifti-image PATH
     ///           --output-folder PATH
     ///           [--modality {CT|MR|PT|auto}]  (default: auto -- infers from
@@ -43,7 +43,7 @@ namespace DicomRtNifti.Cli
     ///           [--ref-dicom-folder PATH] (template for patient/study metadata)
     ///
     ///   Image-forward (DICOM image series -> NIfTI image volume):
-    ///       DicomRtNifti.Cli--image-forward
+    ///       DicomRtNifti.Cli --image-forward
     ///           --image-folder PATH
     ///           --output PATH             (.nii.gz output file)
     ///           [--target-spacing X,Y,Z]  (optional resample, mm)
@@ -150,6 +150,7 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine($"  Image series: {imageSeries.FilePaths.Count} files in {imageFolder}");
             Console.Error.WriteLine($"  RTSTRUCT:    {rtstructPath} ({rtStructSeries.RoiNames.Count} ROIs)");
             Console.Error.WriteLine($"  Output:      {outputFolder}");
+            WarnIfSliceSpacingNonUniform(imageSeries);
 
             var maskService       = new RtStructMaskService();
             var conversionService = new NiftiConversionService(maskService);
@@ -202,10 +203,14 @@ namespace DicomRtNifti.Cli
             }
 
             // Machine-readable summary on stdout: one row per ROI: <name>\t<volume_cc>\t<path>.
+            // The file names come from the same order-independent helper the writer used, so ROIs
+            // whose names sanitize to the same string are reported at the paths they were actually
+            // written to rather than all three claiming one file.
+            var maskFileNames = NiftiConversionService.BuildUniqueMaskFileNames(roiVolumes.Keys);
             Console.Out.WriteLine("# rt_mask_validation forward");
             foreach (var kvp in roiVolumes)
             {
-                string maskPath = Path.Combine(outputFolder, SanitizeFileName(kvp.Key) + ".nii.gz");
+                string maskPath = Path.Combine(outputFolder, maskFileNames[kvp.Key] + ".nii.gz");
                 Console.Out.WriteLine($"{kvp.Key}\t{kvp.Value:G}\t{maskPath}");
             }
             return 0;
@@ -299,6 +304,7 @@ namespace DicomRtNifti.Cli
                     imageNifti = Path.Combine(masksFolder, NiftiFileNaming.ImageNiiGz);
                 string imageNiftiFull = File.Exists(imageNifti) ? Path.GetFullPath(imageNifti) : null;
 
+                var maskSources = new List<string>();
                 foreach (var src in NiftiFileNaming.EnumerateNiftiFiles(masksFolder))
                 {
                     // Skip the image volume; it must not be staged as a mask.
@@ -314,9 +320,9 @@ namespace DicomRtNifti.Cli
                     {
                         continue;
                     }
-                    string dst = Path.Combine(stagedMasks, srcName);
-                    StageFile(src, dst);
+                    maskSources.Add(src);
                 }
+                StageMasks(stagedMasks, maskSources);
 
                 if (imageNiftiFull != null)
                 {
@@ -557,6 +563,7 @@ namespace DicomRtNifti.Cli
                 if (targetSpacing != null)
                     Console.Error.WriteLine($"  Target spacing: {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
                 Console.Error.WriteLine($"  Output:       {outputPath}");
+                WarnIfSliceSpacingNonUniform(imageSeries, targetSpacing);
 
                 var maskService = new RtStructMaskService();
                 var conversionService = new NiftiConversionService(maskService);
@@ -601,6 +608,12 @@ namespace DicomRtNifti.Cli
             // image slices in the same folder -- ImageSeriesReader cannot ingest them
             // and would crash with a GDCM read error.
             var imageFiles = new List<string>();
+            // Per-slice geometry captured while each header is already open, so
+            // SeriesGeometryProbe can judge slice-spacing uniformity without a second pass.
+            // DicomScannerService fills the same three fields for the cohort modes.
+            var slicePositions = new List<double>();
+            double[] pixelSpacing = null;
+            double? sliceThickness = null;
             DicomDataset firstImage = null;
             foreach (var path in Directory.EnumerateFiles(folder, "*.dcm", SearchOption.TopDirectoryOnly)
                                           .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
@@ -623,6 +636,31 @@ namespace DicomRtNifti.Cli
 
                 imageFiles.Add(path);
                 if (firstImage == null) firstImage = ds;
+
+                try
+                {
+                    var ipp = ds.GetValues<double>(DicomTag.ImagePositionPatient);
+                    if (ipp != null && ipp.Length >= 3)
+                        slicePositions.Add(ipp[2]);
+                }
+                catch { /* malformed IPP: the probe reports non-uniform rather than guessing */ }
+
+                if (pixelSpacing == null && ds.Contains(DicomTag.PixelSpacing))
+                {
+                    try
+                    {
+                        var ps = ds.GetValues<double>(DicomTag.PixelSpacing);
+                        if (ps != null && ps.Length >= 2)
+                            pixelSpacing = new[] { ps[0], ps[1] };
+                    }
+                    catch { /* leave null; the probe just reports no in-plane spacing */ }
+                }
+
+                if (sliceThickness == null && ds.Contains(DicomTag.SliceThickness))
+                {
+                    try { sliceThickness = ds.GetSingleValue<double>(DicomTag.SliceThickness); }
+                    catch { /* optional; only the single-slice fallback uses it */ }
+                }
             }
             if (imageFiles.Count == 0 || firstImage == null)
                 throw new InvalidOperationException($"No image (.dcm) slices in {folder}.");
@@ -635,7 +673,30 @@ namespace DicomRtNifti.Cli
                 SeriesDate           = GetStringOrEmpty(firstImage, DicomTag.SeriesDate),
                 FrameOfReferenceUID  = GetStringOrEmpty(firstImage, DicomTag.FrameOfReferenceUID),
                 FilePaths            = imageFiles,
+                SlicePositions       = slicePositions,
+                PixelSpacing         = pixelSpacing,
+                SliceThickness       = sliceThickness,
             };
+        }
+
+        /// <summary>
+        /// Emits SeriesGeometryProbe's non-uniform-spacing warning on stderr, if there is one.
+        ///
+        /// The probe existed but only the cohort-scan mode ever consulted it, so a mixed-gap
+        /// series went through --forward / --image-forward with exit 0 and no message naming the
+        /// spacing it had just been flattened to. Deliberately non-fatal: the conversion is still
+        /// the best available answer, and the geometry written is left exactly as it was — the
+        /// caller just gets told what it is.
+        ///
+        /// <paramref name="targetSpacing"/> only changes the wording: under --target-spacing the
+        /// flattened spacing is what the series is resampled *from*, not what is written.
+        /// </summary>
+        private static void WarnIfSliceSpacingNonUniform(
+            DicomSeriesGroup imageSeries, double[] targetSpacing = null)
+        {
+            string warning;
+            if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(imageSeries, targetSpacing, out warning))
+                Console.Error.WriteLine("  " + warning);
         }
 
         private static DicomSeriesGroup BuildRtDoseSeriesFromFile(string rtdosePath)
@@ -704,12 +765,25 @@ namespace DicomRtNifti.Cli
                 string dst = Path.Combine(stage, Path.GetFileName(src));
                 StageFile(src, dst);
             }
-            foreach (var src in NiftiFileNaming.EnumerateNiftiFiles(masksFolder))
-            {
-                string dst = Path.Combine(masksDir, Path.GetFileName(src));
-                StageFile(src, dst);
-            }
+            StageMasks(masksDir, NiftiFileNaming.EnumerateNiftiFiles(masksFolder));
             return stage;
+        }
+
+        /// <summary>
+        /// Copies every mask into the staging folder under a name that is guaranteed to fit the
+        /// path limit. See <see cref="MaskStagingNames"/>: the staged path is the one that has to
+        /// fit, and an over-long one used to cost the ROI silently at exit 0.
+        /// </summary>
+        private static void StageMasks(string stagedMasksDir, IEnumerable<string> sources)
+        {
+            var notices = new List<string>();
+            var stagedNames = MaskStagingNames.BuildStagedFileNames(stagedMasksDir, sources, notices);
+
+            foreach (var notice in notices)
+                Console.Error.WriteLine("  " + notice);
+
+            foreach (var entry in stagedNames)
+                StageFile(entry.Key, Path.Combine(stagedMasksDir, entry.Value));
         }
 
         /// <summary>
@@ -830,22 +904,28 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine("                       [--no-volumes]         (skip rasterizing; volumes = -1)");
             Console.Error.WriteLine("                       [--output-spacing X,Y,Z]  (default: report native spacing)");
             Console.Error.WriteLine();
-            Console.Error.WriteLine("Cohort convert (full export to <patient>/<study>/<series>/):");
+            Console.Error.WriteLine("Cohort convert (full export, one folder per series):");
             Console.Error.WriteLine("  --cohort-convert --input PATH --output PATH");
+            Console.Error.WriteLine("    Layout: <patient>/<seriesDate>_<seriesDescription>/, or");
+            Console.Error.WriteLine("            <patient>/<study>/<series>/ (hashes) under --anonymize.");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Options common to --cohort-manifest and --cohort-convert:");
             Console.Error.WriteLine("  --associations FILE.json          canonical-name / alias mappings");
             Console.Error.WriteLine("  --only-associated-rois            drop ROIs that match no association");
             Console.Error.WriteLine("  --output-spacing X,Y,Z            resample to a fixed grid, mm");
+            Console.Error.WriteLine("                                    (--target-spacing is accepted as an alias)");
             Console.Error.WriteLine("  --anonymize [--salt STRING]       hash identifiers; writes AnonymizationKey.json");
             Console.Error.WriteLine("  --patients ID,ID                  restrict to these PatientIDs");
             Console.Error.WriteLine("  --series-description SUBSTR       keep image series whose description matches");
             Console.Error.WriteLine("  --struct-description SUBSTR       keep image series whose linked RTSTRUCT");
             Console.Error.WriteLine("                                    description matches, and export that one");
             Console.Error.WriteLine("  --prefer-largest-series           keep only the largest image series per study");
-            Console.Error.WriteLine("                                    (ties break arbitrarily; prefer the filters above)");
+            Console.Error.WriteLine("                                    (equal slice counts break on SeriesInstanceUID, so");
+            Console.Error.WriteLine("                                    repeated runs pick the same series; prefer the");
+            Console.Error.WriteLine("                                    filters above when the choice matters)");
             Console.Error.WriteLine("  --require-structures              skip series with no linked RTSTRUCT");
             Console.Error.WriteLine("  --require-dose                    skip series with no linked RTDOSE");
+            Console.Error.WriteLine("  --fail-fast                       abort on the first failing series");
             Console.Error.WriteLine("  --manifest-name NAME              default: export_manifest.csv");
             Console.Error.WriteLine("  --json-out PATH                   also write the JSON document to a file");
             Console.Error.WriteLine();
@@ -856,7 +936,6 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine("      Keywords are fo-dicom names (PatientAge, KVP, DoseUnits) plus computed");
             Console.Error.WriteLine("      values (@VoxelSize, @RoiNames, @MaxDose, @DoseVoxelSize).");
             Console.Error.WriteLine("  --no-images | --no-structures | --no-doses   skip that output");
-            Console.Error.WriteLine("  --fail-fast                       abort on the first failing series");
         }
     }
 }

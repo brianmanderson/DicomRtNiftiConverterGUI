@@ -45,6 +45,15 @@ namespace DicomRtNifti.App.ViewModels
         private readonly string _salt;
         private string _errorText = "";
 
+        /// <summary>
+        /// Set when the existing key file could not be read. The editor is showing an empty set of
+        /// mappings that is not what is on disk, so writing it back would destroy the real key.
+        /// </summary>
+        private bool _saveBlocked;
+
+        /// <summary>Why saving is blocked, appended to the message shown on a Save attempt.</summary>
+        private string _blockReason = "";
+
         public AnonymizationKeyEditorViewModel(string keyFilePath, string salt)
         {
             _keyFilePath = keyFilePath;
@@ -106,8 +115,37 @@ namespace DicomRtNifti.App.ViewModels
 
         private void Load()
         {
-            var keyFile = AnonymizationService.LoadKeyFile(_keyFilePath);
+            AnonymizationKeyFile keyFile;
+            try
+            {
+                keyFile = AnonymizationService.LoadKeyFile(_keyFilePath);
+            }
+            catch (InvalidDataException ex)
+            {
+                // An unreadable key file used to open as an empty editor, and the first Save
+                // wrote that emptiness over the file. Show the problem and refuse to save.
+                _saveBlocked = true;
+                _blockReason = "It could not be read; move it aside (or restore a backup) first.";
+                ErrorText = ex.Message;
+                return;
+            }
             if (keyFile == null) return;
+
+            try
+            {
+                // The editor writes through the static SaveKeyFile and never constructs an
+                // AnonymizationService, so the constructor's salt guard never saw this path: a key
+                // recorded under one salt, opened while settings named another, was rewritten with
+                // the new salt over hashes built from the old one. Say so on open rather than at
+                // the moment the user presses Save on work they have already done.
+                AnonymizationService.EnsureKeyFileSaltMatches(_keyFilePath, _salt);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _saveBlocked = true;
+                _blockReason = "Its recorded salt disagrees with the one in settings.";
+                ErrorText = ex.Message;
+            }
 
             if (keyFile.Patients != null)
                 foreach (var kvp in keyFile.Patients)
@@ -126,6 +164,12 @@ namespace DicomRtNifti.App.ViewModels
         /// </summary>
         public bool TrySave()
         {
+            if (_saveBlocked)
+            {
+                ErrorText = "Not saved — the existing key file is being preserved. " + _blockReason;
+                return false;
+            }
+
             if (!TryBuild(Patients, "patient", out var patients)) return false;
             if (!TryBuild(Studies, "study", out var studies)) return false;
             if (!TryBuild(Series, "series", out var series)) return false;

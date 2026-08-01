@@ -321,6 +321,18 @@ namespace DicomRtNifti.Core.Services
                 string label = $"{planned.ExportPatientId}/{Truncate(planned.ExportSeriesUid, 8)}";
                 progress?.Report($"[{index}/{plan.Series.Count}] {label}");
 
+                // The non-uniform-Z diagnostic belonged here from the start and was not: the
+                // single-series CLI modes warned, where a human is watching one conversion, and
+                // the cohort modes — 400 patients, output read months later — did not. A mixed-gap
+                // series converts at exit 0 either way; this is the only thing that says so.
+                // Non-fatal, and it changes nothing about the geometry written.
+                string spacingWarning;
+                if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
+                        planned.Image, options.OutputSpacing, out spacingWarning))
+                {
+                    progress?.Report("  " + spacingWarning);
+                }
+
                 try
                 {
                     var seriesResult = await ConvertSeriesAsync(
@@ -456,6 +468,9 @@ namespace DicomRtNifti.Core.Services
 
                 if (roiVolumes != null)
                 {
+                    // Same order-independent naming the writer used, so ROI names that sanitize to
+                    // the same string are recorded at the distinct paths they were written to.
+                    var maskFileNames = NiftiConversionService.BuildUniqueMaskFileNames(roiVolumes.Keys);
                     foreach (var kv in roiVolumes.OrderBy(k => k.Key, StringComparer.Ordinal))
                     {
                         seriesResult.Masks.Add(new MaskExportResult
@@ -464,7 +479,7 @@ namespace DicomRtNifti.Core.Services
                             VolumeCc = kv.Value,
                             File = writeFiles
                                 ? Join(planned.RelativeOutputDir, "masks",
-                                       WindowsPathSanitizer.SanitizeName(kv.Key) + ".nii.gz")
+                                       maskFileNames[kv.Key] + ".nii.gz")
                                 : null,
                         });
                     }
