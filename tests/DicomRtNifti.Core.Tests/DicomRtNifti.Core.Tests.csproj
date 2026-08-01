@@ -1,5 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Most tests avoid the SimpleITK native deliberately (see CLAUDE.md), but the
+       CLOSED_NONPLANAR slice-placement tests must call the real RtStructMaskService,
+       which takes an itk.simple.Image as its reference geometry. Importing the same
+       props the src/ projects use references the managed wrapper and copies whichever
+       per-OS native is staged in SitkDir next to the test output, so the DllImport
+       resolves. SitkDir is resolved relative to src/, so it is the same location
+       regardless of which project imports this. CI stages it before `dotnet test`. -->
+  <Import Project="..\..\src\SimpleITK.props" />
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <LangVersion>latest</LangVersion>
