@@ -208,8 +208,10 @@ namespace DicomRtNifti.Cli
             if (!Directory.Exists(options.InputRoot))
                 throw new DirectoryNotFoundException($"Input folder not found: {options.InputRoot}");
 
-            var scan = ScanTree(options.InputRoot);
-
+            // Load the key before the scan, not after. It is the one input that can refuse the run
+            // outright — an unreadable key, or one recorded under a different salt — and refusing
+            // after a full tree walk means the operator waits out a scan of the whole cohort to be
+            // told the run was never going to start.
             AnonymizationService anon = null;
             if (options.Anonymize)
             {
@@ -218,6 +220,8 @@ namespace DicomRtNifti.Cli
                     Path.Combine(options.OutputRoot, CohortExportService.AnonymizationKeyFileName),
                     options.Salt);
             }
+
+            var scan = ScanTree(options.InputRoot);
 
             var plan = CohortExportService.BuildPlan(scan, options, anon);
             Console.Error.WriteLine(

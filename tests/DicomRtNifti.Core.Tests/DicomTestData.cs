@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -10,6 +11,27 @@ namespace DicomRtNifti.Core.Tests
     /// Helpers for writing minimal, valid DICOM files to a temp directory so the
     /// scanner / linker services can be exercised without real patient data.
     /// </summary>
+    /// <summary>
+    /// Synchronous <see cref="IProgress{T}"/> for tests. <see cref="Progress{T}"/> marshals through
+    /// the synchronization context — on a test thread that means the thread pool — so a message
+    /// reported during a call can arrive after it returns, and an assertion on the log races it.
+    /// This one records on the calling thread; the lock is for the parallel per-ROI loop.
+    /// </summary>
+    internal sealed class CollectingProgress : IProgress<string>
+    {
+        private readonly List<string> _messages = new List<string>();
+
+        public void Report(string value)
+        {
+            lock (_messages) _messages.Add(value);
+        }
+
+        public List<string> Messages
+        {
+            get { lock (_messages) return new List<string>(_messages); }
+        }
+    }
+
     internal static class DicomTestData
     {
         public static string NewTempDir()
@@ -209,14 +231,23 @@ namespace DicomRtNifti.Core.Tests
         /// fixtures below readable.
         /// </summary>
         /// <returns>The folder holding the slices.</returns>
+        /// <param name="sliceZsMm">
+        /// Explicit ImagePositionPatient z per slice, overriding
+        /// <paramref name="sliceCount"/>/<paramref name="sliceGapMm"/>. Lets a test build the
+        /// mixed-gap geometry the non-uniform-spacing diagnostics exist for.
+        /// </param>
         public static string WriteCtSeriesWithPixels(
             string dir, string seriesUid, string frameUid,
             int sliceCount = 4, int size = 16,
             double inPlaneSpacingMm = 1.0, double sliceGapMm = 1.0,
-            string studyUid = null, string patientId = "PAT001")
+            string studyUid = null, string patientId = "PAT001",
+            double[] sliceZsMm = null)
         {
             studyUid = studyUid ?? NewUid();
             Directory.CreateDirectory(dir);
+
+            if (sliceZsMm != null)
+                sliceCount = sliceZsMm.Length;
 
             var pixels = new ushort[size * size];
             for (int i = 0; i < pixels.Length; i++) pixels[i] = 1000;
@@ -225,7 +256,7 @@ namespace DicomRtNifti.Core.Tests
 
             for (int s = 0; s < sliceCount; s++)
             {
-                double z = s * sliceGapMm;
+                double z = sliceZsMm != null ? sliceZsMm[s] : s * sliceGapMm;
                 var ds = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
                 {
                     { DicomTag.SOPClassUID, DicomUID.CTImageStorage },

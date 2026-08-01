@@ -186,6 +186,88 @@ namespace DicomRtNifti.Core.Tests
         }
 
         /// <summary>
+        /// The guard lived only on the constructor, and the anonymization-key editor never builds
+        /// one: it fills an AnonymizationKeyFile with the salt from settings and calls the static
+        /// SaveKeyFile. Opening a key recorded under salt A while settings named salt B therefore
+        /// rewrote the recorded salt to B, over hashes every one of which was built with A — the
+        /// key no longer reproduced its own entries, and nothing said so.
+        /// </summary>
+        [Fact]
+        public void SaveKeyFile_Refuses_ToStampADifferentSaltOverAnExistingKey()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            var original = new AnonymizationKeyFile { Salt = "original-salt" };
+            original.Patients["MRN-1"] = "Pdeadbeef01";
+            AnonymizationService.SaveKeyFile(keyPath, original);
+            byte[] before = File.ReadAllBytes(keyPath);
+
+            // What the editor does: same mappings, salt taken from settings.
+            var edited = new AnonymizationKeyFile { Salt = "settings-salt" };
+            edited.Patients["MRN-1"] = "Pdeadbeef01";
+
+            var ex = Assert.Throws<InvalidOperationException>(
+                () => AnonymizationService.SaveKeyFile(keyPath, edited));
+
+            Assert.Contains("original-salt", ex.Message);
+            Assert.Contains("settings-salt", ex.Message);
+            Assert.Equal(before, File.ReadAllBytes(keyPath));
+        }
+
+        /// <summary>Re-saving under the recorded salt is the normal case and must still work.</summary>
+        [Fact]
+        public void SaveKeyFile_AcceptsAnEditUnderTheRecordedSalt()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            AnonymizationService.SaveKeyFile(keyPath, new AnonymizationKeyFile { Salt = "s" });
+
+            var edited = new AnonymizationKeyFile { Salt = "s" };
+            edited.Patients["MRN-1"] = "SUBJ_01";
+            AnonymizationService.SaveKeyFile(keyPath, edited);
+
+            Assert.Equal("SUBJ_01", AnonymizationService.LoadKeyFile(keyPath).Patients["MRN-1"]);
+        }
+
+        /// <summary>
+        /// The other bypass: EnsureSaltMatches returned early on a null/blank recorded salt, and
+        /// Save() then stamped the caller's salt over it. A key holding a patient hashed under the
+        /// blank salt came back claiming the new one — two patients, two salts, one recorded.
+        /// Reachable from a hand-edited "Salt": null and from "HashSalt": "" in settings.
+        /// </summary>
+        [Theory]
+        [InlineData("{\"Salt\": null, \"Patients\": {\"MRN-1\": \"Pblank01\"}}")]
+        [InlineData("{\"Salt\": \"\", \"Patients\": {\"MRN-1\": \"Pblank01\"}}")]
+        public void ABlankRecordedSalt_IsCheckedLikeAnyOther(string json)
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            File.WriteAllText(keyPath, json);
+            string before = File.ReadAllText(keyPath);
+
+            Assert.Throws<InvalidOperationException>(
+                () => new AnonymizationService(keyPath, "a-real-salt"));
+
+            // And nothing was written over it on the way out.
+            Assert.Equal(before, File.ReadAllText(keyPath));
+        }
+
+        /// <summary>
+        /// The complement that keeps the guard from being a nuisance: a key file that records no
+        /// salt *and* no mappings has nothing hashed under anything, so the caller's salt may be
+        /// adopted. Anything else would refuse a run whose only sin is an empty key.
+        /// </summary>
+        [Fact]
+        public void ABlankRecordedSalt_WithNoMappings_IsAdopted()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            File.WriteAllText(keyPath, "{\"Salt\": \"\", \"Patients\": {}, \"Studies\": {}, \"Series\": {}}");
+
+            var svc = new AnonymizationService(keyPath, "a-real-salt");
+            svc.GetPatientHash("MRN-1");
+            svc.Save();
+
+            Assert.Equal("a-real-salt", AnonymizationService.LoadKeyFile(keyPath).Salt);
+        }
+
+        /// <summary>
         /// The check must not fire on the cases that are fine: the same salt, and a key file that
         /// omits Salt entirely — those deserialize to the same "DicomToNifti" the services default
         /// to, so an unconfigured install keeps loading its own history.

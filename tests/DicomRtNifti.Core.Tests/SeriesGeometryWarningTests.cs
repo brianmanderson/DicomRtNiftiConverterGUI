@@ -85,6 +85,89 @@ namespace DicomRtNifti.Core.Tests
         }
 
         /// <summary>
+        /// A 0.625 mm reconstruction whose ImagePositionPatient is stored to two decimals
+        /// alternates 0.62 / 0.63. Every gap differs by more than the probe's absolute 1e-3 mm
+        /// tolerance, so it counted as non-uniform and warned — with a message that computed its
+        /// own refutation, "off by up to 1.01x". Nothing to act on, printed in the same words as a
+        /// genuine 3.7x flattening.
+        /// </summary>
+        [Fact]
+        public void DoesNotWarn_WhenTheSpacingIsOnlyTheStoredDecimalPlaces()
+        {
+            // z = round(i * 0.625, 2): 0, 0.63, 1.25, 1.88, 2.5, 3.13, 3.75, 4.38
+            var series = new DicomSeriesGroup
+            {
+                SeriesInstanceUID = "1.2.3.0625",
+                Modality = "CT",
+                FilePaths = new List<string> { "a", "b", "c", "d", "e", "f", "g", "h" },
+                SlicePositions = new List<double> { 0, 0.63, 1.25, 1.88, 2.5, 3.13, 3.75, 4.38 },
+                PixelSpacing = new[] { 0.7, 0.7 },
+            };
+
+            SeriesGeometry geometry;
+            Assert.True(SeriesGeometryProbe.TryDescribe(series, out geometry));
+            Assert.False(geometry.Uniform);   // the description is still honest about the gaps
+
+            string warning;
+            Assert.False(SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(series, out warning));
+            Assert.Null(warning);
+        }
+
+        /// <summary>
+        /// The same non-finding from the other direction: a few microns of jitter on a 3 mm
+        /// series. The old message said "off by up to 1x" out loud.
+        /// </summary>
+        [Fact]
+        public void DoesNotWarn_OnMicronJitter()
+        {
+            var series = new DicomSeriesGroup
+            {
+                SeriesInstanceUID = "1.2.3.jitter",
+                Modality = "CT",
+                FilePaths = new List<string> { "a", "b", "c", "d", "e" },
+                SlicePositions = new List<double> { 0, 3.000, 6.003, 9.001, 12.000 },
+                PixelSpacing = new[] { 1.0, 1.0 },
+            };
+
+            string warning;
+            Assert.False(SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(series, out warning));
+        }
+
+        /// <summary>
+        /// And the complement, so the gate cannot be satisfied by never warning: a discrepancy
+        /// past the material threshold still has to be reported.
+        /// </summary>
+        [Fact]
+        public void StillWarns_WhenTheFlattenedSpacingIsMateriallyWrong()
+        {
+            string warning;
+            Assert.True(SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
+                NonUniformSeries(), out warning));
+            Assert.Contains("off by up to 3.93x", warning);
+        }
+
+        /// <summary>
+        /// Under --target-spacing the flattened spacing is what the series is resampled *from*;
+        /// the file is written on the target grid. Stating the flattened number as what "will be
+        /// written" sends the reader looking for a discrepancy that is not in the header — while
+        /// the substantive point, that resampling off a flattened grid does not recover the
+        /// geometry, is the same.
+        /// </summary>
+        [Fact]
+        public void UnderTargetSpacing_TheMessageDoesNotClaimTheFlattenedSpacingIsWritten()
+        {
+            string warning;
+            Assert.True(SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
+                NonUniformSeries(), new[] { 1.0, 1.0, 1.0 }, out warning));
+
+            Assert.DoesNotContain("written at 11.2 mm", warning);
+            Assert.Contains("written at the requested 1x1x1 mm", warning);
+            Assert.Contains("flattened to 11.2 mm", warning);
+            Assert.Contains("does not recover the true slice positions", warning);
+            Assert.Contains("off by up to 3.93x", warning);
+        }
+
+        /// <summary>
         /// The written spacing is the endpoint average, not the median the probe reports: that is
         /// what ImageSeriesReader puts in the NIfTI header, so quoting the median would understate
         /// the error by exactly the factor the warning exists to flag.

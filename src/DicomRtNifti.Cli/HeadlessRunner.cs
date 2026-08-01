@@ -304,6 +304,7 @@ namespace DicomRtNifti.Cli
                     imageNifti = Path.Combine(masksFolder, NiftiFileNaming.ImageNiiGz);
                 string imageNiftiFull = File.Exists(imageNifti) ? Path.GetFullPath(imageNifti) : null;
 
+                var maskSources = new List<string>();
                 foreach (var src in NiftiFileNaming.EnumerateNiftiFiles(masksFolder))
                 {
                     // Skip the image volume; it must not be staged as a mask.
@@ -319,9 +320,9 @@ namespace DicomRtNifti.Cli
                     {
                         continue;
                     }
-                    string dst = Path.Combine(stagedMasks, srcName);
-                    StageFile(src, dst);
+                    maskSources.Add(src);
                 }
+                StageMasks(stagedMasks, maskSources);
 
                 if (imageNiftiFull != null)
                 {
@@ -562,7 +563,7 @@ namespace DicomRtNifti.Cli
                 if (targetSpacing != null)
                     Console.Error.WriteLine($"  Target spacing: {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
                 Console.Error.WriteLine($"  Output:       {outputPath}");
-                WarnIfSliceSpacingNonUniform(imageSeries);
+                WarnIfSliceSpacingNonUniform(imageSeries, targetSpacing);
 
                 var maskService = new RtStructMaskService();
                 var conversionService = new NiftiConversionService(maskService);
@@ -686,11 +687,15 @@ namespace DicomRtNifti.Cli
         /// spacing it had just been flattened to. Deliberately non-fatal: the conversion is still
         /// the best available answer, and the geometry written is left exactly as it was — the
         /// caller just gets told what it is.
+        ///
+        /// <paramref name="targetSpacing"/> only changes the wording: under --target-spacing the
+        /// flattened spacing is what the series is resampled *from*, not what is written.
         /// </summary>
-        private static void WarnIfSliceSpacingNonUniform(DicomSeriesGroup imageSeries)
+        private static void WarnIfSliceSpacingNonUniform(
+            DicomSeriesGroup imageSeries, double[] targetSpacing = null)
         {
             string warning;
-            if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(imageSeries, out warning))
+            if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(imageSeries, targetSpacing, out warning))
                 Console.Error.WriteLine("  " + warning);
         }
 
@@ -760,12 +765,25 @@ namespace DicomRtNifti.Cli
                 string dst = Path.Combine(stage, Path.GetFileName(src));
                 StageFile(src, dst);
             }
-            foreach (var src in NiftiFileNaming.EnumerateNiftiFiles(masksFolder))
-            {
-                string dst = Path.Combine(masksDir, Path.GetFileName(src));
-                StageFile(src, dst);
-            }
+            StageMasks(masksDir, NiftiFileNaming.EnumerateNiftiFiles(masksFolder));
             return stage;
+        }
+
+        /// <summary>
+        /// Copies every mask into the staging folder under a name that is guaranteed to fit the
+        /// path limit. See <see cref="MaskStagingNames"/>: the staged path is the one that has to
+        /// fit, and an over-long one used to cost the ROI silently at exit 0.
+        /// </summary>
+        private static void StageMasks(string stagedMasksDir, IEnumerable<string> sources)
+        {
+            var notices = new List<string>();
+            var stagedNames = MaskStagingNames.BuildStagedFileNames(stagedMasksDir, sources, notices);
+
+            foreach (var notice in notices)
+                Console.Error.WriteLine("  " + notice);
+
+            foreach (var entry in stagedNames)
+                StageFile(entry.Key, Path.Combine(stagedMasksDir, entry.Value));
         }
 
         /// <summary>

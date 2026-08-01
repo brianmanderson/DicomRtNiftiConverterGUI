@@ -438,6 +438,17 @@ namespace DicomRtNifti.App.ViewModels
 
                     Directory.CreateDirectory(outputDir);
 
+                    // Mixed slice gaps are flattened to one spacing on the way into NIfTI. The CLI
+                    // has said so on its single-series modes for a while; the GUI — where nobody is
+                    // reading stderr — said nothing on any path. Log it and carry on: the export is
+                    // still the best available answer and the geometry written is untouched.
+                    string spacingWarning;
+                    if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
+                            model, targetSpacing, out spacingWarning))
+                    {
+                        AppendLog("  " + spacingWarning);
+                    }
+
                     double[] seriesSpacing = null;
                     if (ExportImages)
                     {

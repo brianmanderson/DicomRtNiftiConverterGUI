@@ -21,6 +21,22 @@ namespace DicomRtNifti.Core.Services
         private const double GapTolerance = 1e-3;
 
         /// <summary>
+        /// How far the flattened spacing has to be from the true gaps before the warning is worth
+        /// printing, as a volume-scaling factor.
+        ///
+        /// <see cref="GapTolerance"/> is an absolute 1e-3 mm, which is the right test for "are
+        /// these the same gap" only on a grid stored with enough decimals. A 0.625 mm
+        /// reconstruction written to two decimals alternates 0.62 / 0.63 and a 3 mm series with a
+        /// few microns of jitter differs in the sixth decimal; both are non-uniform by that test
+        /// and both used to produce a warning that computed its own refutation — "off by up to
+        /// 1.01x", "off by up to 1x". Reporting a 1% discrepancy in the same words as a 3.7x one
+        /// is how a real finding gets ignored, so the factor the message already computes is now
+        /// also the gate. 5% is comfortably above rounding and jitter and far below any mixed-gap
+        /// reconstruction worth flagging.
+        /// </summary>
+        internal const double MaterialSpacingFactor = 1.05;
+
+        /// <summary>
         /// Describes <paramref name="series"/>. Returns false when there is no geometry to
         /// report — an RTSTRUCT or RTDOSE series, or an image series whose slices carried no
         /// ImagePositionPatient.
@@ -84,6 +100,22 @@ namespace DicomRtNifti.Core.Services
         /// <returns>True when <paramref name="warning"/> was set.</returns>
         public static bool TryBuildNonUniformSpacingWarning(DicomSeriesGroup series, out string warning)
         {
+            return TryBuildNonUniformSpacingWarning(series, null, out warning);
+        }
+
+        /// <summary>
+        /// As <see cref="TryBuildNonUniformSpacingWarning(DicomSeriesGroup, out string)"/>, for a
+        /// conversion that resamples to <paramref name="targetSpacing"/>.
+        ///
+        /// The flattening still happens — the series is read on its own averaged grid and then
+        /// resampled off it — so the warning stands, but the spacing it quotes is not what lands
+        /// in the file. Saying "the output will be written at 11.2 mm" when the output is 1 mm
+        /// isotropic sends the reader looking for a discrepancy that is not in the header.
+        /// </summary>
+        /// <param name="targetSpacing">Resample target in mm, or null when not resampling.</param>
+        public static bool TryBuildNonUniformSpacingWarning(
+            DicomSeriesGroup series, double[] targetSpacing, out string warning)
+        {
             warning = null;
 
             SeriesGeometry geometry;
@@ -97,34 +129,87 @@ namespace DicomRtNifti.Core.Services
             // TryDescribe only reports non-uniform when it differenced at least two positions,
             // so the divisor below is always >= 1.
             int sliceCount = series.SlicePositions.Count;
+            double writtenSpacing = geometry.ExtentMm / (sliceCount - 1);
+            double errorFactor = SpacingErrorFactor(gaps[0], gaps[gaps.Length - 1], writtenSpacing);
+
+            // Non-uniform by the absolute gap test, but the flattened spacing reproduces every
+            // true gap to within rounding. Nothing to act on; see MaterialSpacingFactor.
+            if (errorFactor < MaterialSpacingFactor)
+                return false;
 
             warning = BuildNonUniformSpacingMessage(
                 series.SeriesInstanceUID,
                 sliceCount,
                 gaps[0],
                 gaps[gaps.Length - 1],
-                geometry.ExtentMm / (sliceCount - 1));
+                writtenSpacing,
+                errorFactor,
+                targetSpacing);
             return true;
         }
 
         /// <summary>
-        /// Wording for <see cref="TryBuildNonUniformSpacingWarning"/>. Internal and static so the
-        /// numbers in it are unit-tested without a DICOM tree. Formatted invariantly: this goes to
-        /// stderr, which harnesses parse.
+        /// Worst-case factor by which a volume computed from <paramref name="writtenSpacing"/> is
+        /// wrong. Both directions count: the flattened spacing over-states thin gaps by
+        /// written/min and under-states wide ones by max/written, and "off by up to" means the
+        /// larger of the two.
+        /// </summary>
+        internal static double SpacingErrorFactor(double minGap, double maxGap, double writtenSpacing)
+        {
+            double worst = 1.0;
+            if (writtenSpacing <= 0)
+                return worst;
+            if (minGap > 0)
+                worst = Math.Max(worst, writtenSpacing / minGap);
+            if (maxGap > 0)
+                worst = Math.Max(worst, maxGap / writtenSpacing);
+            return worst;
+        }
+
+        /// <summary>
+        /// Wording for <see cref="TryBuildNonUniformSpacingWarning(DicomSeriesGroup, out string)"/>.
+        /// Internal and static so the numbers in it are unit-tested without a DICOM tree. Formatted
+        /// invariantly: this goes to stderr, which harnesses parse.
         /// </summary>
         internal static string BuildNonUniformSpacingMessage(
-            string seriesInstanceUid, int sliceCount, double minGap, double maxGap, double writtenSpacing)
+            string seriesInstanceUid, int sliceCount, double minGap, double maxGap,
+            double writtenSpacing, double errorFactor, double[] targetSpacing)
         {
             string uid = string.IsNullOrEmpty(seriesInstanceUid) ? "(unknown UID)" : seriesInstanceUid;
-            return string.Format(
+
+            string head = string.Format(
                 CultureInfo.InvariantCulture,
                 "WARNING: series {0} has non-uniform slice spacing — {1} slices with gaps from " +
-                "{2:0.###} mm to {3:0.###} mm. NIfTI carries one spacing per axis, so the output " +
-                "will be written at {4:0.###} mm throughout and any volume computed from it will " +
-                "be off by up to {5:0.##}x. Resample the series to a uniform grid before " +
-                "converting if the geometry matters.",
-                uid, sliceCount, minGap, maxGap, writtenSpacing,
-                minGap > 0 ? writtenSpacing / minGap : maxGap / writtenSpacing);
+                "{2:0.###} mm to {3:0.###} mm. ",
+                uid, sliceCount, minGap, maxGap);
+
+            string body = targetSpacing == null
+                ? string.Format(
+                    CultureInfo.InvariantCulture,
+                    "NIfTI carries one spacing per axis, so the output will be written at " +
+                    "{0:0.###} mm throughout and any volume computed from it will be off by up " +
+                    "to {1:0.##}x. ",
+                    writtenSpacing, errorFactor)
+                : string.Format(
+                    CultureInfo.InvariantCulture,
+                    "NIfTI carries one spacing per axis, so the series is flattened to " +
+                    "{0:0.###} mm and then resampled: the output will be written at the requested " +
+                    "{1} mm, not at {0:0.###} mm. Resampling from a flattened grid does not " +
+                    "recover the true slice positions, so any volume computed from the output " +
+                    "will still be off by up to {2:0.##}x. ",
+                    writtenSpacing, FormatSpacing(targetSpacing), errorFactor);
+
+            return head + body +
+                "Resample the source series to a uniform grid before converting if the geometry matters.";
+        }
+
+        /// <summary>Renders a resample target as "XxYxZ", matching the CLI's own echo of it.</summary>
+        private static string FormatSpacing(double[] spacing)
+        {
+            if (spacing == null || spacing.Length == 0)
+                return "(unknown)";
+            return string.Join("x", spacing.Select(
+                v => v.ToString("0.###", CultureInfo.InvariantCulture)));
         }
 
         /// <summary>
