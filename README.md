@@ -87,6 +87,16 @@ DicomRtNifti.Cli --version
 - **Stdout** - a `# rt_mask_validation <mode>` header line followed by the machine-readable results: forward writes one TSV row per ROI (`<ROIName>\t<Volume_cc>\t<mask_path>`); the reverse/image modes write the output path(s). The header is the mode name as run, so the NIfTI-only reverse path emits `# rt_mask_validation reverse (nifti-only)` - match the prefix, not the whole line.
 - **Stderr** - human-readable progress and error messages.
 
+> **Read the mask path from stdout; do not rebuild it from the ROI name.** Mask file names are
+> sanitized for Windows, and sanitizing is many-to-one - `PTV:1`, `PTV*1` and `PTV?1` all reduce to
+> `PTV_1`. When two ROIs in one structure set collide this way, the repeats take a numeric suffix
+> (`PTV_1.nii.gz`, `PTV_1_2.nii.gz`) and a line naming the substitution goes to stderr. Suffixes are
+> assigned from an ordinal sort of the ROI names, so the stdout rows, the cohort JSON `file` fields
+> and the manifest all agree within a run - but the assignment depends on *which* ROIs are in that
+> run, so a later run with a different `--associations` / `--only-associated-rois` selection can put
+> a different ROI under the same suffixed name. Output folders are never pruned between runs, so
+> clean the target directory when narrowing a selection.
+
 The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
 
 **No DICOM handy?** No test data is committed, but the conformance package generates a complete
@@ -391,6 +401,18 @@ Point the **NIfTI -> DICOM** window at a single such folder, or at a parent fold
 > `doses/` inputs are skipped, because **mask -> RT-DOSE is implemented in the GUI only**. So is
 > the drop-folder **Run Server** watch mode. Scripted RT-DOSE or watch-folder work has no CLI
 > entry point today.
+
+> **Windows: mask file names on the reverse path have their own length budget, and a short input
+> root does not help.** Both `--reverse` forms copy their masks into a temporary mirror under
+> `%TEMP%\rt_mask_validation_stage_<random>\masks\` first, so it is the *staged* path - not the one you
+> passed - that has to fit inside `MAX_PATH`. With a default `%TEMP%` that leaves roughly **173
+> characters** for the mask basename; at 174 the copy is still made but SimpleITK cannot open it.
+> The ROI is dropped with a `Failed to read ...` line quoting the internal staging path (buried
+> under a wall of HDF5 diagnostics), the RT-STRUCT is written **without** that ROI, and the run
+> still **exits 0** - so check the reported ROI count, not just the exit code. ROI names over 64
+> characters are handled: `ROIName` (VR LO) is truncated to its 64-character cap with a warning
+> rather than aborting the run. Shortening the mask file names is the only fix for the staging
+> limit.
 
 ## Settings
 

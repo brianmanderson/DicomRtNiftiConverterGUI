@@ -4,6 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace DicomRtNifti.Core.Services
 {
@@ -176,6 +177,36 @@ namespace DicomRtNifti.Core.Services
             {
                 throw new InvalidDataException(BuildUnusableKeyFileMessage(
                     path, "the file is empty or contains a JSON null"));
+            }
+
+            // A file that parses but carries no mapping *section* is damaged in the same way and
+            // was previously just as destructive: the model's inline initializers leave the maps
+            // empty rather than null, so the service started blank and the first Save() replaced
+            // the file -- losing every recorded mapping, including manual overrides, and
+            // re-exporting the same patient under a second pseudonym. Truncating a valid key
+            // mid-write lands here at least as often as it lands on a parse error.
+            //
+            // Test for the *presence* of the properties, not their contents. A run that legitimately
+            // converts nothing writes all three sections empty, and must still load; and a
+            // hand-authored key pinning only `Patients` is a documented way to fix overrides, so
+            // requiring every section would break the workflow the overrides exist for. SaveKeyFile
+            // always serializes all three, so a file carrying none of them did not come from here.
+            JObject raw;
+            try
+            {
+                raw = JObject.Parse(json);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(path, ex.Message), ex);
+            }
+
+            if (raw.Property(nameof(AnonymizationKeyFile.Patients), StringComparison.OrdinalIgnoreCase) == null
+                && raw.Property(nameof(AnonymizationKeyFile.Studies), StringComparison.OrdinalIgnoreCase) == null
+                && raw.Property(nameof(AnonymizationKeyFile.Series), StringComparison.OrdinalIgnoreCase) == null)
+            {
+                throw new InvalidDataException(BuildUnusableKeyFileMessage(
+                    path, "the file carries no Patients, Studies or Series section"));
             }
 
             return keyFile;

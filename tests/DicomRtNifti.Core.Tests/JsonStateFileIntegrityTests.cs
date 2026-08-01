@@ -52,6 +52,69 @@ namespace DicomRtNifti.Core.Tests
         }
 
         /// <summary>
+        /// A key file that parses cleanly but carries no mapping section is damaged in exactly
+        /// the same way, and used to be just as destructive: every map fell through to
+        /// `?? new Dictionary&lt;&gt;()`, so the service started empty and the first Save() replaced
+        /// the file. The original null-check caught an empty file and a JSON null but not this.
+        /// </summary>
+        [Fact]
+        public void AnonymizationService_Ctor_Throws_WhenKeyFileHasNoMappingSection()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            File.WriteAllText(keyPath, "{\"Salt\": \"salt\"}");
+
+            Assert.Throws<InvalidDataException>(() => new AnonymizationService(keyPath, "salt"));
+        }
+
+        /// <summary>
+        /// The destructive consequence of the above, end to end: the recorded override must
+        /// survive a construct/hash/save cycle rather than the patient being re-exported under
+        /// a second pseudonym.
+        /// </summary>
+        [Fact]
+        public void KeyFileWithNoMappingSection_IsPreserved_NotOverwritten()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            const string original = "{\"Salt\": \"salt\"}";
+            File.WriteAllText(keyPath, original);
+
+            Assert.Throws<InvalidDataException>(() => new AnonymizationService(keyPath, "salt"));
+            Assert.Equal(original, File.ReadAllText(keyPath));
+        }
+
+        /// <summary>
+        /// The other complement: a run that legitimately converts nothing writes all three
+        /// sections empty. That file is intact, not damaged, and must still load — which is why
+        /// the check tests for the presence of the sections rather than for any mappings in them.
+        /// </summary>
+        [Fact]
+        public void KeyFileWithPresentButEmptySections_StillLoads()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            File.WriteAllText(keyPath, "{\"Salt\": \"salt\", \"Patients\": {}, \"Studies\": {}, \"Series\": {}}");
+
+            var svc = new AnonymizationService(keyPath, "salt");
+
+            Assert.NotNull(svc.GetPatientHash("MRN-1"));
+        }
+
+        /// <summary>
+        /// The complement, and the reason the check requires all three sections to be absent:
+        /// hand-authoring a key that pins only patient overrides is a supported workflow, so it
+        /// must still load.
+        /// </summary>
+        [Fact]
+        public void KeyFileWithOnlyPatientOverrides_StillLoads()
+        {
+            string keyPath = Path.Combine(DicomTestData.NewTempDir(), "AnonymizationKey.json");
+            File.WriteAllText(keyPath, "{\"Salt\": \"salt\", \"Patients\": {\"MRN-1\": \"SUBJ_01\"}}");
+
+            var svc = new AnonymizationService(keyPath, "salt");
+
+            Assert.Equal("SUBJ_01", svc.GetPatientHash("MRN-1"));
+        }
+
+        /// <summary>
         /// The bug itself: construct over a damaged key, hash a patient, save — and the damaged
         /// file is replaced by a fresh one holding only this run's mapping. Before the fix this
         /// assertion failed with the file rewritten as valid-but-empty JSON.
