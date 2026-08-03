@@ -89,13 +89,19 @@ DicomRtNifti.Cli --version
 
 > **Read the mask path from stdout; do not rebuild it from the ROI name.** Mask file names are
 > sanitized for Windows, and sanitizing is many-to-one - `PTV:1`, `PTV*1` and `PTV?1` all reduce to
-> `PTV_1`. When two ROIs in one structure set collide this way, the repeats take a numeric suffix
-> (`PTV_1.nii.gz`, `PTV_1_2.nii.gz`) and a line naming the substitution goes to stderr. Suffixes are
-> assigned from an ordinal sort of the ROI names, so the stdout rows, the cohort JSON `file` fields
-> and the manifest all agree within a run - but the assignment depends on *which* ROIs are in that
-> run, so a later run with a different `--associations` / `--only-associated-rois` selection can put
-> a different ROI under the same suffixed name. Output folders are never pruned between runs, so
-> clean the target directory when narrowing a selection.
+> `PTV_1`. So the mask file name is **not** simply the sanitized ROI name: an ROI whose name is
+> already a valid file name keeps it verbatim, while one that had to be sanitized is written as
+> `<sanitized>_<8 hex of SHA256 of the exact ROI name>` - `PTV:1` becomes `PTV_1_d6bdcf84.nii.gz`
+> and `PTV*1` becomes `PTV_1_896dd648.nii.gz`, each of them whether or not the other is in the
+> same run. A line naming the substitution goes to stderr.
+>
+> Because that mapping is a pure function of the single ROI name, the stdout rows, the cohort JSON
+> `file` fields and the manifest agree with each other *and* across runs: a later run with a
+> different `--associations` / `--only-associated-rois` selection cannot move an ROI onto another
+> file name. Output folders are still never pruned, so masks written by an earlier, wider
+> selection stay behind; each run lists the pre-existing mask files it did not write on stderr and
+> leaves them untouched - delete them yourself if this run's manifest is meant to describe the
+> whole folder.
 
 The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
 
@@ -124,7 +130,9 @@ rtmask-conformance verify --predictions ./predictions \
 The gate itself lives in
 [`.github/workflows/conformance-crossplatform.yml`](.github/workflows/conformance-crossplatform.yml),
 which runs the same three commands on Windows, Linux and macOS against a SHA-pinned revision of
-the fixture generator.
+the fixture generator. The paths above match it exactly, which does mean `fixture/` and
+`predictions/` land in whatever directory you run from and are *not* gitignored — they are scratch,
+regenerated in seconds, so delete them rather than keep them.
 
 > **Note on the forward mode's output layout.** `--forward` writes masks **flat** into
 > `--output-folder`, not into a `masks/` subfolder — it is the single-series mode the conformance
@@ -140,6 +148,18 @@ seen, and the run stops with `No image (.dcm) slices in <folder>`. RT-STRUCT / R
 files sitting beside the slices are fine — they are filtered out by modality. If your archive is
 nested, or its files are extensionless, use the [cohort modes](#cohort-mode) below: those scan
 recursively and read every file regardless of extension.
+
+**Non-uniform slice spacing is warned about, not corrected.** A series reconstructed with mixed
+gaps — 3 mm through the target, 6 mm elsewhere — has no single through-plane spacing, and a NIfTI
+carries only one per axis. `--forward`, `--image-forward`, both cohort modes and the GUI print a
+`WARNING: series <UID> has non-uniform slice spacing` line on stderr naming the gap range, the
+flattened spacing that will be written, and the worst-case factor by which a volume computed from
+the output is wrong. It fires only when that factor exceeds 1.05x, so two-decimal rounding on a
+0.625 mm reconstruction does not trip it. **The geometry is not changed, and `--output-spacing`
+does not rescue it** — resampling from an already-flattened grid cannot recover the true slice
+positions. Resample the source series onto a uniform grid before converting if the geometry
+matters. `--cohort-scan` reports the same fact structurally, as `slice_spacing_uniform` plus the
+observed gaps, which is the cheapest way to find these series before converting anything.
 
 **The NIfTI-only `--reverse` path writes a `metadata.json` back into `--masks-folder`**, so that
 repeat runs reuse the same UIDs rather than minting a new series each time. That is a write into
@@ -198,6 +218,12 @@ Key points:
   series, so printing it in a notebook cannot leak identifiers. Re-identification lives solely in
   `AnonymizationKey.json` — which also records the `--salt` in plaintext, so it is re-identification
   data twice over. Keep it out of version control.
+- **A `--salt` that disagrees with an existing `AnonymizationKey.json` is refused.** The salt is
+  half of every hash in that file, so continuing under a different one would leave some patients
+  carrying salt-A pseudonyms and the rest salt-B, in a key file recording only the later salt —
+  two sets that can no longer be linked. The run stops before the tree is walked and names both
+  salts. Use the recorded salt, or start a new output root. A key file that exists but does not
+  parse is likewise refused rather than replaced.
 - **`--anonymize` does not filter `--metadata-tags`.** Selected tags are written to each series'
   `metadata.json` verbatim, so `--metadata-tags PatientName,PatientID` puts the real identifiers
   back inside a folder tree whose names you just hashed. Choose the tags accordingly; the GUI's
@@ -270,6 +296,12 @@ repository root; override with `-p:SitkDir=...`):
 1. Download a C# release from the [SimpleITK releases](https://github.com/SimpleITK/SimpleITK/releases) (e.g. `SimpleITK-2.5.0-CSharp-win64-x64.zip`), matching your OS *and* architecture.
 2. Extract so the two libraries live **directly** under `../SimpleITK/`. The archive unpacks into a version-named top-level folder — flatten it; a `../SimpleITK/SimpleITK-2.5.0-CSharp-win64-x64/` subfolder will not be found.
 
+`SitkDir` is resolved relative to `src/SimpleITK.props`, so "one level above the repository root"
+means one level above *this* repository even when it is not the outermost checkout. Working inside
+the [research repository](https://github.com/brianmanderson/Dicom_RT_Images_Csharp), where this
+repo is mounted as the `Dicom_RT_images_Csharp` submodule, the staging directory is therefore that
+repository's own root — `<research-repo>/SimpleITK/`, which its `.gitignore` already excludes.
+
 ### Step 2 — build and test
 
 From the repository root:
@@ -317,6 +349,7 @@ The mask rasterization converts RT Structure contours from DICOM world coordinat
 1. **Coordinate transform**: Each contour point (x, y, z in mm) is converted to continuous voxel indices using `SimpleITK.Image.TransformPhysicalPointToContinuousIndex()`, which handles arbitrary image orientations (axial, coronal, sagittal, oblique) via the full direction cosine matrix.
 2. **Scanline fill**: For each contour polygon on a slice, a scanline algorithm finds all edge-scanline intersections at each integer row, sorts them, and fills between pairs.
 3. **Even-odd rule (XOR)**: Multiple contours on the same slice for the same ROI are handled via XOR toggling, which correctly produces hollow structures (e.g., a ring/shell where an inner contour subtracts from an outer contour).
+4. **One sampling convention, everywhere**: `TransformPhysicalPointToContinuousIndex` puts the centre of voxel *i* at continuous index *i*.0, so every path samples at the voxel **centre** — the scanline fill in both X and Y, and the `CLOSED_NONPLANAR` path, which slices a 3D polygon at each axial plane it spans and must therefore take that plane at the slice centre rather than at the boundary half a slice away. Sampling half a step off on any one of those axes displaces the whole mask by half a voxel, which is invisible in a round trip against the same convention and only shows up against analytic ground truth — which is what the conformance gate is for.
 
 ## Output structure (forward: DICOM -> NIfTI)
 
@@ -402,17 +435,16 @@ Point the **NIfTI -> DICOM** window at a single such folder, or at a parent fold
 > the drop-folder **Run Server** watch mode. Scripted RT-DOSE or watch-folder work has no CLI
 > entry point today.
 
-> **Windows: mask file names on the reverse path have their own length budget, and a short input
-> root does not help.** Both `--reverse` forms copy their masks into a temporary mirror under
-> `%TEMP%\rt_mask_validation_stage_<random>\masks\` first, so it is the *staged* path - not the one you
-> passed - that has to fit inside `MAX_PATH`. With a default `%TEMP%` that leaves roughly **173
-> characters** for the mask basename; at 174 the copy is still made but SimpleITK cannot open it.
-> The ROI is dropped with a `Failed to read ...` line quoting the internal staging path (buried
-> under a wall of HDF5 diagnostics), the RT-STRUCT is written **without** that ROI, and the run
-> still **exits 0** - so check the reported ROI count, not just the exit code. ROI names over 64
-> characters are handled: `ROIName` (VR LO) is truncated to its 64-character cap with a warning
-> rather than aborting the run. Shortening the mask file names is the only fix for the staging
-> limit.
+> **Long mask file names on the reverse path are clipped, not dropped.** Both `--reverse` forms
+> copy their masks into a temporary mirror under
+> `%TEMP%\rt_mask_validation_stage_<random>\masks\` first, so it is the *staged* path - not the one
+> you passed - that has to fit inside `MAX_PATH`, and a short input root does not help. Rather than
+> let that limit decide which ROIs survive, the staged basename is clipped to the 64 characters
+> `ROIName` (VR LO) allows anyway, basenames that collide once clipped are disambiguated, and every
+> rename is reported on stderr naming *your* file. The stored `ROIName` is unaffected, since the
+> RTSTRUCT caps it at the same 64 characters regardless. A staging root so deep that even a clipped
+> name will not fit fails the run loudly, rather than quietly writing an RT-STRUCT with ROIs
+> missing.
 
 ## Settings
 

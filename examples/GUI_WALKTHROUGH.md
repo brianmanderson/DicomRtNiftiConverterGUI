@@ -145,6 +145,12 @@ Export Options panel:
 | **Limit export to selected ROIs** + **Select ROIs for Export…** | Drop ROIs that match no association; choose which canonical names to keep | `--only-associated-rois` |
 | **Resample to fixed spacing** + **Set Spacing…** | Target voxel grid in mm | `--output-spacing X,Y,Z` |
 | **Anonymize export** + **Edit Anonymization Key…** | Hash identifiers; write (and hand-override) the key file | `--anonymize --salt` |
+
+**The key editor refuses a key file whose recorded salt is not the one in Settings**, and says so
+on open rather than after you have edited it. The salt is half of every hash in that file, so
+rewriting it under a different one would give already-exported patients a second, unlinkable
+pseudonym. Change `HashSalt` back, or point the export at a fresh output root. The CLI refuses the
+same mismatch, before it walks the input tree.
 | **Write DICOM tag sidecar (metadata.json)** + **Select Metadata Tags…** | Per-series `metadata.json` of chosen DICOM attributes and computed values, in three sections | `--metadata-tags` / `--metadata-structure-tags` / `--metadata-dose-tags` |
 
 The tree shows a checkbox at the patient and series level — studies are a structural grouping
@@ -179,7 +185,11 @@ interactively.
     metadata.json                    # Write DICOM tag sidecar, with tags selected
 ```
 
-Each line appears only when its toggle is on, as noted.
+Each line appears only when its toggle is on, as noted. `{ROIName}` is the ROI's own name when
+that is already a valid file name; one that had to be sanitized for Windows gets a short hash of
+the exact ROI name appended, so two ROIs differing only in stripped characters never land on one
+file — see [Read the mask path from stdout](../README.md#headless-mode) for the rule and why it
+does not depend on which ROIs you selected.
 
 **Anonymized** — the same tree with a three-level hash triple in place of the patient and series
 folders, plus `AnonymizationKey.json` at the output root. That key file holds the salt as well as
