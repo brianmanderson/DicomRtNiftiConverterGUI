@@ -18,6 +18,15 @@ namespace DicomRtNifti.Core.Services
     public class RtStructMaskService
     {
         /// <summary>
+        /// Z extent, in continuous slice indices, below which a CLOSED_NONPLANAR contour
+        /// is treated as planar and filled on its nearest slice rather than sliced into
+        /// cross-sections. Contours that are genuinely planar carry identical Z in mm, so
+        /// the transformed extent is zero up to floating-point noise; the tolerance only
+        /// has to absorb that.
+        /// </summary>
+        private const double PlanarZTolerance = 0.001;
+
+        /// <summary>
         /// Rasterizes the requested ROIs from an RT Struct file onto the reference image geometry.
         /// </summary>
         /// <param name="rtStructFilePath">Path to the RTSTRUCT DICOM file.</param>
@@ -96,16 +105,87 @@ namespace DicomRtNifti.Core.Services
             // and IProgress.Report, both of which are thread-safe.
             var roiContours = ds.GetSequence(DicomTag.ROIContourSequence).ToList();
 
+            // Two ROIs may legally carry the same ROIName: DICOM keys a structure set on
+            // ROINumber, and imposes no uniqueness on the name. The export map is keyed on
+            // name, so resolving the output key inside the parallel loop below made
+            // `results[outputName] = mask` last-write-wins -- one ROI silently overwrote
+            // the other, at exit 0, and *which* one survived varied between identical runs.
+            //
+            // Decide every key up front, ordered by ROINumber, so the outcome is
+            // deterministic and no ROI is dropped. The lowest ROINumber keeps the requested
+            // name, which leaves the ordinary non-colliding case byte-identical; any
+            // further ROI sharing that name is suffixed with its own ROINumber, unique by
+            // construction in a valid structure set.
+            var outputKeyByRoiNumber = new Dictionary<int, string>();
+            var roiNumbersByOutputName = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            var contourByRoiNumber = new Dictionary<int, DicomDataset>();
+            int duplicateRoiContourItems = 0;
+
+            foreach (var rc in roiContours)
+            {
+                int num;
+                try { num = rc.GetSingleValue<int>(DicomTag.ReferencedROINumber); }
+                catch (Exception) { continue; }
+
+                if (!roiNumberToName.TryGetValue(num, out string nm)) continue;
+                if (!dicomNameToOutputName.TryGetValue(nm, out string outName)) continue;
+
+                // ROIContourSequence carries one item per ROI. A second item referencing a
+                // ROINumber already seen is malformed; keep the first in document order so
+                // the choice is deterministic rather than racing on the same output key.
+                if (contourByRoiNumber.ContainsKey(num)) { duplicateRoiContourItems++; continue; }
+                contourByRoiNumber[num] = rc;
+
+                if (!roiNumbersByOutputName.TryGetValue(outName, out var nums))
+                {
+                    nums = new List<int>();
+                    roiNumbersByOutputName[outName] = nums;
+                }
+                nums.Add(num);
+            }
+
+            foreach (var kvp in roiNumbersByOutputName)
+            {
+                var nums = kvp.Value;
+                nums.Sort();
+                for (int i = 0; i < nums.Count; i++)
+                {
+                    outputKeyByRoiNumber[nums[i]] =
+                        i == 0 ? kvp.Key : kvp.Key + "_" + nums[i].ToString();
+                }
+                if (nums.Count > 1)
+                {
+                    progress?.Report(
+                        $"    WARNING: {nums.Count} ROIs share the name '{kvp.Key}' "
+                        + $"(ROINumbers {string.Join(", ", nums)}). DICOM does not require ROI "
+                        + $"names to be unique. Exporting all of them: ROI {nums[0]} keeps "
+                        + $"'{kvp.Key}' and the rest are suffixed with their ROINumber.");
+                }
+            }
+
+            if (duplicateRoiContourItems > 0)
+            {
+                progress?.Report(
+                    $"    WARNING: {duplicateRoiContourItems} ROIContourSequence item(s) "
+                    + "reference a ROINumber that already appeared. ROIContourSequence carries "
+                    + "one item per ROI, so this structure set is malformed; the first item for "
+                    + "each ROINumber was used and the rest ignored.");
+            }
+
+            // Only the deduplicated items are rasterized, so the parallel loop cannot race
+            // two contours onto one output key.
+            var roiContoursToRasterize = contourByRoiNumber.Values.ToList();
+
             var parallelOpts = new ParallelOptions
             {
                 CancellationToken = ct,
                 // Cap parallelism at the lesser of CPU count and ROI count to
                 // avoid spawning idle threads on small RTSTRUCTs (typical: 5-30
                 // ROIs in clinical OAR sets, up to ~50 in research datasets).
-                MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, Math.Max(1, roiContours.Count)),
+                MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, Math.Max(1, roiContoursToRasterize.Count)),
             };
 
-            Parallel.ForEach(roiContours, parallelOpts, roiContour =>
+            Parallel.ForEach(roiContoursToRasterize, parallelOpts, roiContour =>
             {
                 int refRoiNum;
                 try
@@ -120,8 +200,9 @@ namespace DicomRtNifti.Core.Services
                 if (!roiNumberToName.ContainsKey(refRoiNum)) return;
                 string dicomRoiName = roiNumberToName[refRoiNum];
 
-                if (!dicomNameToOutputName.ContainsKey(dicomRoiName)) return;
-                string outputName = dicomNameToOutputName[dicomRoiName];
+                // Key assigned deterministically above, from ROINumber, so ROIs sharing a
+                // name cannot overwrite one another here.
+                if (!outputKeyByRoiNumber.TryGetValue(refRoiNum, out string outputName)) return;
 
                 progress?.Report($"    Rasterizing ROI: {dicomRoiName}");
 
@@ -374,6 +455,27 @@ namespace DicomRtNifti.Core.Services
                 if (points[i][2] > maxZ) maxZ = points[i][2];
             }
 
+            // A CLOSED_NONPLANAR contour that is in fact planar -- what a zero-tilt loop
+            // emits, and what a writer produces when it tags an ordinary planar contour
+            // with the non-planar type -- has no edge that crosses any plane, so the
+            // cross-section rule below would find nothing on every slice. Handle it once,
+            // here, by filling it on its nearest slice exactly as CLOSED_PLANAR would.
+            if (maxZ - minZ < PlanarZTolerance)
+            {
+                int flatSlice = SaturatingToInt(Math.Round((minZ + maxZ) / 2.0));
+                if (flatSlice < 0 || flatSlice >= slices) return false;
+
+                double[] flatX = new double[pointCount];
+                double[] flatY = new double[pointCount];
+                for (int i = 0; i < pointCount; i++)
+                {
+                    flatX[i] = points[i][0];
+                    flatY[i] = points[i][1];
+                }
+                ScanlineFillPolygon(maskData, flatX, flatY, pointCount, flatSlice, rows, cols);
+                return true;
+            }
+
             int sliceMin = Math.Max(0, SaturatingToInt(Math.Floor(minZ)));
             int sliceMax = Math.Min(slices - 1, SaturatingToInt(Math.Ceiling(maxZ)));
 
@@ -400,18 +502,30 @@ namespace DicomRtNifti.Core.Services
                     double z0 = points[i][2];
                     double z1 = points[j][2];
 
-                    // Check if this edge crosses the slice plane
+                    // Half-open rule: an endpoint exactly on the plane counts as BELOW it,
+                    // so an edge is a crossing iff exactly one endpoint is strictly above.
+                    // That counts every transversal crossing exactly once, including one
+                    // that lands on a vertex -- the edge arriving at the vertex registers
+                    // it, the edge leaving does not -- and it yields an even number of
+                    // crossings, which is what the pairwise fill below assumes.
+                    //
+                    // There used to be an `else if (Math.Abs(z0 - planeZ) < 0.001)` branch
+                    // adding the vertex itself. For a vertex lying on the plane that branch
+                    // fired on the *leaving* edge while the rule above had already recorded
+                    // the *arriving* one, so a single crossing was counted twice. Three
+                    // points then skipped the two-point fallback below and handed a
+                    // degenerate collinear polygon to the scanline fill, which writes
+                    // nothing: the slice came out empty. Contour vertices are routinely
+                    // authored at slice z positions, so this emptied real slices -- a
+                    // 5-degree-tilted 20 mm loop lost its own centre plane, its widest
+                    // chord, and measured 0.066 cc against 1.248 cc at zero tilt. The
+                    // wholly-planar case the branch was presumably meant to serve is
+                    // handled above, before this loop.
                     if ((z0 <= planeZ && z1 > planeZ) || (z1 <= planeZ && z0 > planeZ))
                     {
                         double t = (planeZ - z0) / (z1 - z0);
                         crossX.Add(points[i][0] + t * (points[j][0] - points[i][0]));
                         crossY.Add(points[i][1] + t * (points[j][1] - points[i][1]));
-                    }
-                    // If a vertex sits exactly on the plane, include it
-                    else if (Math.Abs(z0 - planeZ) < 0.001)
-                    {
-                        crossX.Add(points[i][0]);
-                        crossY.Add(points[i][1]);
                     }
                 }
 
