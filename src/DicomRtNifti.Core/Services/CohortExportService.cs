@@ -430,17 +430,13 @@ namespace DicomRtNifti.Core.Services
             // --only-associated-rois with associations that match no ROI anywhere exported no mask
             // at all, at exit 0, with nothing on stderr: the file-name typo in an association list
             // that costs a day. The manifest above is still written (it is the survey that shows
-            // which names exist); the run then fails so the caller cannot miss it.
-            if (options.OnlyAssociatedRois && associationsGiven && options.ExportStructures)
+            // which names exist); the condition is reported and recorded as an error so the
+            // caller's JSON carries it, and the CLI exits 1.
+            string nothingAssociated = DescribeNothingAssociated(plan, options, result);
+            if (nothingAssociated != null)
             {
-                var structureSets = plan.Series.Where(p => p.RtStruct != null).ToList();
-                int masksExported = result.Series.Sum(s => s.Masks.Count);
-                if (structureSets.Count > 0 && masksExported == 0)
-                {
-                    string message = BuildNothingAssociatedMessage(options.Associations, structureSets);
-                    progress?.Report("WARNING: " + message);
-                    throw new InvalidOperationException(message);
-                }
+                progress?.Report("WARNING: " + nothingAssociated);
+                result.Errors.Add(new CohortError { Message = nothingAssociated });
             }
 
             return result;
@@ -449,6 +445,31 @@ namespace DicomRtNifti.Core.Services
         internal const string OnlyAssociatedWithoutAssociationsWarning =
             "WARNING: --only-associated-rois was given without --associations; there is nothing to " +
             "match against, so every ROI is exported.";
+
+        /// <summary>
+        /// The --only-associated-rois failure, or null when there is none: associations were
+        /// given, structures were exported, at least one series that carried a structure set
+        /// converted, and still no mask came out. Series that failed outright are their own
+        /// errors and do not count here, so a run that broke for another reason is not blamed on
+        /// the association list.
+        /// </summary>
+        public static string DescribeNothingAssociated(
+            CohortExportPlan plan, CohortExportOptions options, CohortExportResult result)
+        {
+            if (plan == null || options == null || result == null)
+                return null;
+            if (!options.OnlyAssociatedRois || options.Associations == null || options.Associations.Count == 0)
+                return null;
+            if (!options.ExportStructures)
+                return null;
+
+            var convertedWithStructures = result.Series.Where(s => s.StructLinkRule != null).ToList();
+            if (convertedWithStructures.Count == 0 || convertedWithStructures.Sum(s => s.Masks.Count) > 0)
+                return null;
+
+            var structureSets = plan.Series.Where(p => p.RtStruct != null).ToList();
+            return BuildNothingAssociatedMessage(options.Associations, structureSets);
+        }
 
         /// <summary>
         /// Names what was asked for and what was there, so the mismatch can be fixed from the

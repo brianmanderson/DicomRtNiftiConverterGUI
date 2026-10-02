@@ -92,6 +92,26 @@ namespace DicomRtNifti.Core.Tests
         }
 
         [Fact]
+        public void StructureSetReferencingSeveralSeries_MatchesWhenTheImageIsAnyOfThem()
+        {
+            // A planning CT and a registered MR in one structure set: the image folder holds the
+            // second referenced series, which is a match, not a mismatch, even under strict.
+            string rs = DicomTestData.WriteRtStructWithContours(_dir, "rs_two_series.dcm",
+                _studyUid, DicomTestData.NewUid(), _frameUid, OneSquare(), referencedSeriesUid: DicomTestData.NewUid());
+            var file = FellowOakDicom.DicomFile.Open(rs);
+            var seriesSeq = file.Dataset
+                .GetSequence(FellowOakDicom.DicomTag.ReferencedFrameOfReferenceSequence).Items[0]
+                .GetSequence(FellowOakDicom.DicomTag.RTReferencedStudySequence).Items[0]
+                .GetSequence(FellowOakDicom.DicomTag.RTReferencedSeriesSequence);
+            seriesSeq.Items.Add(new FellowOakDicom.DicomDataset { { FellowOakDicom.DicomTag.SeriesInstanceUID, _ctSeriesUid } });
+            file.Save(rs);
+
+            var run = Forward(rs, "--strict-reference");
+            Assert.True(run.ExitCode == 0, run.ToString());
+            Assert.DoesNotContain("references image series", run.Stderr);
+        }
+
+        [Fact]
         public void FrameOfReferenceDiffers_WithoutSeriesReference_Warns()
         {
             // No RTReferencedSeriesSequence: only the frame of reference is checkable, and it is
@@ -117,6 +137,11 @@ namespace DicomRtNifti.Core.Tests
                 new DicomSeriesGroup { ReferencedSeriesUID = "", FrameOfReferenceUID = "F2" }, image));
             Assert.Null(HeadlessRunner.DescribeReferenceMismatch(
                 new DicomSeriesGroup { ReferencedSeriesUID = "", FrameOfReferenceUID = "" }, image));
+
+            // Membership over every referenced series and frame.
+            Assert.Null(HeadlessRunner.DescribeReferenceMismatch(new[] { "S9", "S1" }, new string[0], image));
+            Assert.Null(HeadlessRunner.DescribeReferenceMismatch(new string[0], new[] { "F9", "F1" }, image));
+            Assert.Contains("S8, S9", HeadlessRunner.DescribeReferenceMismatch(new[] { "S8", "S9" }, new[] { "F1" }, image));
         }
     }
 }

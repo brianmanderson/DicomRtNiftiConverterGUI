@@ -39,7 +39,7 @@ namespace DicomRtNifti.Core.Tests
 
         private static Case BuildCase(string charset = "ISO_IR 192")
         {
-            var c = new Case { DicomFolder = Path.Combine(DicomTestData.NewTempDir(), "dicom") };
+            var c = new Case();
             c.DicomFolder = Path.Combine(c.Root, "dicom");
             string studyUid = DicomTestData.NewUid();
             string ctUid = DicomTestData.NewUid();

@@ -106,7 +106,9 @@ namespace DicomRtNifti.Core.Services
                 Image dose;
                 try
                 {
-                    dose = SimpleITK.ReadImage(dosePath);
+                    // Through the conversion service's helper: a dose named after a non-ASCII
+                    // series description would otherwise be looked up under a best-fit ANSI name on Windows.
+                    dose = NiftiConversionService.ReadImageSafely(dosePath);
                 }
                 catch (Exception ex)
                 {

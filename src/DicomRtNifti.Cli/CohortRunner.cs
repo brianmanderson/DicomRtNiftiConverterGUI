@@ -52,7 +52,7 @@ namespace DicomRtNifti.Cli
         {
             string input = CliArgs.RequireArg(args, "--input");
             if (!Directory.Exists(input))
-                throw new DirectoryNotFoundException($"Input folder not found: {input}");
+                throw new CliUsageException($"Input folder not found: {input}");
 
             var scan = ScanTree(input);
 
@@ -135,7 +135,7 @@ namespace DicomRtNifti.Cli
         public static int RunManifest(string[] args)
         {
             var options = BuildOptions(args, forConvert: false);
-            var (result, _) = RunCohort(args, options, convert: false);
+            var (result, plan) = RunCohort(args, options, convert: false);
 
             Emit(args, new
             {
@@ -159,13 +159,17 @@ namespace DicomRtNifti.Cli
                 errors = result.Errors.Select(DescribeError).ToList(),
             });
 
+            // --only-associated-rois that matched nothing anywhere is a failed run, reported after
+            // the JSON (whose errors list carries the explanation) rather than instead of it.
+            if (CohortExportService.DescribeNothingAssociated(plan, options, result) != null)
+                return 1;
             return result.FailedCount > 0 && result.SucceededCount == 0 ? 1 : 0;
         }
 
         public static int RunConvert(string[] args)
         {
             var options = BuildOptions(args, forConvert: true);
-            var (result, _) = RunCohort(args, options, convert: true);
+            var (result, plan) = RunCohort(args, options, convert: true);
 
             Emit(args, new
             {
@@ -199,6 +203,10 @@ namespace DicomRtNifti.Cli
                 errors = result.Errors.Select(DescribeError).ToList(),
             });
 
+            // --only-associated-rois that matched nothing anywhere is a failed run, reported after
+            // the JSON (whose errors list carries the explanation) rather than instead of it.
+            if (CohortExportService.DescribeNothingAssociated(plan, options, result) != null)
+                return 1;
             return result.FailedCount > 0 && result.SucceededCount == 0 ? 1 : 0;
         }
 
@@ -206,7 +214,7 @@ namespace DicomRtNifti.Cli
             string[] args, CohortExportOptions options, bool convert)
         {
             if (!Directory.Exists(options.InputRoot))
-                throw new DirectoryNotFoundException($"Input folder not found: {options.InputRoot}");
+                throw new CliUsageException($"Input folder not found: {options.InputRoot}");
 
             // Load the key before the scan, not after. It is the one input that can refuse the run
             // outright — an unreadable key, or one recorded under a different salt — and refusing
@@ -229,7 +237,7 @@ namespace DicomRtNifti.Cli
                 + $"{plan.UnlinkedRtObjects.Count} unlinked RT objects)");
 
             var service = new CohortExportService(new NiftiConversionService(new RtStructMaskService()));
-            var progress = new Progress<string>(msg => Console.Error.WriteLine("  " + msg));
+            var progress = new StderrProgress("  ");
 
             var result = convert
                 ? service.ExecuteAsync(plan, options, anon, progress, CancellationToken.None)
@@ -277,7 +285,7 @@ namespace DicomRtNifti.Cli
             if (!string.IsNullOrEmpty(spacingArg))
             {
                 if (!CohortExportOptions.TryParseSpacing(spacingArg, out var spacing, out string error))
-                    throw new ArgumentException($"--output-spacing: {error}");
+                    throw new CliUsageException($"--output-spacing: {error}");
                 options.OutputSpacing = spacing;
             }
 
@@ -285,7 +293,7 @@ namespace DicomRtNifti.Cli
             if (!string.IsNullOrEmpty(associationsPath))
             {
                 if (!File.Exists(associationsPath))
-                    throw new FileNotFoundException($"Associations file not found: {associationsPath}");
+                    throw new CliUsageException($"Associations file not found: {associationsPath}");
                 options.Associations = new SettingsService().ImportAssociations(associationsPath);
                 Console.Error.WriteLine($"  Loaded {options.Associations.Count} ROI association(s)");
             }
@@ -344,7 +352,7 @@ namespace DicomRtNifti.Cli
 
             if (unknown.Count > 0)
             {
-                throw new ArgumentException(
+                throw new CliUsageException(
                     $"{flagName}: unrecognised keyword(s) {string.Join(", ", unknown)}. "
                     + "Expected fo-dicom tag keywords (PatientAge, KVP, DoseUnits) or one of this "
                     + $"section's computed values ({string.Join(", ", knownComputed)}).");
@@ -359,7 +367,7 @@ namespace DicomRtNifti.Cli
         private static DicomScanResult ScanTree(string input)
         {
             Console.Error.WriteLine($"  Scanning {Path.GetFullPath(input)} ...");
-            var progress = new Progress<string>(msg => Console.Error.WriteLine("  " + msg));
+            var progress = new StderrProgress("  ");
             var scan = new DicomScannerService()
                 .ScanFolderAsync(input, progress, CancellationToken.None)
                 .GetAwaiter().GetResult();

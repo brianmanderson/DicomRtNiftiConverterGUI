@@ -74,21 +74,47 @@ namespace DicomRtNifti.Core.Tests
         }
 
         [Fact]
-        public void AssociationsMatchNothing_WarnsAndExits1_AfterWritingTheManifest()
+        public void AssociationsMatchNothing_WarnsAndExits1_AfterWritingTheManifestAndJson()
         {
             string assoc = WriteAssociations("liver.json", ("Liver", new[] { "Hepar" }));
             var run = Convert("--only-associated-rois", "--associations", assoc);
 
-            Assert.Equal(1, run.ExitCode);
+            Assert.True(run.ExitCode == 1, run.ToString());
             Assert.Contains("WARNING: --only-associated-rois matched no ROI", run.Stderr);
             Assert.Contains("[Liver]", run.Stderr);
             Assert.Contains("Avoid, Target", run.Stderr);
+            Assert.DoesNotContain("FATAL", run.Stderr);
             Assert.DoesNotContain(".nii.gz", run.Stdout);
 
+            // The cohort JSON is still emitted, and its errors carry the explanation.
+            Assert.Contains("\"errors\"", run.Stdout);
+            Assert.Contains("matched no ROI", run.Stdout);
+
             // The survey that shows which names exist was still written before the run failed.
-            string outRoot = run.Stderr.Contains("--output") ? null : null;
-            var manifests = Directory.GetFiles(_dir, "export_manifest.csv", SearchOption.AllDirectories);
-            Assert.NotEmpty(manifests);
+            Assert.NotEmpty(Directory.GetFiles(_dir, "export_manifest.csv", SearchOption.AllDirectories));
+        }
+
+        [Fact]
+        public void EveryStructuredSeriesFailed_IsNotBlamedOnTheAssociations()
+        {
+            // Slices without pixel data: the scan links them, the conversion cannot load them.
+            string cohort = Path.Combine(_dir, "broken");
+            string study = DicomTestData.NewUid();
+            string frame = DicomTestData.NewUid();
+            string ct = DicomTestData.NewUid();
+            Directory.CreateDirectory(cohort);
+            for (int i = 0; i < 3; i++)
+                DicomTestData.WriteImageSlice(cohort, $"ct_{i}.dcm", "CT", "PAT9", study, ct, frame, i);
+            DicomTestData.WriteRtStruct(cohort, "rs.dcm", "PAT9", study, DicomTestData.NewUid(), frame, "S",
+                new[] { "Target" }, referencedSeriesUid: ct);
+            string assoc = WriteAssociations("liver2.json", ("Liver", new[] { "Hepar" }));
+
+            var run = CliRun.Execute("--cohort-convert", "--input", cohort, "--output", Path.Combine(_dir, "out_broken"),
+                "--no-images", "--no-doses", "--only-associated-rois", "--associations", assoc);
+
+            Assert.True(run.ExitCode == 1, run.ToString());
+            Assert.DoesNotContain("matched no ROI", run.Stderr);
+            Assert.DoesNotContain("matched no ROI", run.Stdout);
         }
 
         [Fact]

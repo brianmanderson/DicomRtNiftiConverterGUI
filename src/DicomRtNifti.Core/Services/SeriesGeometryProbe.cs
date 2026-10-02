@@ -81,6 +81,24 @@ namespace DicomRtNifti.Core.Services
             return true;
         }
 
+        /// <summary>
+        /// True for a multi-frame image object (Enhanced CT/MR, NM, ...), whose positions live in
+        /// the per-frame functional groups rather than in a top-level ImagePositionPatient.
+        /// </summary>
+        public static bool IsMultiFrame(DicomDataset ds)
+        {
+            if (ds == null) return false;
+            if (ds.Contains(DicomTag.PerFrameFunctionalGroupsSequence)) return true;
+            try
+            {
+                return ds.Contains(DicomTag.NumberOfFrames) && ds.GetSingleValue<int>(DicomTag.NumberOfFrames) > 1;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         private static string RawString(DicomDataset ds, DicomTag tag)
         {
             try { return ds.GetString(tag); }
@@ -120,13 +138,18 @@ namespace DicomRtNifti.Core.Services
             string seriesInstanceUid, int skipped, int total, IEnumerable<string> labels)
         {
             string uid = string.IsNullOrEmpty(seriesInstanceUid) ? "(unknown UID)" : seriesInstanceUid;
-            return string.Format(
+            string head = string.Format(
                 CultureInfo.InvariantCulture,
                 "WARNING: series {0}: {1} of {2} image slice(s) carry no usable ImagePositionPatient " +
-                "and were skipped — {3}. The remaining {4} slice(s) are converted as a series with a " +
-                "gap where each skipped slice was; any slice-spacing warning that follows judges that " +
-                "reduced series.",
-                uid, skipped, total, string.Join("; ", labels), total - skipped);
+                "and were skipped — {3}. ",
+                uid, skipped, total, string.Join("; ", labels));
+            if (total - skipped <= 0)
+                return head + "No slice is left to place, so the series cannot be converted.";
+            return head + string.Format(
+                CultureInfo.InvariantCulture,
+                "The remaining {0} slice(s) are converted as a series with a gap where each skipped " +
+                "slice was; any slice-spacing warning that follows judges that reduced series.",
+                total - skipped);
         }
 
         /// <summary>
@@ -238,6 +261,17 @@ namespace DicomRtNifti.Core.Services
                 writtenSpacing,
                 errorFactor,
                 targetSpacing);
+
+            // A caller that does not also print TryBuildMissingPositionWarning (the GUI log, for
+            // one) would otherwise present the hole a skipped slice left as a property of the scan.
+            int unpositioned = series.UnpositionedSlices?.Count ?? 0;
+            if (unpositioned > 0)
+            {
+                warning += string.Format(CultureInfo.InvariantCulture,
+                    " Note: {0} slice(s) of this series were skipped for lacking a usable " +
+                    "ImagePositionPatient, and the gaps above include the holes they left.",
+                    unpositioned);
+            }
             return true;
         }
 

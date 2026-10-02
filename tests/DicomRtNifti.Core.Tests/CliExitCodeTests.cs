@@ -43,9 +43,11 @@ namespace DicomRtNifti.Core.Tests
         }
 
         [Fact]
-        public void Help_Exits0()
+        public void Help_Exits0_AndListsStrictReference()
         {
-            Assert.Equal(0, CliRun.Execute("--help").ExitCode);
+            var run = CliRun.Execute("--help");
+            Assert.Equal(0, run.ExitCode);
+            Assert.Contains("--strict-reference", run.Stderr);
         }
 
         [Fact]
@@ -92,6 +94,24 @@ namespace DicomRtNifti.Core.Tests
                 "--image-folder", images, "--output-folder", Path.Combine(_dir, "out"));
             Assert.Equal(1, run.ExitCode);
             Assert.Contains("FATAL", run.Stderr);
+        }
+
+        [Fact]
+        public void Reverse_TwoDimensionalMask_IsAConversionFailure_Exit1WithStackTrace()
+        {
+            // A valid command line whose input is wrong in a way only the conversion discovers:
+            // the 2-D mask makes SimpleITK throw ArgumentOutOfRangeException, an ArgumentException
+            // by type. Classified by type it was reported as a usage error (exit 2, no trace).
+            string masks = Path.Combine(_dir, "masks");
+            Directory.CreateDirectory(masks);
+            using (var flat = new itk.simple.Image(8, 8, itk.simple.PixelIDValueEnum.sitkUInt8))
+                itk.simple.SimpleITK.WriteImage(flat, Path.Combine(masks, "PTV.nii.gz"));
+
+            var run = CliRun.Execute("--reverse", "--masks-folder", masks, "--output", Path.Combine(_dir, "rs.dcm"));
+
+            Assert.True(run.ExitCode == 1, run.ToString());
+            Assert.Contains("FATAL", run.Stderr);
+            Assert.DoesNotContain("Run with --help", run.Stderr);
         }
 
         [Fact]

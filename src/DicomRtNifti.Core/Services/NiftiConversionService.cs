@@ -426,7 +426,23 @@ namespace DicomRtNifti.Core.Services
         {
             // Keep the NIfTI extension: ITK chooses its reader/writer by it, and .nii.gz must stay gzipped.
             string ext = path.EndsWith(".nii.gz", StringComparison.OrdinalIgnoreCase) ? ".nii.gz" : Path.GetExtension(path);
-            return Path.Combine(Path.GetTempPath(), "drt_sitk_" + Guid.NewGuid().ToString("N") + ext);
+            if (ext.Any(c => c > 127))
+                ext = "";
+
+            // The detour only helps if the detour itself is ASCII: the user's temp folder sits in
+            // their profile, whose name need not be. Fall back to the target's own folder, and
+            // fail with both paths named rather than hand SimpleITK another unrepresentable path.
+            string name = "drt_sitk_" + Guid.NewGuid().ToString("N") + ext;
+            string tempDir = Path.GetTempPath();
+            if (!tempDir.Any(c => c > 127))
+                return Path.Combine(tempDir, name);
+            string targetDir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? "";
+            if (targetDir.Length > 0 && !targetDir.Any(c => c > 127))
+                return Path.Combine(targetDir, name);
+            throw new InvalidOperationException(
+                $"Cannot read or write '{path}' through SimpleITK on Windows: the path contains characters " +
+                $"outside the system code page, and neither the temp folder '{tempDir}' nor the target's " +
+                "folder offers an ASCII location to stage it through. Use a folder whose path is ASCII.");
         }
 
         /// <summary>
@@ -532,31 +548,47 @@ namespace DicomRtNifti.Core.Services
             double[] normal = ReadSliceNormalFromIop(filePaths[0])
                               ?? new[] { 0.0, 0.0, 1.0 };
 
+            // A lone file needs no ordering (a single slice, or a multi-frame object whose
+            // positions are per frame); hand it through untouched.
+            if (filePaths.Count == 1)
+                return new List<string>(filePaths);
+
             var filePositions = new List<Tuple<string, double>>(filePaths.Count);
+            var unplaceable = new List<string>();
             foreach (var path in filePaths)
             {
-                // A file whose position cannot be read is left out rather than sorted to an
-                // invented projection of 0 and handed to ITK in the wrong place. The series
-                // builders already exclude such slices and name them; this is the backstop for a
-                // DicomSeriesGroup assembled by any other path.
-                double projection;
+                // The same acceptance rule as the series builders (SeriesGeometryProbe.TryReadSliceZ),
+                // which already exclude and name such slices; a group assembled by any other path
+                // that still holds one is refused here instead of being sorted to an invented position.
+                double projection = double.NaN;
                 try
                 {
-                    var dcm = DicomFile.Open(path, FileReadOption.SkipLargeTags);
-                    if (!dcm.Dataset.Contains(DicomTag.ImagePositionPatient))
-                        continue;
-                    var ipp = dcm.Dataset.GetValues<double>(DicomTag.ImagePositionPatient);
-                    if (ipp == null || ipp.Length < 3)
-                        continue;
-                    projection = ipp[0] * normal[0]
-                               + ipp[1] * normal[1]
-                               + ipp[2] * normal[2];
+                    var ds = DicomFile.Open(path, FileReadOption.SkipLargeTags).Dataset;
+                    double ignoredZ;
+                    string ignoredWhy;
+                    if (SeriesGeometryProbe.TryReadSliceZ(ds, out ignoredZ, out ignoredWhy))
+                    {
+                        var ipp = ds.GetValues<double>(DicomTag.ImagePositionPatient);
+                        projection = ipp[0] * normal[0] + ipp[1] * normal[1] + ipp[2] * normal[2];
+                    }
                 }
                 catch (Exception)
                 {
-                    continue;
+                    projection = double.NaN;
                 }
-                filePositions.Add(Tuple.Create(path, projection));
+
+                if (double.IsNaN(projection) || double.IsInfinity(projection))
+                    unplaceable.Add(Path.GetFileName(path));
+                else
+                    filePositions.Add(Tuple.Create(path, projection));
+            }
+
+            if (unplaceable.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"{unplaceable.Count} of {filePaths.Count} image file(s) have no usable " +
+                    $"ImagePositionPatient and cannot be ordered along the slice axis: " +
+                    string.Join(", ", unplaceable) + ".");
             }
 
             return filePositions.OrderBy(t => t.Item2).Select(t => t.Item1).ToList();

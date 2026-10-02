@@ -121,15 +121,7 @@ namespace DicomRtNifti.Cli
                 PrintUsage();
                 return 2;
             }
-            catch (ArgumentException ex)
-            {
-                return UsageError(ex.Message);
-            }
-            catch (FileNotFoundException ex)
-            {
-                return UsageError(ex.Message);
-            }
-            catch (DirectoryNotFoundException ex)
+            catch (CliUsageException ex)
             {
                 return UsageError(ex.Message);
             }
@@ -144,7 +136,9 @@ namespace DicomRtNifti.Cli
         /// <summary>
         /// Exit 2: the command line could not be acted on. A missing or malformed argument and an
         /// input path that does not exist are the caller's to fix, so they are reported without a
-        /// stack trace and kept apart from exit 1, which means the conversion itself failed.
+        /// stack trace and kept apart from exit 1, which means the conversion itself failed. Only
+        /// the CLI's own argument checks raise <see cref="CliUsageException"/>; every exception
+        /// from inside a conversion keeps exit 1 and its stack trace, whatever its type.
         /// </summary>
         private static int UsageError(string message)
         {
@@ -164,16 +158,16 @@ namespace DicomRtNifti.Cli
             string outputFolder  = RequireArg(args, "--output-folder");
 
             if (!File.Exists(rtstructPath))
-                throw new FileNotFoundException($"RTSTRUCT not found: {rtstructPath}");
+                throw new CliUsageException($"RTSTRUCT not found: {rtstructPath}");
             if (!Directory.Exists(imageFolder))
-                throw new DirectoryNotFoundException($"Image folder not found: {imageFolder}");
+                throw new CliUsageException($"Image folder not found: {imageFolder}");
 
             Directory.CreateDirectory(outputFolder);
 
             // Build the two DicomSeriesGroup objects the conversion service expects.
             // We don't need the full scanner -- the inputs are explicit.
             var imageSeries = BuildImageSeriesFromFolder(imageFolder);
-            var rtStructSeries = BuildRtStructSeriesFromFile(rtstructPath);
+            var rtStructSeries = BuildRtStructSeriesFromFile(rtstructPath, out var rtReferences);
 
             Console.Error.WriteLine($"  Image series: {imageSeries.FilePaths.Count} files in {imageFolder}");
             Console.Error.WriteLine($"  RTSTRUCT:    {rtstructPath} ({rtStructSeries.RoiNames.Count} ROIs)");
@@ -184,7 +178,8 @@ namespace DicomRtNifti.Cli
             // caller can hand this route an RTSTRUCT drawn on a different scan and the contours
             // would be rasterized onto the wrong grid at exit 0. Check what the RTSTRUCT itself
             // says it references and say so; --strict-reference turns the warning into a refusal.
-            string referenceMismatch = DescribeReferenceMismatch(rtStructSeries, imageSeries);
+            string referenceMismatch = DescribeReferenceMismatch(
+                rtReferences.SeriesUids, rtReferences.FrameOfReferenceUids, imageSeries);
             if (referenceMismatch != null)
             {
                 if (HasFlag(args, "--strict-reference"))
@@ -200,7 +195,7 @@ namespace DicomRtNifti.Cli
             var maskService       = new RtStructMaskService();
             var conversionService = new NiftiConversionService(maskService);
 
-            var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
+            var progress = new StderrProgress();
 
             if (HasFlag(args, "--include-image"))
             {
@@ -216,7 +211,7 @@ namespace DicomRtNifti.Cli
             if (!string.IsNullOrEmpty(rtdosePath))
             {
                 if (!File.Exists(rtdosePath))
-                    throw new FileNotFoundException($"RT-DOSE file not found: {rtdosePath}");
+                    throw new CliUsageException($"RT-DOSE file not found: {rtdosePath}");
                 var doseSeries = BuildRtDoseSeriesFromFile(rtdosePath);
                 Console.Error.WriteLine($"  RTDOSE:       {rtdosePath} (\"{doseSeries.SeriesDescription}\")");
                 conversionService.ConvertDoseToNifti(
@@ -272,14 +267,14 @@ namespace DicomRtNifti.Cli
             string outputPath  = RequireArg(args, "--output");
 
             if (!Directory.Exists(masksFolder))
-                throw new DirectoryNotFoundException($"Masks folder not found: {masksFolder}");
+                throw new CliUsageException($"Masks folder not found: {masksFolder}");
             if (!string.IsNullOrEmpty(imageFolder) && !Directory.Exists(imageFolder))
-                throw new DirectoryNotFoundException($"Image folder not found: {imageFolder}");
+                throw new CliUsageException($"Image folder not found: {imageFolder}");
 
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath)));
 
             var writer = new RtStructWriterService();
-            var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
+            var progress = new StderrProgress();
 
             // Nifti-only path: --image-folder is omitted. The mask folder is the DICOM
             // root; metadata.json supplies patient/study/frame-of-reference. We honour
@@ -463,13 +458,13 @@ namespace DicomRtNifti.Cli
             string refDicomFolder = OptionalArg(args, "--ref-dicom-folder");
 
             if (!File.Exists(niftiImage))
-                throw new FileNotFoundException($"NIfTI image not found: {niftiImage}");
+                throw new CliUsageException($"NIfTI image not found: {niftiImage}");
 
             string upperMod = modality.ToUpperInvariant();
             if (upperMod != "CT" && upperMod != "MR" && upperMod != "PT"
                 && upperMod != "AUTO")
             {
-                throw new ArgumentException(
+                throw new CliUsageException(
                     $"Unsupported modality '{modality}'; expected CT, MR, PT, or auto.");
             }
 
@@ -511,7 +506,7 @@ namespace DicomRtNifti.Cli
                         + "metadata auto-synthesized.");
                 }
 
-                var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
+                var progress = new StderrProgress();
                 var imageWriter = new NiftiImageWriterService(metaService);
                 var written = imageWriter.ConvertImageNiftiToDicomSeries(
                     stage, meta, progress, CancellationToken.None);
@@ -564,14 +559,14 @@ namespace DicomRtNifti.Cli
             string spacingArg  = OptionalArg(args, "--target-spacing");
 
             if (!Directory.Exists(imageFolder))
-                throw new DirectoryNotFoundException($"Image folder not found: {imageFolder}");
+                throw new CliUsageException($"Image folder not found: {imageFolder}");
 
             double[] targetSpacing = null;
             if (!string.IsNullOrEmpty(spacingArg))
             {
                 var parts = spacingArg.Split(',');
                 if (parts.Length != 3)
-                    throw new ArgumentException(
+                    throw new CliUsageException(
                         $"--target-spacing expects 'X,Y,Z'; got '{spacingArg}'.");
                 targetSpacing = new double[3];
                 for (int i = 0; i < 3; i++)
@@ -582,7 +577,7 @@ namespace DicomRtNifti.Cli
                             System.Globalization.CultureInfo.InvariantCulture,
                             out targetSpacing[i]) || targetSpacing[i] <= 0)
                     {
-                        throw new ArgumentException(
+                        throw new CliUsageException(
                             $"--target-spacing component '{parts[i]}' is not a positive number.");
                     }
                 }
@@ -612,7 +607,7 @@ namespace DicomRtNifti.Cli
 
                 var maskService = new RtStructMaskService();
                 var conversionService = new NiftiConversionService(maskService);
-                var progress = new Progress<string>(msg => Console.Error.WriteLine(msg));
+                var progress = new StderrProgress();
 
                 conversionService.ConvertImageSeriesToNifti(
                     series: imageSeries,
@@ -685,16 +680,20 @@ namespace DicomRtNifti.Cli
                 // non-image modalities (SR, REG, ...) are skipped silently as they always were.
                 double sliceZ;
                 string why;
-                if (!SeriesGeometryProbe.TryReadSliceZ(ds, out sliceZ, out why))
+                bool positioned = SeriesGeometryProbe.TryReadSliceZ(ds, out sliceZ, out why);
+                if (!positioned && !SeriesGeometryProbe.IsMultiFrame(ds))
                 {
                     if (DicomScannerService.ImageModalities.Contains(modality))
                         unpositioned.Add(SeriesGeometryProbe.DescribeUnpositionedSlice(path, ds, why));
                     continue;
                 }
 
+                // A multi-frame object carries its positions per frame, not at the top level; it
+                // is kept whole (the reader handles it) and contributes no slice position here.
                 imageFiles.Add(path);
                 if (firstImage == null) firstImage = ds;
-                slicePositions.Add(sliceZ);
+                if (positioned)
+                    slicePositions.Add(sliceZ);
 
                 if (pixelSpacing == null && ds.Contains(DicomTag.PixelSpacing))
                 {
@@ -778,88 +777,75 @@ namespace DicomRtNifti.Cli
         }
 
         /// <summary>
-        /// Explains why <paramref name="rtStruct"/> does not belong to <paramref name="image"/>,
-        /// or returns null when it does (or when the structure set says nothing checkable).
-        /// The referenced SeriesInstanceUID is authoritative when present; the frame of reference
-        /// is the weaker test that catches a structure set drawn on another scan of the same
-        /// patient. The same two identifiers, in the same order, that the scanner's linking uses.
+        /// Explains why a structure set does not belong to <paramref name="image"/>, or returns
+        /// null when it does (or when the structure set says nothing checkable). A structure set
+        /// may reference several image series and frames (a planning CT plus a registered MR, for
+        /// one); it belongs to <paramref name="image"/> when the image's series is any of the
+        /// referenced series. Only when it names no series is the frame of reference, the weaker
+        /// test, consulted: the image's frame must then be one of the structure set's frames.
         /// </summary>
-        public static string DescribeReferenceMismatch(DicomSeriesGroup rtStruct, DicomSeriesGroup image)
+        public static string DescribeReferenceMismatch(
+            IReadOnlyCollection<string> referencedSeriesUids,
+            IReadOnlyCollection<string> frameOfReferenceUids,
+            DicomSeriesGroup image)
         {
-            if (rtStruct == null || image == null)
+            if (image == null)
                 return null;
 
-            if (!string.IsNullOrEmpty(rtStruct.ReferencedSeriesUID) && !string.IsNullOrEmpty(image.SeriesInstanceUID))
+            var series = (referencedSeriesUids ?? new string[0]).Where(u => !string.IsNullOrEmpty(u)).ToList();
+            if (series.Count > 0 && !string.IsNullOrEmpty(image.SeriesInstanceUID))
             {
-                // Authoritative either way: a matching series UID settles it even when the frame
-                // of reference looks wrong, exactly as the scanner's linking takes it first.
-                if (string.Equals(rtStruct.ReferencedSeriesUID, image.SeriesInstanceUID, StringComparison.Ordinal))
+                // Authoritative either way: a referenced series settles it even when the frame
+                // looks wrong, exactly as the scanner's linking takes the series UID first.
+                if (series.Contains(image.SeriesInstanceUID, StringComparer.Ordinal))
                     return null;
-                return $"the RTSTRUCT references image series {rtStruct.ReferencedSeriesUID} " +
+                return $"the RTSTRUCT references image series {string.Join(", ", series)} " +
                        $"(RTReferencedSeriesSequence), but --image-folder holds series {image.SeriesInstanceUID}";
             }
 
-            if (!string.IsNullOrEmpty(rtStruct.FrameOfReferenceUID) &&
-                !string.IsNullOrEmpty(image.FrameOfReferenceUID) &&
-                !string.Equals(rtStruct.FrameOfReferenceUID, image.FrameOfReferenceUID, StringComparison.Ordinal))
+            var frames = (frameOfReferenceUids ?? new string[0]).Where(u => !string.IsNullOrEmpty(u)).ToList();
+            if (frames.Count > 0 && !string.IsNullOrEmpty(image.FrameOfReferenceUID) &&
+                !frames.Contains(image.FrameOfReferenceUID, StringComparer.Ordinal))
             {
-                return $"the RTSTRUCT's frame of reference {rtStruct.FrameOfReferenceUID} is not the " +
+                return $"the RTSTRUCT's frame of reference {string.Join(", ", frames)} is not the " +
                        $"image series' {image.FrameOfReferenceUID}";
             }
 
             return null;
         }
 
-        /// <summary>
-        /// The frame of reference a structure set was drawn in. RTSTRUCT has no Frame of
-        /// Reference module, so the top-level tag is normally absent; the UID lives in
-        /// ReferencedFrameOfReferenceSequence and on each StructureSetROISequence item.
-        /// </summary>
-        internal static string ExtractRtStructFrameOfReferenceUid(DicomDataset dcm)
+        /// <summary>Single-identifier form, as a scanned <see cref="DicomSeriesGroup"/> carries them.</summary>
+        public static string DescribeReferenceMismatch(DicomSeriesGroup rtStruct, DicomSeriesGroup image)
         {
-            string top = GetStringOrEmpty(dcm, DicomTag.FrameOfReferenceUID);
-            if (!string.IsNullOrEmpty(top))
-                return top;
-
-            try
-            {
-                if (dcm.Contains(DicomTag.ReferencedFrameOfReferenceSequence))
-                {
-                    foreach (var item in dcm.GetSequence(DicomTag.ReferencedFrameOfReferenceSequence))
-                    {
-                        string uid = GetStringOrEmpty(item, DicomTag.FrameOfReferenceUID);
-                        if (!string.IsNullOrEmpty(uid))
-                            return uid;
-                    }
-                }
-                if (dcm.Contains(DicomTag.StructureSetROISequence))
-                {
-                    foreach (var item in dcm.GetSequence(DicomTag.StructureSetROISequence))
-                    {
-                        string uid = GetStringOrEmpty(item, DicomTag.ReferencedFrameOfReferenceUID);
-                        if (!string.IsNullOrEmpty(uid))
-                            return uid;
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                // A malformed sequence is not this check's problem; the rasterizer reports it.
-            }
-            return "";
+            if (rtStruct == null)
+                return null;
+            return DescribeReferenceMismatch(
+                new[] { rtStruct.ReferencedSeriesUID }, new[] { rtStruct.FrameOfReferenceUID }, image);
         }
 
-        private static DicomSeriesGroup BuildRtStructSeriesFromFile(string rtstructPath)
+        /// <summary>Everything a structure set says it was drawn on.</summary>
+        internal sealed class RtStructReferences
+        {
+            public List<string> SeriesUids = new List<string>();
+            public List<string> FrameOfReferenceUids = new List<string>();
+        }
+
+        private static DicomSeriesGroup BuildRtStructSeriesFromFile(string rtstructPath, out RtStructReferences references)
         {
             var dcm = DicomFile.Open(rtstructPath).Dataset;
+            references = new RtStructReferences
+            {
+                SeriesUids = DicomScannerService.ExtractReferencedSeriesUIDs(dcm),
+                FrameOfReferenceUids = DicomScannerService.ExtractRtStructFrameOfReferenceUids(dcm),
+            };
             var series = new DicomSeriesGroup
             {
                 SeriesInstanceUID   = GetStringOrEmpty(dcm, DicomTag.SeriesInstanceUID),
                 SeriesDescription   = GetStringOrEmpty(dcm, DicomTag.SeriesDescription),
                 Modality            = GetStringOrEmpty(dcm, DicomTag.Modality),
                 SeriesDate          = GetStringOrEmpty(dcm, DicomTag.SeriesDate),
-                FrameOfReferenceUID = ExtractRtStructFrameOfReferenceUid(dcm),
-                ReferencedSeriesUID = DicomScannerService.ExtractReferencedSeriesUID(dcm, "RTSTRUCT"),
+                FrameOfReferenceUID = references.FrameOfReferenceUids.FirstOrDefault() ?? "",
+                ReferencedSeriesUID = references.SeriesUids.FirstOrDefault() ?? "",
                 FilePaths           = new List<string> { rtstructPath },
             };
 
@@ -1012,6 +998,8 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine("  --headless --forward --rtstruct PATH --image-folder PATH --output-folder PATH");
             Console.Error.WriteLine("                       [--include-image]      (also write image.nii.gz)");
             Console.Error.WriteLine("                       [--rtdose PATH]        (also write doses/<description>.nii.gz)");
+            Console.Error.WriteLine("                       [--strict-reference]   (exit 1 instead of warning when the RTSTRUCT");
+            Console.Error.WriteLine("                                               does not reference this image series)");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Reverse (per-ROI masks -> RTSTRUCT) with reference DICOM:");
             Console.Error.WriteLine("  --headless --reverse --image-folder PATH --masks-folder PATH --output PATH");
@@ -1043,7 +1031,8 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine();
             Console.Error.WriteLine("Cohort convert (full export, one folder per series):");
             Console.Error.WriteLine("  --cohort-convert --input PATH --output PATH");
-            Console.Error.WriteLine("    Layout: <patient>/<seriesDate>_<seriesDescription>/, or");
+            Console.Error.WriteLine("    Layout: <patient>/<seriesDate>_<seriesDescription>/ (two series of a patient");
+            Console.Error.WriteLine("            that would share it each get _<12 hex of their SeriesInstanceUID>), or");
             Console.Error.WriteLine("            <patient>/<study>/<series>/ (hashes) under --anonymize.");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Options common to --cohort-manifest and --cohort-convert:");

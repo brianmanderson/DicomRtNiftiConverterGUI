@@ -149,6 +149,74 @@ namespace DicomRtNifti.Core.Tests
         }
 
         [Fact]
+        public async Task MultiFrameObjectWithoutTopLevelPosition_IsKeptWhole_ByBothBuilders()
+        {
+            // Enhanced CT keeps positions per frame; the file is the series, not a skipped slice.
+            string dir = Path.Combine(_dir, "multiframe");
+            Directory.CreateDirectory(dir);
+            var ds = new FellowOakDicom.DicomDataset(FellowOakDicom.DicomTransferSyntax.ExplicitVRLittleEndian)
+            {
+                { FellowOakDicom.DicomTag.SOPClassUID, FellowOakDicom.DicomUID.EnhancedCTImageStorage },
+                { FellowOakDicom.DicomTag.SOPInstanceUID, DicomTestData.NewUid() },
+                { FellowOakDicom.DicomTag.PatientID, "PAT001" },
+                { FellowOakDicom.DicomTag.StudyInstanceUID, DicomTestData.NewUid() },
+                { FellowOakDicom.DicomTag.SeriesInstanceUID, DicomTestData.NewUid() },
+                { FellowOakDicom.DicomTag.Modality, "CT" },
+                { FellowOakDicom.DicomTag.NumberOfFrames, "2" },
+            };
+            new FellowOakDicom.DicomFile(ds).Save(Path.Combine(dir, "enhanced.dcm"));
+
+            var fromCli = HeadlessRunner.BuildImageSeriesFromFolder(dir);
+            var fromScan = await ScanCtSeriesAsync(dir);
+
+            foreach (var series in new[] { fromCli, fromScan })
+            {
+                Assert.Single(series.FilePaths);
+                Assert.Empty(series.SlicePositions);
+                Assert.Empty(series.UnpositionedSlices);
+            }
+        }
+
+        [Fact]
+        public void MissingPositionMessage_WhenEverySliceWasSkipped_SaysItCannotConvert()
+        {
+            string msg = SeriesGeometryProbe.BuildMissingPositionMessage("1.2.3", 2, 2,
+                new[] { "a.dcm (InstanceNumber 1): ImagePositionPatient missing", "b.dcm (InstanceNumber 2): ImagePositionPatient missing" });
+
+            Assert.Contains("cannot be converted", msg);
+            Assert.DoesNotContain("remaining", msg);
+        }
+
+        [Fact]
+        public void SpacingWarning_MentionsSkippedSlices_ForCallersThatPrintOnlyIt()
+        {
+            string dir = WriteSeries("clause", new Dictionary<int, string[]> { { 1, new[] { "0", "0", "abc" } } },
+                out _, out _, out _);
+            var series = HeadlessRunner.BuildImageSeriesFromFolder(dir);
+
+            Assert.True(SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(series, out string warning));
+            Assert.Contains("1 slice(s) of this series were skipped", warning);
+        }
+
+        [Fact]
+        public void Sorter_RefusesAGroupHoldingAnUnpositionedSlice_NamingIt()
+        {
+            // A group assembled by hand, not by the builders, still holding the bad slice.
+            string dir = WriteSeries("sorter", new Dictionary<int, string[]> { { 2, null } }, out string uid, out string frame, out _);
+            var group = new DicomSeriesGroup
+            {
+                SeriesInstanceUID = uid,
+                Modality = "CT",
+                FrameOfReferenceUID = frame,
+                FilePaths = Directory.GetFiles(dir, "*.dcm").OrderBy(p => p, StringComparer.Ordinal).ToList(),
+            };
+
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+                new NiftiConversionService(new RtStructMaskService()).GetImageSpacing(group));
+            Assert.Contains("ct_002.dcm", ex.Message);
+        }
+
+        [Fact]
         public void MissingPositionMessage_NamesEverySkippedSlice()
         {
             string msg = SeriesGeometryProbe.BuildMissingPositionMessage("1.2.3", 2, 10,
