@@ -8,8 +8,9 @@ the figure captures use are produced at test time:
 | Synthetic CT + RTSTRUCT with analytic ground truth | `rtmask-conformance generate` (SHA-pinned in `.github/workflows/conformance-crossplatform.yml`) | the CLI conformance gate; the headless GUI tests when `RTMASK_FIXTURE_DIR` points at it |
 | Three-patient LCTSC subset (real, de-identified clinical data) | `python tests/fixtures/fetch_lctsc_subset.py` | GUI walkthrough figures; optional local GUI runs |
 
-When neither is present, the headless GUI tests synthesize a small CT + RTSTRUCT in memory with
-fo-dicom, so `dotnet test` works on a bare checkout.
+When `RTMASK_FIXTURE_DIR` is not set, the headless GUI tests synthesize a small CT + RTSTRUCT in
+memory with fo-dicom, so `dotnet test` works on a bare checkout; the tests never read the LCTSC
+subset.
 
 ## The LCTSC subset
 
@@ -38,7 +39,10 @@ python tests/fixtures/fetch_lctsc_subset.py            # fetch what is missing, 
 python tests/fixtures/fetch_lctsc_subset.py --verify-only
 ```
 
-The script needs only the Python standard library.
+The script needs only the Python standard library. The layout nests three 64-character UIDs, so
+a file path is about 300 characters long: on Windows either enable long paths (the
+`LongPathsEnabled` registry value or group policy) or pass `--out` with a short root such as
+`D:\lctsc`; the script stops with the offending path and its length otherwise.
 
 ### Licence and attribution
 

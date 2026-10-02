@@ -25,9 +25,9 @@ Self-contained bundles for Windows (`win-x64`), Linux (`linux-x64`) and macOS on
 (`osx-arm64`) are on the [releases page](https://github.com/brianmanderson/DicomRtNiftiConverterGUI/releases):
 `DicomRtNifti-gui-<rid>` is the desktop app, `DicomRtNifti-cli-<rid>` the command line. Each one
 contains the .NET runtime, the SimpleITK native, `LICENSE` and `THIRD-PARTY-NOTICES.md`; nothing
-needs installing. `latest-build` is refreshed from `main` only after the cross-platform conformance
-gate has passed on that commit; `v*` releases are tagged versions. The binaries are not signed by
-a registered publisher, so each operating system asks once before it runs them:
+needs installing. `latest-build` is refreshed from a push to `main` only after the cross-platform
+conformance gate has passed on that commit; `v*` releases are tagged versions. The binaries are not
+signed by a registered publisher, so each operating system asks once before it runs them:
 
 **Windows.** Unzip, then run `DicomRtNifti.App.exe` (or `DicomRtNifti.Cli.exe` from a terminal).
 SmartScreen shows "Windows protected your PC: Microsoft Defender SmartScreen prevented an
@@ -35,29 +35,32 @@ unrecognized app from starting". Click **More info**, then **Run anyway**. Doing
 before extracting (right-click → Properties → **Unblock**) clears the mark for every file at once.
 
 **macOS.** Untar, then remove the quarantine attribute Gatekeeper puts on downloads, otherwise it
-refuses with "cannot be opened because the developer cannot be verified":
+refuses with a dialog saying the developer cannot be verified (or, from macOS 15, that Apple could
+not verify the software):
 
 ```bash
-tar -xzf DicomRtNifti-gui-osx-arm64.tar.gz -C DicomRtNifti-gui && xattr -dr com.apple.quarantine DicomRtNifti-gui
+mkdir -p DicomRtNifti-gui && tar -xzf DicomRtNifti-gui-osx-arm64.tar.gz -C DicomRtNifti-gui && xattr -dr com.apple.quarantine DicomRtNifti-gui
 ```
 
-Then run `./DicomRtNifti-gui/DicomRtNifti.App`. The alternative is to right-click the executable,
-choose **Open**, and confirm the dialog the first time. Only Apple Silicon is built; on an Intel
-Mac, build from source (below).
+Then run `./DicomRtNifti-gui/DicomRtNifti.App`. If Gatekeeper still refuses, open **System
+Settings → Privacy & Security** and click **Open Anyway** next to the blocked app (on macOS 14 and
+earlier, right-click → **Open** also works). Only Apple Silicon is built; on an Intel Mac, build
+from source (below).
 
 **Linux.** Untar and run; if the shell answers "Permission denied", the executable bit was lost in
 transit, so restore it:
 
 ```bash
-tar -xzf DicomRtNifti-gui-linux-x64.tar.gz -C DicomRtNifti-gui && chmod +x DicomRtNifti-gui/DicomRtNifti.App && ./DicomRtNifti-gui/DicomRtNifti.App
+mkdir -p DicomRtNifti-gui && tar -xzf DicomRtNifti-gui-linux-x64.tar.gz -C DicomRtNifti-gui && chmod +x DicomRtNifti-gui/DicomRtNifti.App && ./DicomRtNifti-gui/DicomRtNifti.App
 ```
 
 The desktop app needs the usual X11/Wayland, fontconfig and ICU libraries of a desktop
-distribution; the CLI needs none of them.
+distribution. The CLI needs only ICU (`libicu`); on a machine without it, set
+`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` before running.
 
 On every platform, `DicomRtNifti.Cli --version` is the first-run check: it prints the version
-with the commit it was built from (`1.0.0+<sha>`, the launcher footer shows the same) and
-`SimpleITK native: OK` when the native library loaded.
+with the commit it was built from (`1.0.0+<sha>`; the launcher footer shows the same version with
+the sha shortened to seven characters) and `SimpleITK native: OK` when the native library loaded.
 
 ## GUI mode
 
@@ -359,8 +362,9 @@ dotnet test  tests/DicomRtNifti.App.Tests/DicomRtNifti.App.Tests.csproj -c Relea
 ```
 
 The second test project drives the desktop app headless (Avalonia.Headless, no display needed):
-it opens every window through the launcher, exports a CT + RTSTRUCT through the DICOM -> NIfTI
-window, converts the export back through the NIfTI -> DICOM window, and saves a PNG of each window
+it clicks through the launcher to both workflow windows and through their Help buttons to both Help
+windows, exports a CT + RTSTRUCT through the DICOM -> NIfTI window, converts the export back
+through the NIfTI -> DICOM window, and saves a PNG of each window
 under its output folder (`DICOMRTNIFTI_SCREENSHOT_DIR` overrides the location). It synthesizes
 its input in memory unless `RTMASK_FIXTURE_DIR` names an `rtmask-conformance` fixture, which is
 what the CI lanes pass it. See [tests/fixtures/README.md](tests/fixtures/README.md) for the

@@ -5,7 +5,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using DicomRtNifti.App.ViewModels;
@@ -45,11 +44,11 @@ namespace DicomRtNifti.App.Tests.Support
     }
 
     /// <summary>
-    /// The launcher as the App composes it (<see cref="TestServices"/>), shown, plus the two ways a
-    /// user opens a workflow window from it: a real click on one of its buttons. Everything the
-    /// click opens goes through the production LauncherWindow code-behind, so the view-models the
-    /// tests drive are wired exactly as they are for a user. Disposing closes the launcher and
-    /// every window it opened.
+    /// The launcher as the App composes it (<see cref="TestServices"/>), shown, plus the ways a
+    /// user opens further windows from it: a real click on one of its buttons, or a command on a
+    /// window it opened (the Help buttons). Everything a click or command opens goes through the
+    /// production code-behind and view-models, so what the tests drive is wired exactly as it is
+    /// for a user. Disposing closes the launcher and every window opened through it.
     /// </summary>
     public sealed class LauncherSession : IDisposable
     {
@@ -92,20 +91,31 @@ namespace DicomRtNifti.App.Tests.Support
         public TWindow Open<TWindow, TViewModel>(string caption, out TViewModel viewModel)
             where TWindow : Window
         {
-            var before = OpenWindows.Current;
-            Click(caption);
-            var opened = OpenWindows.Current.Except(before).ToList();
-            Assert.True(opened.Count == 1, $"expected one new window after clicking '{caption}', found {opened.Count}");
-            var window = Assert.IsType<TWindow>(opened[0]);
+            var window = OpenedBy<TWindow>(() => Click(caption), $"clicking '{caption}'");
             viewModel = Assert.IsType<TViewModel>(window.DataContext);
-            _opened.Add(window);
+            return window;
+        }
+
+        /// <summary>
+        /// Runs <paramref name="open"/> (a view-model command, say) and returns the one
+        /// <typeparamref name="TWindow"/> it opened; it is closed with the session.
+        /// </summary>
+        public TWindow OpenedBy<TWindow>(Action open, string what) where TWindow : Window
+        {
+            var before = OpenWindows.Current;
+            open();
             Dispatcher.UIThread.RunJobs();
+            var opened = OpenWindows.Current.Except(before).ToList();
+            Assert.True(opened.Count == 1, $"expected one new window after {what}, found {opened.Count}");
+            var window = Assert.IsType<TWindow>(opened[0]);
+            _opened.Add(window);
             return window;
         }
 
         public void Dispose()
         {
-            foreach (var w in _opened)
+            // Children first (a Help window owned by a workflow window), then the launcher.
+            foreach (var w in Enumerable.Reverse(_opened))
                 if (w.IsVisible) w.Close();
             Window.Close();
             Dispatcher.UIThread.RunJobs();

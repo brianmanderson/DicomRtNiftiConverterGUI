@@ -181,8 +181,9 @@ the **MIT License**, Copyright © .NET Foundation and Contributors.
 - Third-party notices: https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT
 
 Development-time and test-only dependencies — `xunit` 2.9.2, `xunit.runner.visualstudio` 2.8.2
-(both Apache-2.0) and `Microsoft.NET.Test.Sdk` 17.11.1 (MIT) — are **not** redistributed in the
-bundles and are listed here for completeness only.
+(both Apache-2.0), `Microsoft.NET.Test.Sdk` 17.11.1 (MIT) and `Avalonia.Headless` /
+`Avalonia.Headless.XUnit` 11.3.22 (MIT) — are **not** redistributed in the bundles and are listed
+here for completeness only.
 
 ---
 

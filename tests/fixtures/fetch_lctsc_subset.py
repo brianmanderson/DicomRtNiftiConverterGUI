@@ -22,7 +22,9 @@ Usage::
     python tests/fixtures/fetch_lctsc_subset.py --verify-only   # no network: check the tree on disk
     python tests/fixtures/fetch_lctsc_subset.py --write-manifest   # maintainers: regenerate the pin
 
-Exit codes: 0 verified, 1 hash/size mismatch or incomplete tree, 2 network or API failure.
+Exit codes: 0 verified; 1 hash/size mismatch, incomplete tree, or a fixture that cannot be written
+(a path too long for a default Windows installation, for one); 2 network or API failure, including
+a response that is not the pinned series.
 Standard library only, like .github/scripts/stage_simpleitk.py, so it runs on a bare CI runner.
 """
 
@@ -195,7 +197,11 @@ def read_identity(data: bytes) -> dict:
 # --------------------------------------------------------------------------------------------
 
 class NetworkError(RuntimeError):
-    pass
+    """The NBIA service could not be reached, or what it returned is not the pinned series."""
+
+
+class WriteError(RuntimeError):
+    """The fixture could not be written where it was asked to go."""
 
 
 def _get(url: str, *, attempts: int = 4, timeout: int = 300) -> bytes:
@@ -330,14 +336,22 @@ def fetch(out: Path, manifest: dict | None, *, write_manifest: bool) -> dict:
 
             files = []
             total = 0
-            for _name, data in members:
-                ident = read_identity(data)
+            for name, data in members:
+                try:
+                    ident = read_identity(data)
+                except (ValueError, struct.error) as ex:
+                    raise NetworkError(f"{label}: zip member {name!r} is not a readable DICOM file: {ex}")
                 if ident["series_uid"] != uid or ident["study_uid"] != patient["study_uid"] \
                         or ident["patient_id"] != patient["patient_id"] or ident["modality"] != series["modality"]:
                     raise NetworkError(f"{label}: a downloaded file does not belong to the pinned series: {ident}")
                 path = file_path(out, patient["patient_id"], patient["study_uid"], uid, ident["sop_uid"])
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(data)
+                try:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+                except OSError as ex:
+                    raise WriteError(
+                        f"cannot write {path} ({len(str(path))} characters): {ex}. On Windows, enable long "
+                        f"paths (LongPathsEnabled=1) or pass --out with a short root such as D:\\lctsc.")
                 files.append({"sop_uid": ident["sop_uid"], "bytes": len(data), "sha256": sha256(data)})
                 total += len(data)
             if total != expected_bytes:
@@ -368,6 +382,9 @@ def main(argv=None) -> int:
             return 1
         try:
             built = fetch(out, None, write_manifest=True)
+        except WriteError as ex:
+            print(f"ERROR: {ex}", file=sys.stderr)
+            return 1
         except NetworkError as ex:
             print(f"ERROR: {ex}", file=sys.stderr)
             return 2
@@ -383,6 +400,9 @@ def main(argv=None) -> int:
     if not args.verify_only:
         try:
             fetch(out, manifest, write_manifest=False)
+        except WriteError as ex:
+            print(f"ERROR: {ex}", file=sys.stderr)
+            return 1
         except NetworkError as ex:
             print(f"ERROR: {ex}", file=sys.stderr)
             return 2

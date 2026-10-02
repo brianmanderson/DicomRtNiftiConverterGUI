@@ -44,20 +44,15 @@
 
   <!-- Fail the build when the commit cannot be determined. Opt out with
        -p:AllowMissingSourceRevision=true for a deliberate build from a tarball; the binaries then
-       report a bare "1.0.0". Target conditions are evaluated at execution time, after the SDK's
-       Source Link targets have declared SourceControlInformationFeatureSupported, which is why this
-       lives in a Target rather than a property. -->
+       report a bare "1.0.0". SourceRevisionId is filled in at execution time by the SDK's implicit
+       Source Link git query (InitializeSourceControlInformation), so the check has to be a Target
+       that runs after it rather than a property condition. -->
   <Target Name="RequireSourceRevision"
           BeforeTargets="GetAssemblyVersion"
           DependsOnTargets="InitializeSourceControlInformation"
-          Condition="'$(SourceControlInformationFeatureSupported)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(AllowMissingSourceRevision)' != 'true'">
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(AllowMissingSourceRevision)' != 'true'">
     <Error Condition="'$(SourceRevisionId)' == ''"
            Text="Cannot determine the commit this build comes from (SourceRevisionId is empty), so the informational version would be a bare $(Version). Build from a git checkout, or pass -p:AllowMissingSourceRevision=true to accept an untraceable build." />
-  </Target>
-  <Target Name="RequireSourceControlSupport"
-          BeforeTargets="GetAssemblyVersion"
-          Condition="'$(SourceControlInformationFeatureSupported)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(AllowMissingSourceRevision)' != 'true'">
-    <Error Text="Source Link is not available in this build, so the commit cannot be embedded in the informational version. Use the .NET 8 SDK or newer, or pass -p:AllowMissingSourceRevision=true to accept an untraceable build." />
   </Target>
 
 </Project>

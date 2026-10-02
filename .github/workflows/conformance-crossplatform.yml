@@ -113,9 +113,10 @@ jobs:
           --report-json conformance-report.json
 
       - name: "GUI tests (headless Avalonia: launcher, help, forward + reverse over the fixture)"
-        # Boots the real App under Avalonia.Headless, opens every window through the launcher,
-        # exports the fixture's CT + RTSTRUCT through the DICOM -> NIfTI window and converts the
-        # export back through the NIfTI -> DICOM window, saving a PNG of each window.
+        # Boots the real App under Avalonia.Headless, clicks through the launcher to both workflow
+        # windows and through their Help buttons to both Help windows, exports the fixture's CT +
+        # RTSTRUCT through the DICOM -> NIfTI window and converts the export back through the
+        # NIfTI -> DICOM window, saving a PNG of each window.
         env:
           RTMASK_FIXTURE_DIR: ${{ github.workspace }}/fixture
           DICOMRTNIFTI_SCREENSHOT_DIR: ${{ github.workspace }}/screenshots

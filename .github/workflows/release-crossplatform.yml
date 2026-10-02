@@ -8,7 +8,9 @@ name: Release (cross-platform)
 # Gated on the conformance workflow: nothing is published for a commit until
 # "Conformance (cross-platform)" has passed on that exact commit.
 #   - push to main      -> runs via workflow_run after a green conformance run on the commit and
-#                          refreshes the rolling `latest-build` pre-release (a red run skips it);
+#                          refreshes the rolling `latest-build` pre-release (a red run skips it;
+#                          so does any conformance run that a pull request produced, including one
+#                          from a fork whose branch happens to be called main);
 #   - tag v<semver>     -> publishes a stable release named after the tag, built with that version
 #                          (-p:Version), once the tagged commit has a green conformance run (it had
 #                          one when it landed on main);
@@ -27,10 +29,11 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
-concurrency:
-  group: release-${{ github.event.workflow_run.head_branch || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+# Concurrency is declared per job below, keyed on the release tag the gate resolved, rather than
+# at workflow level: a workflow-level group would also be entered by the workflow_run of a red
+# conformance run (the gate skips it, but only after it has cancelled an in-flight publish).
 
 env:
   SIMPLEITK_BASE_URL: "https://github.com/SimpleITK/SimpleITK/releases/download/v2.5.0"
@@ -41,8 +44,14 @@ jobs:
   gate:
     name: Require a green conformance run for this commit
     runs-on: ubuntu-latest
-    # A workflow_run for a failed or cancelled conformance run ends here, visibly skipped.
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # A workflow_run for a failed or cancelled conformance run ends here, visibly skipped. So does
+    # one produced by a pull_request event: conformance runs for PRs (forks included) must never
+    # reach the publish token, and on.workflow_run.branches only looks at the head branch name.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     outputs:
       sha: ${{ steps.meta.outputs.sha }}
       version: ${{ steps.meta.outputs.version }}
@@ -83,7 +92,8 @@ jobs:
             version="${tag#v}"
             version_arg="-p:Version=$version"
             release_name="$tag"
-            prerelease=false
+            # v1.2.0-rc1 is a pre-release; v1.2.0 is a stable release marked latest.
+            if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
             publish=true
           else
             tag="latest-build"
@@ -108,6 +118,10 @@ jobs:
     name: Publish GUI + CLI (${{ matrix.rid }})
     needs: gate
     runs-on: ${{ matrix.os }}
+    concurrency:
+      group: release-build-${{ needs.gate.outputs.tag }}-${{ matrix.rid }}
+      # A newer rolling build supersedes an older one; tagged builds are never cancelled.
+      cancel-in-progress: ${{ needs.gate.outputs.tag == 'latest-build' }}
     strategy:
       fail-fast: false
       matrix:
@@ -176,7 +190,7 @@ jobs:
           # The bundle must run and must know which commit it was built from.
           out="$("./publish-cli/$cli" --version)"
           echo "$out"
-          echo "$out" | grep -Eq '^DICOM RT Toolkit CLI [0-9]+\.[0-9]+\.[0-9]+\+[0-9a-f]{7,}' \
+          echo "$out" | grep -Eq '^DICOM RT Toolkit CLI [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\+[0-9a-f]{7,}' \
             || { echo "::error::bundled CLI does not report a version carrying its commit sha"; exit 1; }
           echo "$out" | grep -q "SimpleITK native: OK" \
             || { echo "::error::SimpleITK native did not load from the ${{ matrix.rid }} bundle"; exit 1; }
@@ -214,6 +228,10 @@ jobs:
     # Rolling pre-release only from main; stable releases only from a v* tag. A dispatch on a
     # feature branch still validates the cross-platform publish above and stops here.
     if: needs.gate.outputs.publish == 'true'
+    concurrency:
+      group: release-publish-${{ needs.gate.outputs.tag }}
+      # Never cancel between the delete and the re-create of the rolling release.
+      cancel-in-progress: false
     steps:
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -224,7 +242,7 @@ jobs:
         run: find artifacts -type f
 
       - name: Delete the previous rolling pre-release
-        if: needs.gate.outputs.prerelease == 'true'
+        if: needs.gate.outputs.tag == 'latest-build'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
