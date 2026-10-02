@@ -14,11 +14,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.2.1" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.2.1" />
+    <!-- Avalonia 11.3.x: 11.3.14+ depends on Tmds.DBus.Protocol 0.21.3, which closes
+         GHSA-xrw6-gwf8-vvr9 (the 11.2 line stays on the vulnerable 0.20.0). Avalonia.Controls.DataGrid
+         is published separately and its 11.x line ends at 11.3.13 (dependency range [11.3.13, )),
+         so it deliberately lags the others. Keep tests/DicomRtNifti.App.Tests on the same version. -->
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.13" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
   </ItemGroup>
 

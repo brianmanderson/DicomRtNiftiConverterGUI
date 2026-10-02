@@ -6,6 +6,9 @@ The rasterization core handles the five clinically-used DICOM `ContourGeometricT
 
 Methodology borrows from [Dicom_RT_and_Images_to_Mask](https://github.com/brianmanderson/Dicom_RT_and_Images_to_Mask) (DicomRTTool); this implementation extends coverage beyond `CLOSED_PLANAR`-only and adds the reverse direction.
 
+**Research use only.** This software is not a medical device and has not been cleared or approved
+by any regulatory body for clinical use.
+
 ## Start here
 
 **[`examples/Guide.md`](examples/Guide.md)** is a worked, runnable example of the whole toolkit: it
@@ -15,6 +18,46 @@ and verifies the rasterizer against closed-form geometry.
 
 It needs no .NET install — the notebook downloads a self-contained build. If you are evaluating
 this tool, start there rather than here.
+
+## Running a prebuilt release
+
+Self-contained bundles for Windows (`win-x64`), Linux (`linux-x64`) and macOS on Apple Silicon
+(`osx-arm64`) are on the [releases page](https://github.com/brianmanderson/DicomRtNiftiConverterGUI/releases):
+`DicomRtNifti-gui-<rid>` is the desktop app, `DicomRtNifti-cli-<rid>` the command line. Each one
+contains the .NET runtime, the SimpleITK native, `LICENSE` and `THIRD-PARTY-NOTICES.md`; nothing
+needs installing. `latest-build` is refreshed from `main` only after the cross-platform conformance
+gate has passed on that commit; `v*` releases are tagged versions. The binaries are not signed by
+a registered publisher, so each operating system asks once before it runs them:
+
+**Windows.** Unzip, then run `DicomRtNifti.App.exe` (or `DicomRtNifti.Cli.exe` from a terminal).
+SmartScreen shows "Windows protected your PC: Microsoft Defender SmartScreen prevented an
+unrecognized app from starting". Click **More info**, then **Run anyway**. Doing this on the zip
+before extracting (right-click → Properties → **Unblock**) clears the mark for every file at once.
+
+**macOS.** Untar, then remove the quarantine attribute Gatekeeper puts on downloads, otherwise it
+refuses with "cannot be opened because the developer cannot be verified":
+
+```bash
+tar -xzf DicomRtNifti-gui-osx-arm64.tar.gz -C DicomRtNifti-gui && xattr -dr com.apple.quarantine DicomRtNifti-gui
+```
+
+Then run `./DicomRtNifti-gui/DicomRtNifti.App`. The alternative is to right-click the executable,
+choose **Open**, and confirm the dialog the first time. Only Apple Silicon is built; on an Intel
+Mac, build from source (below).
+
+**Linux.** Untar and run; if the shell answers "Permission denied", the executable bit was lost in
+transit, so restore it:
+
+```bash
+tar -xzf DicomRtNifti-gui-linux-x64.tar.gz -C DicomRtNifti-gui && chmod +x DicomRtNifti-gui/DicomRtNifti.App && ./DicomRtNifti-gui/DicomRtNifti.App
+```
+
+The desktop app needs the usual X11/Wayland, fontconfig and ICU libraries of a desktop
+distribution; the CLI needs none of them.
+
+On every platform, `DicomRtNifti.Cli --version` is the first-run check: it prints the version
+with the commit it was built from (`1.0.0+<sha>`, the launcher footer shows the same) and
+`SimpleITK native: OK` when the native library loaded.
 
 ## GUI mode
 
@@ -283,7 +326,10 @@ Run `--help` for the full option list.
 > [releases page](https://github.com/brianmanderson/DicomRtNiftiConverterGUI/releases). The
 > [notebook](examples/Pancreatic_CT_CBCT_DICOM_RT_RoundTrip.ipynb) downloads one automatically.
 
-Requires the **.NET 8 SDK**.
+Requires the **.NET 8 SDK** and a git checkout: the build embeds the commit it was made from
+into the informational version (`1.0.0+<sha>`), and `src/Directory.Build.props` fails a build
+that cannot determine its commit (a source tarball) rather than produce an untraceable `1.0.0`.
+Pass `-p:AllowMissingSourceRevision=true` to build such a tree deliberately.
 
 ### Step 1 — stage SimpleITK first (do this before you build)
 
@@ -309,7 +355,16 @@ From the repository root:
 ```
 dotnet build DicomRtNifti.sln -c Release
 dotnet test  tests/DicomRtNifti.Core.Tests/DicomRtNifti.Core.Tests.csproj -c Release
+dotnet test  tests/DicomRtNifti.App.Tests/DicomRtNifti.App.Tests.csproj -c Release
 ```
+
+The second test project drives the desktop app headless (Avalonia.Headless, no display needed):
+it opens every window through the launcher, exports a CT + RTSTRUCT through the DICOM -> NIfTI
+window, converts the export back through the NIfTI -> DICOM window, and saves a PNG of each window
+under its output folder (`DICOMRTNIFTI_SCREENSHOT_DIR` overrides the location). It synthesizes
+its input in memory unless `RTMASK_FIXTURE_DIR` names an `rtmask-conformance` fixture, which is
+what the CI lanes pass it. See [tests/fixtures/README.md](tests/fixtures/README.md) for the
+fixtures and the LCTSC subset used for the walkthrough figures.
 
 The built CLI lands at `src/DicomRtNifti.Cli/bin/Release/net8.0/DicomRtNifti.Cli` (`.exe` on
 Windows); the GUI at `src/DicomRtNifti.App/bin/Release/net8.0/DicomRtNifti.App`.
@@ -341,6 +396,11 @@ To produce a build that needs no .NET install on the target machine
 dotnet publish src/DicomRtNifti.App/DicomRtNifti.App.csproj -c Release -r <rid> --self-contained
 dotnet publish src/DicomRtNifti.Cli/DicomRtNifti.Cli.csproj -c Release -r <rid> --self-contained
 ```
+
+The publish folder contains `LICENSE` and `THIRD-PARTY-NOTICES.md` next to the executable (copied
+by `src/Directory.Build.props` for both front-ends), which is what the licences of the bundled
+SimpleITK (Apache-2.0) and fo-dicom (MS-PL) require of a redistribution. The release workflow
+verifies both files and runs the bundled CLI's `--version` on each OS before anything is published.
 
 ## RT Struct mask rasterization
 

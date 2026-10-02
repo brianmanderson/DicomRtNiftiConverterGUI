@@ -25,6 +25,39 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <Deterministic>true</Deterministic>
+
+    <!-- The informational version is "1.0.0+<commit sha>" (what the CLI prints for its version flag and
+         the launcher footer shows). The SDK only appends the sha when Source Link can read the git
+         metadata; this pins the opt-in, and the RequireSourceRevision target below turns a build
+         that cannot determine its commit (a source tarball, a checkout without .git) into an error
+         instead of a bare "1.0.0" that cannot be traced. -->
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
+
+  <!-- Release bundles must carry the licence and the third-party notices (Apache-2.0 section 4 for
+       SimpleITK, MS-PL for fo-dicom). Copying them as content of the two executables puts them in
+       every build output and in `dotnet publish` output; the Core library needs neither. -->
+  <ItemGroup Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">
+    <None Include="$(MSBuildThisFileDirectory)../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <!-- Fail the build when the commit cannot be determined. Opt out with
+       -p:AllowMissingSourceRevision=true for a deliberate build from a tarball; the binaries then
+       report a bare "1.0.0". Target conditions are evaluated at execution time, after the SDK's
+       Source Link targets have declared SourceControlInformationFeatureSupported, which is why this
+       lives in a Target rather than a property. -->
+  <Target Name="RequireSourceRevision"
+          BeforeTargets="GetAssemblyVersion"
+          DependsOnTargets="InitializeSourceControlInformation"
+          Condition="'$(SourceControlInformationFeatureSupported)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(AllowMissingSourceRevision)' != 'true'">
+    <Error Condition="'$(SourceRevisionId)' == ''"
+           Text="Cannot determine the commit this build comes from (SourceRevisionId is empty), so the informational version would be a bare $(Version). Build from a git checkout, or pass -p:AllowMissingSourceRevision=true to accept an untraceable build." />
+  </Target>
+  <Target Name="RequireSourceControlSupport"
+          BeforeTargets="GetAssemblyVersion"
+          Condition="'$(SourceControlInformationFeatureSupported)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(AllowMissingSourceRevision)' != 'true'">
+    <Error Text="Source Link is not available in this build, so the commit cannot be embedded in the informational version. Use the .NET 8 SDK or newer, or pass -p:AllowMissingSourceRevision=true to accept an untraceable build." />
+  </Target>
 
 </Project>

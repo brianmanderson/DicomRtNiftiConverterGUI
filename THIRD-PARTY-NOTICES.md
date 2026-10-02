@@ -82,30 +82,30 @@ holders; per-package license URLs are given for the authoritative copy.
 
 | Package | Version | License | Upstream license |
 |---|---|---|---|
-| Avalonia | 11.2.1 | MIT | https://licenses.nuget.org/MIT — https://github.com/AvaloniaUI/Avalonia/blob/master/licence.md |
-| Avalonia.Desktop | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
-| Avalonia.Themes.Fluent | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
-| Avalonia.Fonts.Inter | 11.2.1 | MIT (package) | https://licenses.nuget.org/MIT — embedded typeface is OFL-1.1, see [Other licenses](#other-licenses) |
-| Avalonia.Controls.DataGrid | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
-| Avalonia.Skia | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
-| Avalonia.Win32 | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
-| Avalonia.X11 | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
-| Avalonia.Native | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
-| Avalonia.FreeDesktop | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
-| Avalonia.Remote.Protocol | 11.2.1 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia | 11.3.22 | MIT | https://licenses.nuget.org/MIT — https://github.com/AvaloniaUI/Avalonia/blob/master/licence.md |
+| Avalonia.Desktop | 11.3.22 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia.Themes.Fluent | 11.3.22 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia.Fonts.Inter | 11.3.22 | MIT (package) | https://licenses.nuget.org/MIT — embedded typeface is OFL-1.1, see [Other licenses](#other-licenses) |
+| Avalonia.Controls.DataGrid | 11.3.13 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia.Skia | 11.3.22 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia.Win32 | 11.3.22 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia.X11 | 11.3.22 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia.Native | 11.3.22 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia.FreeDesktop | 11.3.22 | MIT | https://licenses.nuget.org/MIT |
+| Avalonia.Remote.Protocol | 11.3.22 | MIT | https://licenses.nuget.org/MIT |
 | CommunityToolkit.Mvvm | 8.3.2 | MIT | https://licenses.nuget.org/MIT — https://github.com/CommunityToolkit/dotnet/blob/main/License.md |
 | CommunityToolkit.HighPerformance | 8.4.0 | MIT | https://licenses.nuget.org/MIT — https://github.com/CommunityToolkit/dotnet/blob/main/License.md |
 | Newtonsoft.Json | 13.0.4 | MIT | https://licenses.nuget.org/MIT — https://github.com/JamesNK/Newtonsoft.Json/blob/master/LICENSE.md |
-| SkiaSharp | 2.88.8 | MIT | https://github.com/mono/SkiaSharp/blob/main/LICENSE.md |
-| SkiaSharp.NativeAssets.Win32 | 2.88.8 | MIT (wrapper) | https://github.com/mono/SkiaSharp/blob/main/LICENSE.md — bundled Skia native is BSD-3-Clause, see [Other licenses](#other-licenses) |
-| SkiaSharp.NativeAssets.Linux | 2.88.8 | MIT (wrapper) | as above |
-| SkiaSharp.NativeAssets.macOS | 2.88.8 | MIT (wrapper) | as above |
-| HarfBuzzSharp | 7.3.0.2 | MIT | https://github.com/mono/SkiaSharp/blob/main/LICENSE.md |
-| HarfBuzzSharp.NativeAssets.Win32 | 7.3.0.2 | MIT (wrapper) | as above — bundled HarfBuzz native is under the HarfBuzz ("Old MIT") license, https://github.com/harfbuzz/harfbuzz/blob/main/COPYING |
-| HarfBuzzSharp.NativeAssets.Linux | 7.3.0.2 | MIT (wrapper) | as above |
-| HarfBuzzSharp.NativeAssets.macOS | 7.3.0.2 | MIT (wrapper) | as above |
+| SkiaSharp | 2.88.9 | MIT | https://github.com/mono/SkiaSharp/blob/main/LICENSE.md |
+| SkiaSharp.NativeAssets.Win32 | 2.88.9 | MIT (wrapper) | https://github.com/mono/SkiaSharp/blob/main/LICENSE.md — bundled Skia native is BSD-3-Clause, see [Other licenses](#other-licenses) |
+| SkiaSharp.NativeAssets.Linux | 2.88.9 | MIT (wrapper) | as above |
+| SkiaSharp.NativeAssets.macOS | 2.88.9 | MIT (wrapper) | as above |
+| HarfBuzzSharp | 8.3.1.1 | MIT | https://github.com/mono/SkiaSharp/blob/main/LICENSE.md |
+| HarfBuzzSharp.NativeAssets.Win32 | 8.3.1.1 | MIT (wrapper) | as above — bundled HarfBuzz native is under the HarfBuzz ("Old MIT") license, https://github.com/harfbuzz/harfbuzz/blob/main/COPYING |
+| HarfBuzzSharp.NativeAssets.Linux | 8.3.1.1 | MIT (wrapper) | as above |
+| HarfBuzzSharp.NativeAssets.macOS | 8.3.1.1 | MIT (wrapper) | as above |
 | MicroCom.Runtime | 0.11.0 | MIT | https://licenses.nuget.org/MIT |
-| Tmds.DBus.Protocol | 0.20.0 | MIT | https://licenses.nuget.org/MIT — https://github.com/tmds/Tmds.DBus |
+| Tmds.DBus.Protocol | 0.21.3 | MIT | https://licenses.nuget.org/MIT — https://github.com/tmds/Tmds.DBus |
 | System.IO.Pipelines | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
 | System.Text.Encoding.CodePages | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
 | Microsoft.Bcl.AsyncInterfaces | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
@@ -150,12 +150,12 @@ SOFTWARE.
 
 ## Other licenses
 
-**Avalonia.Angle.Windows.Natives 2.1.22045.20230930** — the ANGLE OpenGL ES→Direct3D translation
+**Avalonia.Angle.Windows.Natives 2.1.25547.20250602** — the ANGLE OpenGL ES→Direct3D translation
 layer, shipped as a native asset in the Windows GUI bundle. Licensed **BSD-3-Clause**
 by The ANGLE Project Authors (portions © Google Inc., TransGaming Inc., 3DLabs Inc. Ltd.).
 Upstream license: https://github.com/google/angle/blob/main/LICENSE ; the exact copy redistributed
 is the `LICENSE` file inside the NuGet package
-(https://www.nuget.org/packages/Avalonia.Angle.Windows.Natives/2.1.22045.20230930).
+(https://www.nuget.org/packages/Avalonia.Angle.Windows.Natives/2.1.25547.20250602).
 
 **Skia** (native `libSkiaSharp` inside the `SkiaSharp.NativeAssets.*` packages) — **BSD-3-Clause**,
 Copyright © Google LLC. https://github.com/google/skia/blob/main/LICENSE. The SkiaSharp
