@@ -50,6 +50,16 @@ namespace DicomRtNifti.Core.Models
         public List<double> SlicePositions { get; set; } = new List<double>();
 
         /// <summary>
+        /// Image slices left out of <see cref="FilePaths"/> because ImagePositionPatient was
+        /// absent or unparseable, each as "file (InstanceNumber n): reason". A slice without a
+        /// usable position cannot be placed along the slice axis, so the CLI's series builder and
+        /// the scanner both skip it and record it here; <see cref="Services.SeriesGeometryProbe"/>
+        /// names it in a warning instead of misreading the hole as non-uniform spacing. Empty on a
+        /// clean series.
+        /// </summary>
+        public List<string> UnpositionedSlices { get; set; } = new List<string>();
+
+        /// <summary>
         /// In-plane spacing [row, column] in mm from the series' first slice, or null when the
         /// tag is absent (as on RTSTRUCT).
         /// </summary>

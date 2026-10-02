@@ -231,17 +231,23 @@ namespace DicomRtNifti.Core.Services
             // uniformity without a second pass over every file in the tree.
             lock (series.FilePaths)
             {
-                series.FilePaths.Add(filePath);
-
-                if (ds.Contains(DicomTag.ImagePositionPatient))
+                // An image slice with no usable position is not part of the series the converter
+                // can build (the CLI's series builder skips it too), so it is recorded instead of
+                // counted: SeriesGeometryProbe names it, rather than reading the hole it would
+                // leave in SlicePositions as non-uniform spacing. RT objects legitimately carry no
+                // position and are kept as before; an RTDOSE's single position is still captured.
+                double sliceZ;
+                string why;
+                bool positioned = SeriesGeometryProbe.TryReadSliceZ(ds, out sliceZ, out why);
+                if (ImageModalities.Contains(modality) && !positioned)
                 {
-                    try
-                    {
-                        var ipp = ds.GetValues<double>(DicomTag.ImagePositionPatient);
-                        if (ipp != null && ipp.Length >= 3)
-                            series.SlicePositions.Add(ipp[2]);
-                    }
-                    catch { /* malformed IPP: the probe reports non-uniform rather than guessing */ }
+                    series.UnpositionedSlices.Add(SeriesGeometryProbe.DescribeUnpositionedSlice(filePath, ds, why));
+                }
+                else
+                {
+                    series.FilePaths.Add(filePath);
+                    if (positioned)
+                        series.SlicePositions.Add(sliceZ);
                 }
 
                 if (series.PixelSpacing == null && ds.Contains(DicomTag.PixelSpacing))
@@ -312,8 +318,10 @@ namespace DicomRtNifti.Core.Services
 
         /// <summary>
         /// Extracts the referenced image SeriesInstanceUID from RTSTRUCT or RTDOSE datasets.
+        /// Static and internal so the CLI's explicit --forward route can ask the same question
+        /// of a structure set it was handed directly.
         /// </summary>
-        private string ExtractReferencedSeriesUID(DicomDataset ds, string modality)
+        internal static string ExtractReferencedSeriesUID(DicomDataset ds, string modality)
         {
             try
             {
@@ -448,6 +456,7 @@ namespace DicomRtNifti.Core.Services
                     foreach (var series in study.Series)
                     {
                         series.FilePaths.Sort(StringComparer.Ordinal);
+                        series.UnpositionedSlices.Sort(StringComparer.Ordinal);
                         // Ascending z, so consecutive differences are the slice gaps.
                         series.SlicePositions.Sort();
                     }
@@ -577,7 +586,7 @@ namespace DicomRtNifti.Core.Services
         /// <summary>
         /// Image modalities, used to break modality-tally ties toward a real image series.
         /// </summary>
-        private static readonly HashSet<string> ImageModalities =
+        internal static readonly HashSet<string> ImageModalities =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CT", "MR", "PT", "PET", "NM" };
 
         /// <summary>

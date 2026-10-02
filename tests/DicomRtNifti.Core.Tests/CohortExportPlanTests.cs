@@ -63,6 +63,40 @@ namespace DicomRtNifti.Core.Tests
             new AnonymizationService(Path.Combine(_dir, "key.json"), salt);
 
         [Fact]
+        public void OutputDirs_AreDistinctPerPlannedSeries()
+        {
+            // The planning CT and the CBCT of each patient are both "CT series" with no date, so
+            // without D-11 they planned the same folder and the second overwrote the first.
+            var plan = CohortExportService.BuildPlan(_scan, new CohortExportOptions(), null);
+
+            Assert.Equal(plan.Series.Count, plan.Series.Select(s => s.RelativeOutputDir).Distinct().Count());
+        }
+
+        [Fact]
+        public void CollidingSeries_GetASuffixDerivedFromTheirOwnUid()
+        {
+            var plan = CohortExportService.BuildPlan(_scan, new CohortExportOptions(), null);
+
+            foreach (var s in plan.Series)
+            {
+                string expected = "PANC_00" + (s.PatientId.EndsWith("1") ? "1" : "2") + "/CT series_" +
+                                  HashNaming.ComputeStableHash(new[] { s.SeriesUid });
+                Assert.Equal(expected, s.RelativeOutputDir);
+            }
+        }
+
+        [Fact]
+        public void NonCollidingLayout_IsUnchanged()
+        {
+            // One series per patient (the largest): the folder is exactly what it always was.
+            var plan = CohortExportService.BuildPlan(
+                _scan, new CohortExportOptions { PreferLargestSeries = true }, null);
+
+            Assert.Equal(2, plan.Series.Count);
+            Assert.All(plan.Series, s => Assert.Equal(s.PatientId + "/CT series", s.RelativeOutputDir));
+        }
+
+        [Fact]
         public void WithoutSelection_EveryImageSeriesIsPlanned()
         {
             var plan = CohortExportService.BuildPlan(_scan, new CohortExportOptions(), null);

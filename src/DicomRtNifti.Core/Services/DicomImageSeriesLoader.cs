@@ -25,12 +25,13 @@ namespace DicomRtNifti.Core.Services
     /// </summary>
     internal static class DicomImageSeriesLoader
     {
-        // Tolerance for the (N-1)·spacing vs ‖IPP_last − IPP_first‖ check.
-        // Allows for floating-point drift across many slices while still
-        // catching genuine non-uniform spacing (missing slices, variable
-        // thickness). 5% of a 366 mm extent is ~18 mm — comfortably above
-        // any rounding artefact, well below a single missing slice.
-        private const double SliceSpacingTolerance = 0.05;
+        // No non-uniform-spacing check lives here any more (S24, W1-C). The one that did
+        // compared ‖IPP_last − IPP_first‖ with (N−1)·spacing[2], but ITK's ImageSeriesReader
+        // defines spacing[2] as exactly that quotient over the same ordered list, so the two
+        // sides could never differ by more than rounding and the guard never fired (a
+        // 1/1/3 mm series loads with spacing 5/3, pinned by DicomImageSeriesLoaderTests).
+        // SeriesGeometryProbe owns the warning, computed from the per-slice positions before
+        // the series is loaded, and RtStructMaskService places contours by ReadPerSliceZ.
 
         /// <summary>
         /// Loads the series and overrides the 3rd direction-matrix column
@@ -65,18 +66,6 @@ namespace DicomRtNifti.Core.Services
 
             // Endpoints coincide — degenerate, keep SimpleITK's value.
             if (norm < 1e-6) return image;
-
-            var spacing = image.GetSpacing();
-            int n = sortedDicomFiles.Count;
-            double expected = (n - 1) * spacing[2];
-            if (expected > 0 && Math.Abs(norm - expected) / expected > SliceSpacingTolerance)
-            {
-                throw new InvalidOperationException(
-                    $"DICOM slice spacing is non-uniform: empirical extent ‖IPP_last - IPP_first‖ = " +
-                    $"{norm:F3} mm differs from (N-1)·spacing[2] = {expected:F3} mm by more than " +
-                    $"{SliceSpacingTolerance * 100:F0}%. The series may have missing slices or " +
-                    $"variable thickness; geometry cannot be unambiguously reconstructed.");
-            }
 
             double ux = dx / norm;
             double uy = dy / norm;

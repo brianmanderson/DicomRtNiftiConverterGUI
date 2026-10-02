@@ -104,7 +104,34 @@ namespace DicomRtNifti.Core.Services
                 }
             }
 
+            DisambiguateOutputDirs(plan.Series);
             return plan;
+        }
+
+        /// <summary>
+        /// Two series of one patient with the same SeriesDate and SeriesDescription (a planning CT
+        /// and a CBCT both called "CT series", or two re-exports of a study) plan the same
+        /// non-anonymized output folder, and the second silently overwrote the first. Every
+        /// member of such a group gets a 12-hex-digit suffix derived from its own
+        /// SeriesInstanceUID, so the result does not depend on scan order; a layout with no
+        /// collision is left byte-for-byte as it was. The anonymized layout hashes the UID
+        /// itself and cannot collide.
+        /// </summary>
+        internal static void DisambiguateOutputDirs(List<PlannedSeries> series)
+        {
+            var groups = series
+                .GroupBy(s => s.RelativeOutputDir ?? "", StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            foreach (var group in groups)
+            {
+                foreach (var planned in group)
+                {
+                    planned.RelativeOutputDir = planned.RelativeOutputDir + "_" +
+                        HashNaming.ComputeStableHash(new[] { planned.SeriesUid ?? "" });
+                }
+            }
         }
 
         /// <summary>
@@ -312,6 +339,14 @@ namespace DicomRtNifti.Core.Services
             var roiColumns = new List<string>();
             var roiColumnSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            bool associationsGiven = options.Associations != null && options.Associations.Count > 0;
+            if (options.OnlyAssociatedRois && !associationsGiven)
+            {
+                // The flag narrows the export to associated ROIs; with no associations there is
+                // nothing to narrow to, and the code path it gates exports every ROI unchanged.
+                progress?.Report(OnlyAssociatedWithoutAssociationsWarning);
+            }
+
             int index = 0;
             foreach (var planned in plan.Series)
             {
@@ -326,6 +361,10 @@ namespace DicomRtNifti.Core.Services
                 // the cohort modes — 400 patients, output read months later — did not. A mixed-gap
                 // series converts at exit 0 either way; this is the only thing that says so.
                 // Non-fatal, and it changes nothing about the geometry written.
+                string missingWarning;
+                if (SeriesGeometryProbe.TryBuildMissingPositionWarning(planned.Image, out missingWarning))
+                    progress?.Report("  " + missingWarning);
+
                 string spacingWarning;
                 if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
                         planned.Image, options.OutputSpacing, out spacingWarning))
@@ -388,7 +427,53 @@ namespace DicomRtNifti.Core.Services
             ExportManifestService.Write(
                 Path.Combine(outputRoot, options.ManifestFileName), manifestRows, roiColumns);
 
+            // --only-associated-rois with associations that match no ROI anywhere exported no mask
+            // at all, at exit 0, with nothing on stderr: the file-name typo in an association list
+            // that costs a day. The manifest above is still written (it is the survey that shows
+            // which names exist); the run then fails so the caller cannot miss it.
+            if (options.OnlyAssociatedRois && associationsGiven && options.ExportStructures)
+            {
+                var structureSets = plan.Series.Where(p => p.RtStruct != null).ToList();
+                int masksExported = result.Series.Sum(s => s.Masks.Count);
+                if (structureSets.Count > 0 && masksExported == 0)
+                {
+                    string message = BuildNothingAssociatedMessage(options.Associations, structureSets);
+                    progress?.Report("WARNING: " + message);
+                    throw new InvalidOperationException(message);
+                }
+            }
+
             return result;
+        }
+
+        internal const string OnlyAssociatedWithoutAssociationsWarning =
+            "WARNING: --only-associated-rois was given without --associations; there is nothing to " +
+            "match against, so every ROI is exported.";
+
+        /// <summary>
+        /// Names what was asked for and what was there, so the mismatch can be fixed from the
+        /// message alone.
+        /// </summary>
+        internal static string BuildNothingAssociatedMessage(
+            List<RoiAssociation> associations, List<PlannedSeries> structureSets)
+        {
+            var wanted = associations
+                .Select(a => a.CanonicalName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var present = structureSets
+                .SelectMany(p => p.RtStruct.RoiNames)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return "--only-associated-rois matched no ROI in any of the " + structureSets.Count +
+                   " exported structure set(s), so no mask was exported. Associations asked for [" +
+                   string.Join(", ", wanted) + "]; the structure sets contain [" +
+                   string.Join(", ", present) + "]. Fix the association names or aliases, or drop " +
+                   "--only-associated-rois to export every ROI.";
         }
 
         private async Task<SeriesExportResult> ConvertSeriesAsync(
@@ -461,7 +546,12 @@ namespace DicomRtNifti.Core.Services
                 else
                 {
                     // Name the ROIs without rasterizing, so the manifest still gains its columns.
-                    roiVolumes = planned.RtStruct.RoiNames
+                    // Through the same resolver the convert path uses, so the columns are the
+                    // names that would be exported (canonical where an association matched, and
+                    // only those under --only-associated-rois) rather than the raw ROI list.
+                    roiVolumes = NiftiConversionService
+                        .ResolveRoiNames(planned.RtStruct.RoiNames, effectiveAssociations, exportUnmatched)
+                        .Keys
                         .ToDictionary(n => n, _ => ExportManifestService.MissingValue,
                                       StringComparer.OrdinalIgnoreCase);
                 }

@@ -59,7 +59,7 @@ namespace DicomRtNifti.Core.Services
             double[] result = new double[] { spacing[0], spacing[1], spacing[2] };
 
             string outputPath = Path.Combine(outputDir, "image.nii.gz");
-            SimpleITK.WriteImage(image, outputPath);
+            WriteImageSafely(image, outputPath);
             image.Dispose();
 
             progress?.Report($"  Wrote {outputPath}");
@@ -110,7 +110,7 @@ namespace DicomRtNifti.Core.Services
             if (doseSeries.FilePaths.Count == 0) return null;
 
             string doseFilePath = doseSeries.FilePaths[0];
-            Image doseImage = SimpleITK.ReadImage(doseFilePath);
+            Image doseImage = ReadImageSafely(doseFilePath);
 
             // Check for DoseGridScaling
             try
@@ -160,7 +160,7 @@ namespace DicomRtNifti.Core.Services
 
             string outputPath = Path.Combine(dosesDir, safeName + ".nii.gz");
 
-            SimpleITK.WriteImage(doseImage, outputPath);
+            WriteImageSafely(doseImage, outputPath);
             doseImage.Dispose();
 
             progress?.Report($"  Wrote {outputPath}");
@@ -290,7 +290,7 @@ namespace DicomRtNifti.Core.Services
 
                 string safeName = maskFileNames[kvp.Key];
                 string maskPath = Path.Combine(masksDir, safeName + ".nii.gz");
-                SimpleITK.WriteImage(maskToWrite, maskPath);
+                WriteImageSafely(maskToWrite, maskPath);
                 maskToWrite.Dispose();
                 progress?.Report($"  Wrote mask: {safeName}.nii.gz");
             });
@@ -369,11 +369,72 @@ namespace DicomRtNifti.Core.Services
             return roiVolumes;
         }
 
+        // ── SimpleITK path handling ────────────────────────────────────────────────────────
+        //
+        // SimpleITK's managed wrapper hands file paths to the native library through the ANSI
+        // code page on Windows, so a path containing a character outside that code page is
+        // best-fit mapped or lost before the native ever sees it: "Ĺ_ROI.nii.gz" is written as
+        // "L_ROI.nii.gz" on a cp1252 system, and reading it back fails. ROI names are user
+        // data, so every path this service hands to the native goes through the two helpers
+        // below. An ASCII path, and every path on Linux and macOS, goes straight through; on
+        // Windows a non-ASCII path is written to an ASCII temporary file and moved into place
+        // with .NET's wide-character file API, or copied out the same way before reading.
+
+        /// <summary>Writes <paramref name="image"/> to <paramref name="path"/>, see the note above.</summary>
+        internal static void WriteImageSafely(Image image, string path)
+        {
+            if (!NeedsAsciiDetour(path))
+            {
+                SimpleITK.WriteImage(image, path);
+                return;
+            }
+
+            string tmp = AsciiTempPath(path);
+            try
+            {
+                SimpleITK.WriteImage(image, tmp);
+                File.Move(tmp, path, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(tmp)) File.Delete(tmp);
+            }
+        }
+
+        /// <summary>Reads the image at <paramref name="path"/>, see the note above.</summary>
+        internal static Image ReadImageSafely(string path)
+        {
+            if (!NeedsAsciiDetour(path))
+                return SimpleITK.ReadImage(path);
+
+            string tmp = AsciiTempPath(path);
+            try
+            {
+                File.Copy(path, tmp, overwrite: true);
+                return SimpleITK.ReadImage(tmp);
+            }
+            finally
+            {
+                if (File.Exists(tmp)) File.Delete(tmp);
+            }
+        }
+
+        internal static bool NeedsAsciiDetour(string path) =>
+            OperatingSystem.IsWindows() && path != null && path.Any(c => c > 127);
+
+        private static string AsciiTempPath(string path)
+        {
+            // Keep the NIfTI extension: ITK chooses its reader/writer by it, and .nii.gz must stay gzipped.
+            string ext = path.EndsWith(".nii.gz", StringComparison.OrdinalIgnoreCase) ? ".nii.gz" : Path.GetExtension(path);
+            return Path.Combine(Path.GetTempPath(), "drt_sitk_" + Guid.NewGuid().ToString("N") + ext);
+        }
+
         /// <summary>
         /// Resolves which ROI names to export based on associations.
-        /// Returns a dictionary mapping output name -> DICOM ROI name.
+        /// Returns a dictionary mapping output name -> DICOM ROI name. Static and internal so the
+        /// cohort manifest can name its columns by exactly the rule the export applies.
         /// </summary>
-        private Dictionary<string, string> ResolveRoiNames(
+        internal static Dictionary<string, string> ResolveRoiNames(
             List<string> dicomRoiNames,
             List<RoiAssociation> associations,
             bool exportUnmatched)
@@ -474,24 +535,26 @@ namespace DicomRtNifti.Core.Services
             var filePositions = new List<Tuple<string, double>>(filePaths.Count);
             foreach (var path in filePaths)
             {
-                double projection = 0;
+                // A file whose position cannot be read is left out rather than sorted to an
+                // invented projection of 0 and handed to ITK in the wrong place. The series
+                // builders already exclude such slices and name them; this is the backstop for a
+                // DicomSeriesGroup assembled by any other path.
+                double projection;
                 try
                 {
                     var dcm = DicomFile.Open(path, FileReadOption.SkipLargeTags);
-                    if (dcm.Dataset.Contains(DicomTag.ImagePositionPatient))
-                    {
-                        var ipp = dcm.Dataset.GetValues<double>(DicomTag.ImagePositionPatient);
-                        if (ipp != null && ipp.Length >= 3)
-                        {
-                            projection = ipp[0] * normal[0]
-                                       + ipp[1] * normal[1]
-                                       + ipp[2] * normal[2];
-                        }
-                    }
+                    if (!dcm.Dataset.Contains(DicomTag.ImagePositionPatient))
+                        continue;
+                    var ipp = dcm.Dataset.GetValues<double>(DicomTag.ImagePositionPatient);
+                    if (ipp == null || ipp.Length < 3)
+                        continue;
+                    projection = ipp[0] * normal[0]
+                               + ipp[1] * normal[1]
+                               + ipp[2] * normal[2];
                 }
                 catch (Exception)
                 {
-                    // Projection stays 0 if the file is unreadable.
+                    continue;
                 }
                 filePositions.Add(Tuple.Create(path, projection));
             }

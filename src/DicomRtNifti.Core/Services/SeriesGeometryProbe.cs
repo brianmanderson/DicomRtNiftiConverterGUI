@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using DicomRtNifti.Core.Models;
+using FellowOakDicom;
 
 namespace DicomRtNifti.Core.Services
 {
@@ -35,6 +37,97 @@ namespace DicomRtNifti.Core.Services
         /// reconstruction worth flagging.
         /// </summary>
         internal const double MaterialSpacingFactor = 1.05;
+
+        /// <summary>
+        /// Reads a slice's patient-space z from ImagePositionPatient, or says why it has none.
+        /// The one place both series builders (the CLI's and the scanner's) decide whether a
+        /// slice can be placed, so the two cannot disagree again.
+        /// </summary>
+        /// <param name="failureReason">Set when the method returns false; null otherwise.</param>
+        public static bool TryReadSliceZ(DicomDataset ds, out double z, out string failureReason)
+        {
+            z = 0;
+            failureReason = null;
+            if (ds == null || !ds.Contains(DicomTag.ImagePositionPatient))
+            {
+                failureReason = "ImagePositionPatient missing";
+                return false;
+            }
+
+            double[] ipp;
+            try
+            {
+                ipp = ds.GetValues<double>(DicomTag.ImagePositionPatient);
+            }
+            catch (Exception)
+            {
+                failureReason = "ImagePositionPatient unparseable (\"" + RawString(ds, DicomTag.ImagePositionPatient) + "\")";
+                return false;
+            }
+
+            if (ipp == null || ipp.Length < 3)
+            {
+                failureReason = string.Format(CultureInfo.InvariantCulture,
+                    "ImagePositionPatient has {0} value(s), expected 3", ipp == null ? 0 : ipp.Length);
+                return false;
+            }
+            if (double.IsNaN(ipp[2]) || double.IsInfinity(ipp[2]))
+            {
+                failureReason = "ImagePositionPatient z is not a finite number";
+                return false;
+            }
+
+            z = ipp[2];
+            return true;
+        }
+
+        private static string RawString(DicomDataset ds, DicomTag tag)
+        {
+            try { return ds.GetString(tag); }
+            catch (Exception) { return "?"; }
+        }
+
+        /// <summary>"file (InstanceNumber n): reason" for <see cref="DicomSeriesGroup.UnpositionedSlices"/>.</summary>
+        public static string DescribeUnpositionedSlice(string path, DicomDataset ds, string reason)
+        {
+            string instance = "?";
+            try { instance = ds.GetSingleValueOrDefault(DicomTag.InstanceNumber, "?"); }
+            catch (Exception) { }
+            return string.Format(CultureInfo.InvariantCulture, "{0} (InstanceNumber {1}): {2}",
+                Path.GetFileName(path), instance, reason);
+        }
+
+        /// <summary>
+        /// The warning a conversion should emit when slices were skipped for lacking a usable
+        /// position, or false when none were. Emitted before the slice-spacing warning, which
+        /// then judges the reduced series: a single skipped slice reads as a doubled gap there,
+        /// and without this line that gap looked like a property of the scan.
+        /// </summary>
+        public static bool TryBuildMissingPositionWarning(DicomSeriesGroup series, out string warning)
+        {
+            warning = null;
+            if (series == null || series.UnpositionedSlices == null || series.UnpositionedSlices.Count == 0)
+                return false;
+
+            int skipped = series.UnpositionedSlices.Count;
+            int total = (series.FilePaths == null ? 0 : series.FilePaths.Count) + skipped;
+            warning = BuildMissingPositionMessage(series.SeriesInstanceUID, skipped, total, series.UnpositionedSlices);
+            return true;
+        }
+
+        /// <summary>Wording for <see cref="TryBuildMissingPositionWarning"/>; internal so it is testable without a DICOM tree.</summary>
+        internal static string BuildMissingPositionMessage(
+            string seriesInstanceUid, int skipped, int total, IEnumerable<string> labels)
+        {
+            string uid = string.IsNullOrEmpty(seriesInstanceUid) ? "(unknown UID)" : seriesInstanceUid;
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "WARNING: series {0}: {1} of {2} image slice(s) carry no usable ImagePositionPatient " +
+                "and were skipped — {3}. The remaining {4} slice(s) are converted as a series with a " +
+                "gap where each skipped slice was; any slice-spacing warning that follows judges that " +
+                "reduced series.",
+                uid, skipped, total, string.Join("; ", labels), total - skipped);
+        }
 
         /// <summary>
         /// Describes <paramref name="series"/>. Returns false when there is no geometry to

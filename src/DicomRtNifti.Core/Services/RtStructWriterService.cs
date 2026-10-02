@@ -141,7 +141,9 @@ namespace DicomRtNifti.Core.Services
                 Image rawMask;
                 try
                 {
-                    rawMask = SimpleITK.ReadImage(maskPath);
+                    // Through the conversion service's helper: a mask named after a non-ASCII ROI
+                    // would otherwise be looked up under a best-fit ANSI name on Windows.
+                    rawMask = NiftiConversionService.ReadImageSafely(maskPath);
                 }
                 catch (Exception ex)
                 {
