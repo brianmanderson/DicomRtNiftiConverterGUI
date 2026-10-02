@@ -1,35 +1,127 @@
 name: Release (cross-platform)
 
-# Publishes self-contained builds of BOTH the Avalonia desktop GUI
-# (DicomRtNifti.App) and the .NET 8 headless CLI (DicomRtNifti.Cli) for
-# win-x64, linux-x64, and osx-arm64 to a rolling `latest-build` GitHub Release.
-# No .NET install required on the user's machine.
+# Publishes self-contained builds of BOTH the Avalonia desktop GUI (DicomRtNifti.App) and the
+# .NET 8 headless CLI (DicomRtNifti.Cli) for win-x64, linux-x64 and osx-arm64. Every bundle
+# carries LICENSE and THIRD-PARTY-NOTICES.md, and the verify step runs the bundled CLI once, so a
+# bundle whose SimpleITK native does not load is never released.
 #
-# This supersedes the retired net48/WPF release.yml: now that the Avalonia port
-# has landed, the GUI is cross-platform and is published here alongside the CLI.
-#
-# Tagged stable (v*) releases are deferred; this workflow is rolling-only for now.
+# Gated on the conformance workflow: nothing is published for a commit until
+# "Conformance (cross-platform)" has passed on that exact commit.
+#   - push to main      -> runs via workflow_run after a green conformance run on the commit and
+#                          refreshes the rolling `latest-build` pre-release (a red run skips it;
+#                          so does any conformance run that a pull request produced, including one
+#                          from a fork whose branch happens to be called main);
+#   - tag v<semver>     -> publishes a stable release named after the tag, built with that version
+#                          (-p:Version), once the tagged commit has a green conformance run (it had
+#                          one when it landed on main);
+#   - workflow_dispatch -> builds and packages on all three OSes and publishes only from main; on
+#                          any ref the gate job first looks up the conformance run for the commit
+#                          and fails, naming what is missing, if it has not passed.
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Conformance (cross-platform)"]
+    types: [completed]
     branches: [main]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+# Concurrency is declared per job below, keyed on the release tag the gate resolved, rather than
+# at workflow level: a workflow-level group would also be entered by the workflow_run of a red
+# conformance run (the gate skips it, but only after it has cancelled an in-flight publish).
 
 env:
   SIMPLEITK_BASE_URL: "https://github.com/SimpleITK/SimpleITK/releases/download/v2.5.0"
+  CONFORMANCE_WORKFLOW: "Conformance (cross-platform)"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  gate:
+    name: Require a green conformance run for this commit
+    runs-on: ubuntu-latest
+    # A workflow_run for a failed or cancelled conformance run ends here, visibly skipped. So does
+    # one produced by a pull_request event: conformance runs for PRs (forks included) must never
+    # reach the publish token, and on.workflow_run.branches only looks at the head branch name.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
+      version: ${{ steps.meta.outputs.version }}
+      version_arg: ${{ steps.meta.outputs.version_arg }}
+      tag: ${{ steps.meta.outputs.tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      publish: ${{ steps.meta.outputs.publish }}
+    steps:
+      - name: Resolve the commit, the version, and whether this run publishes
+        id: meta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            sha="${{ github.event.workflow_run.head_sha }}"
+            branch="${{ github.event.workflow_run.head_branch }}"
+            echo "conformance passed on $sha ($branch): ${{ github.event.workflow_run.html_url }}"
+          else
+            sha="${{ github.sha }}"
+            branch="${{ github.ref_name }}"
+            # Not triggered by the conformance workflow itself: look up its run for this exact commit.
+            conclusion="$(gh run list --repo "${{ github.repository }}" \
+                --workflow "${{ env.CONFORMANCE_WORKFLOW }}" --commit "$sha" --status completed \
+                --limit 1 --json conclusion --jq 'map(.conclusion) | first // "none"')"
+            if [ "$conclusion" != "success" ]; then
+              echo "::error::'${{ env.CONFORMANCE_WORKFLOW }}' has not passed on $sha (latest completed run: $conclusion). Publishing waits on a green conformance run for this commit."
+              exit 1
+            fi
+            echo "conformance passed on $sha ($branch)"
+          fi
+
+          sha7="$(echo "$sha" | cut -c1-7)"
+          if [ "${{ github.ref_type }}" = "tag" ] && [[ "${{ github.ref_name }}" == v* ]]; then
+            tag="${{ github.ref_name }}"
+            version="${tag#v}"
+            version_arg="-p:Version=$version"
+            release_name="$tag"
+            # v1.2.0-rc1 is a pre-release; v1.2.0 is a stable release marked latest.
+            if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
+            publish=true
+          else
+            tag="latest-build"
+            version="latest-$(date -u +%Y%m%d)-$sha7"
+            version_arg=""
+            release_name="Latest build ($version)"
+            prerelease=true
+            if [ "$branch" = "main" ]; then publish=true; else publish=false; fi
+          fi
+          {
+            echo "sha=$sha"
+            echo "version=$version"
+            echo "version_arg=$version_arg"
+            echo "tag=$tag"
+            echo "release_name=$release_name"
+            echo "prerelease=$prerelease"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$version tag=$tag prerelease=$prerelease publish=$publish"
+
   build:
     name: Publish GUI + CLI (${{ matrix.rid }})
+    needs: gate
     runs-on: ${{ matrix.os }}
+    concurrency:
+      group: release-build-${{ needs.gate.outputs.tag }}-${{ matrix.rid }}
+      # A newer rolling build supersedes an older one; tagged builds are never cancelled.
+      cancel-in-progress: ${{ needs.gate.outputs.tag == 'latest-build' }}
     strategy:
       fail-fast: false
       matrix:
@@ -45,8 +137,10 @@ jobs:
             sitk_zip: SimpleITK-2.5.0-CSharp-macosx-11.0-anycpu.zip
 
     steps:
-      - name: Checkout
+      - name: Checkout the gated commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
 
       - name: Set up .NET 8 SDK
         uses: actions/setup-dotnet@v4
@@ -70,12 +164,12 @@ jobs:
           codesign --force --sign - "$dylib" || true
 
       - name: Publish self-contained CLI
-        run: dotnet publish src/DicomRtNifti.Cli/DicomRtNifti.Cli.csproj -c Release -r ${{ matrix.rid }} --self-contained -o publish-cli
+        run: dotnet publish src/DicomRtNifti.Cli/DicomRtNifti.Cli.csproj -c Release -r ${{ matrix.rid }} --self-contained -o publish-cli ${{ needs.gate.outputs.version_arg }}
 
       - name: Publish self-contained GUI (Avalonia)
-        run: dotnet publish src/DicomRtNifti.App/DicomRtNifti.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -o publish-app
+        run: dotnet publish src/DicomRtNifti.App/DicomRtNifti.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -o publish-app ${{ needs.gate.outputs.version_arg }}
 
-      - name: Verify publish output (exe + native present)
+      - name: Verify bundles (exe, native, LICENSE, THIRD-PARTY-NOTICES.md; bundled CLI runs)
         shell: bash
         run: |
           set -e
@@ -85,10 +179,21 @@ jobs:
             osx-arm64) cli=DicomRtNifti.Cli;     app=DicomRtNifti.App;     nat=libSimpleITKCSharpNative.dylib;;
           esac
           test -f "publish-cli/$cli" || { echo "::error::missing $cli in CLI publish output"; exit 1; }
-          test -f "publish-cli/$nat" || { echo "::error::missing native $nat in CLI publish output"; exit 1; }
           test -f "publish-app/$app" || { echo "::error::missing $app in GUI publish output"; exit 1; }
-          test -f "publish-app/$nat" || { echo "::error::missing native $nat in GUI publish output"; exit 1; }
-          echo "OK: CLI ($cli) + GUI ($app) + native ($nat) present"
+          for dir in publish-cli publish-app; do
+            for f in "$nat" LICENSE THIRD-PARTY-NOTICES.md; do
+              test -f "$dir/$f" || { echo "::error::missing $f in $dir"; exit 1; }
+            done
+          done
+          echo "OK: CLI ($cli) + GUI ($app) + native ($nat) + LICENSE + THIRD-PARTY-NOTICES.md present in both bundles"
+
+          # The bundle must run and must know which commit it was built from.
+          out="$("./publish-cli/$cli" --version)"
+          echo "$out"
+          echo "$out" | grep -Eq '^DICOM RT Toolkit CLI [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\+[0-9a-f]{7,}' \
+            || { echo "::error::bundled CLI does not report a version carrying its commit sha"; exit 1; }
+          echo "$out" | grep -q "SimpleITK native: OK" \
+            || { echo "::error::SimpleITK native did not load from the ${{ matrix.rid }} bundle"; exit 1; }
 
       - name: Package (zip, Windows)
         if: runner.os == 'Windows'
@@ -117,23 +222,17 @@ jobs:
           retention-days: 7
 
   publish:
-    name: Publish rolling release
-    needs: build
+    name: Publish ${{ needs.gate.outputs.tag }}
+    needs: [gate, build]
     runs-on: ubuntu-latest
-    # Only publish a real release from main. A workflow_dispatch on a feature
-    # branch still runs the build matrix above (validating the cross-platform
-    # publish + packaging) but skips this step, so no stray release is created.
-    if: github.ref == 'refs/heads/main'
+    # Rolling pre-release only from main; stable releases only from a v* tag. A dispatch on a
+    # feature branch still validates the cross-platform publish above and stops here.
+    if: needs.gate.outputs.publish == 'true'
+    concurrency:
+      group: release-publish-${{ needs.gate.outputs.tag }}
+      # Never cancel between the delete and the re-create of the rolling release.
+      cancel-in-progress: false
     steps:
-      - name: Compute version + tag
-        id: meta
-        shell: bash
-        run: |
-          sha="$(echo "${{ github.sha }}" | cut -c1-7)"
-          stamp="$(date -u +%Y%m%d)"
-          echo "version=latest-$stamp-$sha" >> "$GITHUB_OUTPUT"
-          echo "tag=latest-build" >> "$GITHUB_OUTPUT"
-
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -142,27 +241,32 @@ jobs:
       - name: List downloaded artifacts
         run: find artifacts -type f
 
-      - name: Delete previous rolling release
+      - name: Delete the previous rolling pre-release
+        if: needs.gate.outputs.tag == 'latest-build'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete "${{ steps.meta.outputs.tag }}" --yes --cleanup-tag \
-            --repo "${{ github.repository }}" || echo "No prior ${{ steps.meta.outputs.tag }} release (first run)."
+          gh release delete "${{ needs.gate.outputs.tag }}" --yes --cleanup-tag \
+            --repo "${{ github.repository }}" || echo "No prior ${{ needs.gate.outputs.tag }} release (first run)."
 
-      - name: Publish rolling pre-release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: "Latest build (${{ steps.meta.outputs.version }})"
+          tag_name: ${{ needs.gate.outputs.tag }}
+          target_commitish: ${{ needs.gate.outputs.sha }}
+          name: ${{ needs.gate.outputs.release_name }}
           body: |
-            Rolling pre-release of the cross-platform app, self-contained for
-            **win-x64**, **linux-x64**, and **osx-arm64** (Apple Silicon). No .NET
-            runtime install required.
+            Self-contained builds of the cross-platform app for **win-x64**, **linux-x64**, and
+            **osx-arm64** (Apple Silicon). No .NET runtime install required.
 
             - **GUI** (Avalonia desktop): `DicomRtNifti-gui-<rid>` — unzip/untar and run `DicomRtNifti.App`.
             - **CLI** (headless): `DicomRtNifti-cli-<rid>` — unzip/untar and run `DicomRtNifti.Cli --help`.
-            - Built from commit ${{ github.sha }}
-          prerelease: true
-          make_latest: false
+            - Each bundle contains `LICENSE` and `THIRD-PARTY-NOTICES.md`. First run on each OS
+              (SmartScreen, Gatekeeper, executable bit): see "Running a prebuilt release" in the README.
+            - Built from commit ${{ needs.gate.outputs.sha }} after a green "Conformance (cross-platform)" run on that commit.
+            - Research use only: this software is not a medical device and has not been cleared or
+              approved by any regulatory body for clinical use.
+          prerelease: ${{ needs.gate.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.gate.outputs.prerelease != 'true' }}
           files: artifacts/**/*
           fail_on_unmatched_files: true

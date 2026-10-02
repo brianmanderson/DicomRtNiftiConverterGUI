@@ -33,6 +33,8 @@
         <TextBlock Text="Help: NIfTI → DICOM" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="How to convert NIfTI binary masks and dose volumes back into DICOM RT-STRUCT and RT-DOSE files."
                    Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+        <TextBlock Text="Research use only: this software is not a medical device and has not been cleared or approved by any regulatory body for clinical use."
+                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 

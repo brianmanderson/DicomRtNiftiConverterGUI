@@ -1,14 +1,15 @@
 using System;
+using System.Reflection;
 using Avalonia.Controls;
 using DicomRtNifti.App.ViewModels;
 
 namespace DicomRtNifti.App.Views
 {
     /// <summary>
-    /// Launcher window: top-level chooser. Opens the NIfTI->DICOM workflow window (wired to a
-    /// real view-model built from the launcher's services); the DICOM->NIfTI window is still a
-    /// stub pending its Phase 4 port. The legacy cache + hide-on-close behaviour is re-added
-    /// in a later increment.
+    /// Launcher window: the top-level chooser. It owns no services; the LauncherViewModel it is
+    /// bound to carries the Core services built once in App.OnFrameworkInitializationCompleted.
+    /// On each request event it constructs the workflow view-model from those services and opens
+    /// the DICOM->NIfTI or NIfTI->DICOM window non-modally, so a user can keep several open.
     /// </summary>
     public partial class LauncherWindow : Window
     {
@@ -19,10 +20,27 @@ namespace DicomRtNifti.App.Views
             InitializeComponent();
             DataContextChanged += OnDataContextChanged;
 
-            // Surface the build version (from Directory.Build.props) and licence in the footer.
-            var v = typeof(LauncherWindow).Assembly.GetName().Version;
-            string version = v == null ? "" : $"v{v.Major}.{v.Minor}.{v.Build}";
-            VersionText.Text = $"DICOM RT Toolkit  ·  {version}  ·  MIT licensed";
+            // Surface the build version and licence in the footer. The informational version is
+            // "1.0.0+<commit sha>" (Directory.Build.props + Source Link), the same string the CLI
+            // prints for --version; the sha is shortened to git's seven characters for the footer.
+            VersionText.Text = $"DICOM RT Toolkit  ·  {GetDisplayVersion()}  ·  MIT licensed";
+        }
+
+        /// <summary>
+        /// AssemblyInformationalVersion with its commit sha cut to seven characters, falling back
+        /// to the assembly version when the attribute is absent.
+        /// </summary>
+        internal static string GetDisplayVersion()
+        {
+            var asm = typeof(LauncherWindow).Assembly;
+            string info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (string.IsNullOrEmpty(info))
+                return asm.GetName().Version?.ToString(3) ?? "unknown";
+
+            int plus = info.IndexOf('+');
+            if (plus < 0 || info.Length - plus - 1 <= 7)
+                return info;
+            return info.Substring(0, plus + 1 + 7);
         }
 
         private void OnDataContextChanged(object sender, EventArgs e)

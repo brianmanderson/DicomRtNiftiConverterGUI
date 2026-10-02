@@ -33,6 +33,8 @@
         <TextBlock Text="Help: DICOM → NIfTI" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="How to convert DICOM RT-STRUCT, CT/MR/PT image series, and RT-DOSE into NIfTI files."
                    Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" Margin="0,4,0,0"/>
+        <TextBlock Text="Research use only: this software is not a medical device and has not been cleared or approved by any regulatory body for clinical use."
+                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 

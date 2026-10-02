@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Headless UI smoke tests for the Avalonia GUI (DicomRtNifti.App). They boot the real App
+       class under Avalonia.Headless with Skia rendering, open the production launcher and both
+       workflow windows through it, drive the forward (DICOM -> NIfTI) and reverse (NIfTI -> DICOM)
+       view-models end to end over a small CT + RTSTRUCT case, and save a rendered PNG of every
+       window: the scripted capture path the walkthrough figures reuse.
+
+       The forward/reverse runs call the real Core services, so the SimpleITK native must be
+       staged next to the test output exactly as for Core.Tests: SimpleITK.props copies it. -->
+  <Import Project="..\..\src\SimpleITK.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- Keep in lockstep with the Avalonia version in src/DicomRtNifti.App/DicomRtNifti.App.csproj
+         (Avalonia.Headless.XUnit 11.x is xunit v2 only; do not move the test stack to xunit v3). -->
+    <PackageReference Include="Avalonia.Headless.XUnit" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Skia" Version="11.3.22" />
+    <!-- fo-dicom synthesizes the CT + RTSTRUCT case the workflows run over when no fixture is given. -->
+    <PackageReference Include="fo-dicom" Version="5.2.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DicomRtNifti.App\DicomRtNifti.App.csproj" />
+    <!-- Reuse Core.Tests' in-memory DICOM writers rather than duplicating them. -->
+    <Compile Include="..\DicomRtNifti.Core.Tests\DicomTestData.cs" Link="Support\DicomTestData.cs" />
+  </ItemGroup>
+
+</Project>

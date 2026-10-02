@@ -379,3 +379,11 @@ FodyWeavers.xsd
 # Ephemeral conformance test fixture + report (regeneratable via
 # rtmask-conformance generate)
 _conformance/
+
+# LCTSC fixture fetched at test time by tests/fixtures/fetch_lctsc_subset.py (CC BY 3.0; never
+# redistributed here). No DICOM is committed to this repository: fixtures are generated or fetched.
+tests/fixtures/lctsc_subset/
+*.dcm
+
+# Headless GUI test screenshots (also uploaded as a CI artifact)
+screenshots/
