@@ -161,6 +161,11 @@ namespace DicomRtNifti.Core.Services
             string seriesDesc = GetStringTag(ds, DicomTag.SeriesDescription, "");
             string seriesDate = GetStringTag(ds, DicomTag.SeriesDate, "");
             string frameOfRef = GetStringTag(ds, DicomTag.FrameOfReferenceUID, "");
+            // RTSTRUCT has no Frame of Reference module: the top-level tag is normally absent and
+            // the frame lives in ReferencedFrameOfReferenceSequence / on each ROI. Reading only the
+            // top-level tag left the frame-of-reference link rule dead for real structure sets.
+            if (string.IsNullOrEmpty(frameOfRef) && string.Equals(modality, "RTSTRUCT", StringComparison.OrdinalIgnoreCase))
+                frameOfRef = ExtractRtStructFrameOfReferenceUids(ds).FirstOrDefault() ?? "";
 
             if (string.IsNullOrEmpty(studyUid) || string.IsNullOrEmpty(seriesUid))
                 return;
@@ -231,17 +236,25 @@ namespace DicomRtNifti.Core.Services
             // uniformity without a second pass over every file in the tree.
             lock (series.FilePaths)
             {
-                series.FilePaths.Add(filePath);
-
-                if (ds.Contains(DicomTag.ImagePositionPatient))
+                // An image slice with no usable position is not part of the series the converter
+                // can build (the CLI's series builder skips it too), so it is recorded instead of
+                // counted: SeriesGeometryProbe names it, rather than reading the hole it would
+                // leave in SlicePositions as non-uniform spacing. RT objects legitimately carry no
+                // position and are kept as before; an RTDOSE's single position is still captured.
+                double sliceZ;
+                string why;
+                bool positioned = SeriesGeometryProbe.TryReadSliceZ(ds, out sliceZ, out why);
+                // A multi-frame object (Enhanced CT/MR, NM) carries its positions per frame, so it
+                // is kept whole, as it always was, rather than reported as an unpositioned slice.
+                if (ImageModalities.Contains(modality) && !positioned && !SeriesGeometryProbe.IsMultiFrame(ds))
                 {
-                    try
-                    {
-                        var ipp = ds.GetValues<double>(DicomTag.ImagePositionPatient);
-                        if (ipp != null && ipp.Length >= 3)
-                            series.SlicePositions.Add(ipp[2]);
-                    }
-                    catch { /* malformed IPP: the probe reports non-uniform rather than guessing */ }
+                    series.UnpositionedSlices.Add(SeriesGeometryProbe.DescribeUnpositionedSlice(filePath, ds, why));
+                }
+                else
+                {
+                    series.FilePaths.Add(filePath);
+                    if (positioned)
+                        series.SlicePositions.Add(sliceZ);
                 }
 
                 if (series.PixelSpacing == null && ds.Contains(DicomTag.PixelSpacing))
@@ -312,8 +325,69 @@ namespace DicomRtNifti.Core.Services
 
         /// <summary>
         /// Extracts the referenced image SeriesInstanceUID from RTSTRUCT or RTDOSE datasets.
+        /// Static and internal so the CLI's explicit --forward route can ask the same question
+        /// of a structure set it was handed directly.
         /// </summary>
-        private string ExtractReferencedSeriesUID(DicomDataset ds, string modality)
+        internal static List<string> ExtractReferencedSeriesUIDs(DicomDataset ds)
+        {
+            var uids = new List<string>();
+            try
+            {
+                if (!ds.Contains(DicomTag.ReferencedFrameOfReferenceSequence))
+                    return uids;
+                foreach (var frameItem in ds.GetSequence(DicomTag.ReferencedFrameOfReferenceSequence))
+                {
+                    if (!frameItem.Contains(DicomTag.RTReferencedStudySequence)) continue;
+                    foreach (var studyItem in frameItem.GetSequence(DicomTag.RTReferencedStudySequence))
+                    {
+                        if (!studyItem.Contains(DicomTag.RTReferencedSeriesSequence)) continue;
+                        foreach (var seriesItem in studyItem.GetSequence(DicomTag.RTReferencedSeriesSequence))
+                        {
+                            string uid = GetStringTag(seriesItem, DicomTag.SeriesInstanceUID, "");
+                            if (!string.IsNullOrEmpty(uid) && !uids.Contains(uid))
+                                uids.Add(uid);
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // A malformed sequence yields what was read before it.
+            }
+            return uids;
+        }
+
+        /// <summary>
+        /// Every frame of reference a structure set names: the top-level tag when present, the
+        /// ReferencedFrameOfReferenceSequence items, and each ROI's ReferencedFrameOfReferenceUID,
+        /// in that order, without duplicates.
+        /// </summary>
+        internal static List<string> ExtractRtStructFrameOfReferenceUids(DicomDataset ds)
+        {
+            var uids = new List<string>();
+            void Add(string uid)
+            {
+                if (!string.IsNullOrEmpty(uid) && !uids.Contains(uid)) uids.Add(uid);
+            }
+
+            Add(GetStringTag(ds, DicomTag.FrameOfReferenceUID, ""));
+            try
+            {
+                if (ds.Contains(DicomTag.ReferencedFrameOfReferenceSequence))
+                    foreach (var item in ds.GetSequence(DicomTag.ReferencedFrameOfReferenceSequence))
+                        Add(GetStringTag(item, DicomTag.FrameOfReferenceUID, ""));
+                if (ds.Contains(DicomTag.StructureSetROISequence))
+                    foreach (var item in ds.GetSequence(DicomTag.StructureSetROISequence))
+                        Add(GetStringTag(item, DicomTag.ReferencedFrameOfReferenceUID, ""));
+            }
+            catch (Exception)
+            {
+                // A malformed sequence yields what was read before it.
+            }
+            return uids;
+        }
+
+        internal static string ExtractReferencedSeriesUID(DicomDataset ds, string modality)
         {
             try
             {
@@ -448,6 +522,7 @@ namespace DicomRtNifti.Core.Services
                     foreach (var series in study.Series)
                     {
                         series.FilePaths.Sort(StringComparer.Ordinal);
+                        series.UnpositionedSlices.Sort(StringComparer.Ordinal);
                         // Ascending z, so consecutive differences are the slice gaps.
                         series.SlicePositions.Sort();
                     }
@@ -577,7 +652,7 @@ namespace DicomRtNifti.Core.Services
         /// <summary>
         /// Image modalities, used to break modality-tally ties toward a real image series.
         /// </summary>
-        private static readonly HashSet<string> ImageModalities =
+        internal static readonly HashSet<string> ImageModalities =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CT", "MR", "PT", "PET", "NM" };
 
         /// <summary>

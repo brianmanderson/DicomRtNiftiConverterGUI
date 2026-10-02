@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using FellowOakDicom;
 using FellowOakDicom.IO.Buffer;
 
@@ -236,12 +237,24 @@ namespace DicomRtNifti.Core.Tests
         /// <paramref name="sliceCount"/>/<paramref name="sliceGapMm"/>. Lets a test build the
         /// mixed-gap geometry the non-uniform-spacing diagnostics exist for.
         /// </param>
+        /// <param name="imageOrientationPatient">
+        /// Six direction cosines (row, then column) to write; null for the axial default.
+        /// Keep them short decimals: ContourData and IOP are VR DS, 16 characters per value.
+        /// </param>
+        /// <param name="ippOverrides">
+        /// Slice index to the raw ImagePositionPatient strings to write instead of (0, 0, z);
+        /// a null value omits the tag. Lets a test build the unpositioned slices the series
+        /// builders must skip. Validation is switched off for such a slice so an unparseable
+        /// value can be written at all.
+        /// </param>
         public static string WriteCtSeriesWithPixels(
             string dir, string seriesUid, string frameUid,
             int sliceCount = 4, int size = 16,
             double inPlaneSpacingMm = 1.0, double sliceGapMm = 1.0,
             string studyUid = null, string patientId = "PAT001",
-            double[] sliceZsMm = null)
+            double[] sliceZsMm = null,
+            double[] imageOrientationPatient = null,
+            IDictionary<int, string[]> ippOverrides = null)
         {
             studyUid = studyUid ?? NewUid();
             Directory.CreateDirectory(dir);
@@ -283,9 +296,27 @@ namespace DicomRtNifti.Core.Tests
                     { DicomTag.RescaleSlope, "1" },
                 };
 
-                ds.Add(DicomTag.ImagePositionPatient,
-                    "0", "0", z.ToString(CultureInfo.InvariantCulture));
-                ds.Add(DicomTag.ImageOrientationPatient, "1", "0", "0", "0", "1", "0");
+                string[] ippOverride;
+                if (ippOverrides != null && ippOverrides.TryGetValue(s, out ippOverride))
+                {
+                    if (ippOverride != null)
+                    {
+                        // Deliberately invalid content: the point of the override is a slice the
+                        // series builders must refuse, and fo-dicom's validator would refuse it first.
+#pragma warning disable CS0618
+                        ds.AutoValidate = false;
+#pragma warning restore CS0618
+                        ds.Add(DicomTag.ImagePositionPatient, ippOverride);
+                    }
+                }
+                else
+                {
+                    ds.Add(DicomTag.ImagePositionPatient,
+                        "0", "0", z.ToString(CultureInfo.InvariantCulture));
+                }
+                var iop = imageOrientationPatient ?? new[] { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0 };
+                ds.Add(DicomTag.ImageOrientationPatient,
+                    iop.Select(v => v.ToString("0.######", CultureInfo.InvariantCulture)).ToArray());
                 ds.Add(DicomTag.PixelSpacing,
                     inPlaneSpacingMm.ToString(CultureInfo.InvariantCulture),
                     inPlaneSpacingMm.ToString(CultureInfo.InvariantCulture));
@@ -304,25 +335,38 @@ namespace DicomRtNifti.Core.Tests
         /// [x0,y0,z0, x1,y1,z1, ...] in patient mm. Enough to drive
         /// <see cref="DicomRtNifti.Core.Services.RtStructMaskService"/> end to end.
         /// </summary>
+        /// <param name="referencedSeriesUid">
+        /// When supplied, writes the ReferencedFrameOfReferenceSequence chain naming this image
+        /// series, as a planning system would; omit to model a structure set that carries only
+        /// the frame of reference.
+        /// </param>
+        /// <param name="specificCharacterSet">
+        /// SpecificCharacterSet to declare (e.g. "ISO_IR 192" for UTF-8 ROI names); omit for the
+        /// default repertoire.
+        /// </param>
         public static string WriteRtStructWithContours(
             string dir, string fileName,
             string studyUid, string seriesUid, string frameUid,
             IList<KeyValuePair<string, double[]>> roiContours,
-            string patientId = "PAT001")
+            string patientId = "PAT001",
+            string referencedSeriesUid = null,
+            string specificCharacterSet = null)
         {
-            var ds = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
-            {
-                { DicomTag.SOPClassUID, DicomUID.RTStructureSetStorage },
-                { DicomTag.SOPInstanceUID, DicomUIDGenerator.GenerateDerivedFromUUID() },
-                { DicomTag.PatientID, patientId },
-                { DicomTag.PatientName, "Test^Patient" },
-                { DicomTag.StudyInstanceUID, studyUid },
-                { DicomTag.SeriesInstanceUID, seriesUid },
-                { DicomTag.Modality, "RTSTRUCT" },
-                { DicomTag.FrameOfReferenceUID, frameUid },
-                { DicomTag.SeriesDescription, "structures" },
-                { DicomTag.StructureSetLabel, "TEST" },
-            };
+            // The character set is declared before any string element is added, so the names
+            // below are encoded under it rather than under the default repertoire.
+            var ds = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian);
+            if (!string.IsNullOrEmpty(specificCharacterSet))
+                ds.Add(DicomTag.SpecificCharacterSet, specificCharacterSet);
+            ds.Add(DicomTag.SOPClassUID, DicomUID.RTStructureSetStorage);
+            ds.Add(DicomTag.SOPInstanceUID, DicomUIDGenerator.GenerateDerivedFromUUID());
+            ds.Add(DicomTag.PatientID, patientId);
+            ds.Add(DicomTag.PatientName, "Test^Patient");
+            ds.Add(DicomTag.StudyInstanceUID, studyUid);
+            ds.Add(DicomTag.SeriesInstanceUID, seriesUid);
+            ds.Add(DicomTag.Modality, "RTSTRUCT");
+            ds.Add(DicomTag.FrameOfReferenceUID, frameUid);
+            ds.Add(DicomTag.SeriesDescription, "structures");
+            ds.Add(DicomTag.StructureSetLabel, "TEST");
 
             var roiItems = new List<DicomDataset>();
             var contourItems = new List<DicomDataset>();
@@ -363,6 +407,17 @@ namespace DicomRtNifti.Core.Tests
             ds.Add(new DicomSequence(DicomTag.StructureSetROISequence, roiItems.ToArray()));
             ds.Add(new DicomSequence(DicomTag.ROIContourSequence, contourItems.ToArray()));
 
+            if (!string.IsNullOrEmpty(referencedSeriesUid))
+            {
+                var refSeries = new DicomDataset { { DicomTag.SeriesInstanceUID, referencedSeriesUid } };
+                var refStudy = new DicomDataset { { DicomTag.ReferencedSOPInstanceUID, studyUid } };
+                refStudy.Add(new DicomSequence(DicomTag.RTReferencedSeriesSequence, refSeries));
+                var refFrame = new DicomDataset { { DicomTag.FrameOfReferenceUID, frameUid } };
+                refFrame.Add(new DicomSequence(DicomTag.RTReferencedStudySequence, refStudy));
+                ds.Add(new DicomSequence(DicomTag.ReferencedFrameOfReferenceSequence, refFrame));
+            }
+
+            Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, fileName);
             new DicomFile(ds).Save(path);
             return path;

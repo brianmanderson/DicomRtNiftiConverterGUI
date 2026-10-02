@@ -10,7 +10,7 @@ namespace DicomRtNifti.Core.Tests
     /// <summary>
     /// Exercises the real NiftiConversionService.ResolveRoiNames mapping (DICOM ROI name -> output
     /// name) against representative associations, to confirm aliases and canonical names resolve.
-    /// ResolveRoiNames is private and stateless, so we invoke it via reflection on an
+    /// ResolveRoiNames is internal and static (shared with the cohort manifest), so it is called directly on an
     /// uninitialized service instance (no constructor dependencies are touched).
     /// </summary>
     public class RoiAssociationResolutionTests
@@ -19,10 +19,7 @@ namespace DicomRtNifti.Core.Tests
             List<string> dicomRoiNames, List<RoiAssociation> associations, bool exportUnmatched)
         {
             var svc = (NiftiConversionService)RuntimeHelpers.GetUninitializedObject(typeof(NiftiConversionService));
-            var method = typeof(NiftiConversionService).GetMethod(
-                "ResolveRoiNames", BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.NotNull(method);
-            return (Dictionary<string, string>)method.Invoke(svc, new object[] { dicomRoiNames, associations, exportUnmatched });
+            return NiftiConversionService.ResolveRoiNames(dicomRoiNames, associations, exportUnmatched);
         }
 
         private static List<RoiAssociation> SampleAssociations() => new List<RoiAssociation>

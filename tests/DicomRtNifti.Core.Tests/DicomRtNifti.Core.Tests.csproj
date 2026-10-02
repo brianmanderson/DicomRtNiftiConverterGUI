@@ -26,6 +26,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DicomRtNifti.Core\DicomRtNifti.Core.csproj" />
+    <!-- The CLI's HeadlessRunner is driven directly (exit codes, stderr contract) rather than as a
+         child process, so the tests see the same assembly the conformance gate publishes. -->
+    <ProjectReference Include="..\..\src\DicomRtNifti.Cli\DicomRtNifti.Cli.csproj" />
     <!-- fo-dicom is used to synthesize minimal DICOM datasets for scanner tests. -->
     <PackageReference Include="fo-dicom" Version="5.2.5" />
   </ItemGroup>
