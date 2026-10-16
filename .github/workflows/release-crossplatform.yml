@@ -190,7 +190,7 @@ jobs:
           # The bundle must run and must know which commit it was built from.
           out="$("./publish-cli/$cli" --version)"
           echo "$out"
-          echo "$out" | grep -Eq '^DICOM RT Toolkit CLI [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\+[0-9a-f]{7,}' \
+          echo "$out" | grep -Eq '^DicomRtNifti CLI [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\+[0-9a-f]{7,}' \
             || { echo "::error::bundled CLI does not report a version carrying its commit sha"; exit 1; }
           echo "$out" | grep -q "SimpleITK native: OK" \
             || { echo "::error::SimpleITK native did not load from the ${{ matrix.rid }} bundle"; exit 1; }

@@ -23,7 +23,7 @@ namespace DicomRtNifti.App.Views
             // Surface the build version and licence in the footer. The informational version is
             // "1.0.0+<commit sha>" (Directory.Build.props + Source Link), the same string the CLI
             // prints for --version; the sha is shortened to git's seven characters for the footer.
-            VersionText.Text = $"DICOM RT Toolkit  ·  {GetDisplayVersion()}  ·  MIT licensed";
+            VersionText.Text = $"DicomRtNifti  ·  {GetDisplayVersion()}  ·  MIT licensed";
         }
 
         /// <summary>

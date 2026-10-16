@@ -12,7 +12,7 @@
     <Version>1.0.0</Version>
     <Authors>Brian Mark Anderson</Authors>
     <Company>University of California, San Diego</Company>
-    <Product>DICOM RT Toolkit</Product>
+    <Product>DicomRtNifti</Product>
     <Copyright>Copyright © 2026</Copyright>
     <RepositoryUrl>https://github.com/brianmanderson/DicomRtNiftiConverterGUI</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

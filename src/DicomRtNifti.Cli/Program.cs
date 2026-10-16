@@ -3,7 +3,7 @@ using System.Text;
 namespace DicomRtNifti.Cli
 {
     /// <summary>
-    /// Cross-platform console entry point for the DICOM RT Toolkit headless CLI.
+    /// Cross-platform console entry point for the DicomRtNifti headless CLI.
     ///
     /// Replaces the legacy WPF <c>App.OnStartup</c> <c>--headless</c> dispatch (which relied on
     /// the Win32 <c>AttachConsole</c> hack to reach a parent console) with a real console

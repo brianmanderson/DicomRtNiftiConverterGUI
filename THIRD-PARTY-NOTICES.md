@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-DicomRtNiftiConverterGUI (`DicomRtNifti.App` / `DicomRtNifti.Cli` / `DicomRtNifti.Core`) is
+DicomRtNifti (`DicomRtNifti.App` / `DicomRtNifti.Cli` / `DicomRtNifti.Core`) is
 released under the MIT License — see [LICENSE](LICENSE). This file covers the third-party
 software that is **redistributed inside the published self-contained bundles**
 (`DicomRtNifti-gui-<rid>` and `DicomRtNifti-cli-<rid>`, built by

@@ -23,7 +23,7 @@ namespace DicomRtNifti.App.Tests
                 // 1.0.0+<sha7>: the same AssemblyInformationalVersion the CLI prints with --version.
                 // A bare "1.0.0" here means the build lost its source revision (Directory.Build.props
                 // refuses that build, so this guards the footer code itself).
-                Assert.Matches(@"^DICOM RT Toolkit  ·  1\.0\.0\+[0-9a-f]{7}  ·  MIT licensed$", text);
+                Assert.Matches(@"^DicomRtNifti  ·  1\.0\.0\+[0-9a-f]{7}  ·  MIT licensed$", text);
 
                 Screenshots.Capture(launcher.Window, "01_launcher");
             }
