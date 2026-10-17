@@ -1,4 +1,4 @@
-# DicomRtNiftiConverterGUI
+# DicomRtNifti
 
 A cross-platform C# **.NET 8** toolkit that converts DICOM radiotherapy data - CT/MR/PT images, RT Structures, and RT Dose - to NIfTI (`.nii.gz`) format, and performs the reverse (mask -> RTSTRUCT, NIfTI -> DICOM image series). It ships as an **Avalonia desktop GUI** (`DicomRtNifti.App`) and a **headless CLI** (`DicomRtNifti.Cli`) that share one core conversion library (`DicomRtNifti.Core`), and runs on Windows, Linux, and macOS.
 

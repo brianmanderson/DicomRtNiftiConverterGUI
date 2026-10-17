@@ -954,7 +954,7 @@ namespace DicomRtNifti.Cli
                 asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                 ?? asm.GetName().Version?.ToString()
                 ?? "unknown";
-            return $"DICOM RT Toolkit CLI {ver}";
+            return $"DicomRtNifti CLI {ver}";
         }
 
         /// <summary>

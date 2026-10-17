@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "DicomRtNiftiConverterGUI: a cross-platform DICOM-RT to NIfTI conversion toolkit"
+title: "DicomRtNifti: a cross-platform DICOM-RT to NIfTI conversion toolkit"
 abstract: >-
   A cross-platform .NET 8 toolkit that converts DICOM radiotherapy data - CT/MR/PT image
   series, RT Structures and RT Dose - to NIfTI, and performs the reverse conversion

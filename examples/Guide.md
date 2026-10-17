@@ -145,7 +145,7 @@ Two related traps the notebook calls out:
 
 ## Links
 
-- **Tool:** [DicomRtNiftiConverterGUI](https://github.com/brianmanderson/DicomRtNiftiConverterGUI) — GUI + headless CLI, .NET 8, Windows/Linux/macOS
+- **Tool:** [DicomRtNifti](https://github.com/brianmanderson/DicomRtNiftiConverterGUI) — GUI + headless CLI, .NET 8, Windows/Linux/macOS
 - **Data:** [Pancreatic-CT-CBCT-SEG](https://www.cancerimagingarchive.net/collection/pancreatic-ct-cbct-seg/) · CC BY 4.0
 - **Conformance suite:** [RTMaskConformanceTest](https://github.com/brianmanderson/RTMaskConformanceTest)
 - **Benchmark harness:** `PythonCode/README.md` in the parent repository — the six-tool comparison behind the methodology paper

@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="DicomRtNifti.App.Views.LauncherWindow"
-        Title="DICOM RT Toolkit" Width="480" Height="392"
+        Title="DicomRtNifti" Width="480" Height="392"
         WindowStartupLocation="CenterScreen"
         CanResize="False"
         Background="{StaticResource AppWindowBg}">
@@ -11,7 +11,7 @@
     <!-- Header bar -->
     <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,12">
       <StackPanel>
-        <TextBlock Text="DICOM RT Toolkit" FontSize="18" FontWeight="Bold" Foreground="White"/>
+        <TextBlock Text="DicomRtNifti" FontSize="18" FontWeight="Bold" Foreground="White"/>
         <TextBlock Text="Pick a workflow to begin" FontSize="12" Foreground="{StaticResource AppOnAccentSubtitle}" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>

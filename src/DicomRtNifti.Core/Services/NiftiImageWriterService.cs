@@ -372,7 +372,7 @@ namespace DicomRtNifti.Core.Services
             ds.AddOrUpdate(DicomTag.InstanceCreationTime, nowTime);
             ds.AddOrUpdate(DicomTag.ContentDate, nowDate);
             ds.AddOrUpdate(DicomTag.ContentTime, nowTime);
-            ds.AddOrUpdate(DicomTag.Manufacturer, "DICOM RT Toolkit");
+            ds.AddOrUpdate(DicomTag.Manufacturer, "DicomRtNifti");
 
             // Image plane / pixel module
             ds.AddOrUpdate(DicomTag.Rows, (ushort)rows);
