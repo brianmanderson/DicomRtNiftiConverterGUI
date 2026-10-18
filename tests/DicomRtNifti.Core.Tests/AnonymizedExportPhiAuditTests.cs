@@ -214,15 +214,16 @@ namespace DicomRtNifti.Core.Tests
                 {
                     string dir = Path.Combine(outputRoot, series.OutputDir);
                     var metadata = new NiftiMetadataService().LoadOrSynthesize(dir);
-                    new NiftiImageWriterService(new NiftiMetadataService())
+                    var slices = new NiftiImageWriterService(new NiftiMetadataService())
                         .ConvertImageNiftiToDicomSeries(dir, metadata, reverseLog, CancellationToken.None);
-                    new RtStructWriterService().ConvertMasksFolderToRtStruct(
+                    Assert.Equal(4, slices.Count);
+                    string rtStruct = new RtStructWriterService().ConvertMasksFolderToRtStruct(
                         dir, null, Path.Combine(dir, "RS_reverse.dcm"), reverseLog, CancellationToken.None, metadata);
+                    Assert.True(File.Exists(rtStruct), rtStruct);
                     var doses = new RtDoseWriterService().ConvertDoseFolderToRtDoses(
                         dir, null, reverseLog, CancellationToken.None, useStableHashNames: true, metadata: metadata);
-                    Assert.Single(doses);
+                    Assert.True(File.Exists(Assert.Single(doses)));
                 }
-                Assert.NotEmpty(Directory.GetFiles(outputRoot, "*.dcm", SearchOption.AllDirectories));
                 AuditTree(outputRoot, keyPath, identifiers, leaks);
                 AuditText("reverse log", string.Join("\n", reverseLog.Messages), identifiers, leaks);
 
