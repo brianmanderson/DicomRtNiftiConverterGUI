@@ -1,5 +1,8 @@
+using System.Linq;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using DicomRtNifti.App.Tests.Support;
 using DicomRtNifti.App.ViewModels;
 using DicomRtNifti.App.Views;
@@ -30,6 +33,21 @@ namespace DicomRtNifti.App.Tests
         }
 
         [AvaloniaFact]
+        public void Workflow_buttons_carry_accessible_names()
+        {
+            // Their content is a two-line panel, which screen readers and UI Automation otherwise
+            // announce as "Avalonia.Controls.StackPanel".
+            using (var launcher = new LauncherSession())
+            {
+                var names = launcher.Window.GetVisualDescendants().OfType<Button>()
+                    .Select(b => AutomationProperties.GetName(b))
+                    .ToList();
+                Assert.Contains("DICOM → NIfTI", names);
+                Assert.Contains("NIfTI → DICOM", names);
+            }
+        }
+
+        [AvaloniaFact]
         public void Dicom_to_nifti_button_opens_the_forward_window()
         {
             using (new UserSettingsGuard())
@@ -46,6 +64,7 @@ namespace DicomRtNifti.App.Tests
         [AvaloniaFact]
         public void Nifti_to_dicom_button_opens_the_reverse_window()
         {
+            using (new UserSettingsGuard())
             using (var launcher = new LauncherSession())
             {
                 var window = launcher.Open<NiftiToDicomWindow, NiftiToDicomViewModel>("NIfTI → DICOM", out var vm);

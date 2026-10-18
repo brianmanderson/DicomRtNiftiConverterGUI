@@ -4,48 +4,51 @@
         Title="DicomRtNifti" Width="480" Height="392"
         WindowStartupLocation="CenterScreen"
         CanResize="False"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- Header bar -->
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,12">
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,12">
       <StackPanel>
-        <TextBlock Text="DicomRtNifti" FontSize="18" FontWeight="Bold" Foreground="White"/>
-        <TextBlock Text="Pick a workflow to begin" FontSize="12" Foreground="{StaticResource AppOnAccentSubtitle}" Margin="0,4,0,0"/>
+        <TextBlock Text="DicomRtNifti" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AppOnAccentText}"/>
+        <TextBlock Text="Pick a workflow to begin" FontSize="12" Foreground="{DynamicResource AppOnAccentSubtitle}" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 
     <!-- Workflow buttons -->
     <Grid Grid.Row="1" Margin="20" RowDefinitions="*,*">
 
+      <!-- Composite content has no text of its own: name the buttons for screen readers and UI automation. -->
       <Button Grid.Row="0" Command="{Binding OpenDicomToNiftiCommand}"
+              AutomationProperties.Name="DICOM → NIfTI"
               Margin="0,0,0,10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-              Background="{StaticResource AppAccentBrush}" Foreground="White" BorderThickness="0">
+              Background="{DynamicResource AppAccentBrush}" Foreground="{DynamicResource AppOnAccentText}" BorderThickness="0">
         <StackPanel Margin="14,8">
           <TextBlock Text="DICOM → NIfTI" FontSize="16" FontWeight="SemiBold"/>
-          <TextBlock FontSize="11" Foreground="#E3F2FD" TextWrapping="Wrap" Margin="0,4,0,0"
+          <TextBlock FontSize="11" Foreground="{DynamicResource AppOnAccentCaption}" TextWrapping="Wrap" Margin="0,4,0,0"
                      Text="Convert DICOM RT-STRUCT, CT/MR/PT image series, and RT-DOSE into NIfTI files."/>
         </StackPanel>
       </Button>
 
       <Button Grid.Row="1" Command="{Binding OpenNiftiToDicomCommand}"
+              AutomationProperties.Name="NIfTI → DICOM"
               Margin="0,10,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-              Background="{StaticResource AppAccentBrush}" Foreground="White" BorderThickness="0">
+              Background="{DynamicResource AppAccentBrush}" Foreground="{DynamicResource AppOnAccentText}" BorderThickness="0">
         <StackPanel Margin="14,8">
           <TextBlock Text="NIfTI → DICOM" FontSize="16" FontWeight="SemiBold"/>
-          <TextBlock FontSize="11" Foreground="#E3F2FD" TextWrapping="Wrap" Margin="0,4,0,0"
+          <TextBlock FontSize="11" Foreground="{DynamicResource AppOnAccentCaption}" TextWrapping="Wrap" Margin="0,4,0,0"
                      Text="Convert NIfTI image, masks, and dose back into standards-compliant DICOM (batch)."/>
         </StackPanel>
       </Button>
     </Grid>
 
     <!-- Footer: version, licence, and a citation pointer for the published toolkit. -->
-    <Border Grid.Row="2" Background="{StaticResource AppSurfaceAlt}" BorderBrush="{StaticResource AppBorder}"
+    <Border Grid.Row="2" Background="{DynamicResource AppSurfaceAlt}" BorderBrush="{DynamicResource AppBorder}"
             BorderThickness="0,1,0,0" Padding="16,8">
       <StackPanel>
-        <TextBlock x:Name="VersionText" FontSize="11" Foreground="{StaticResource AppMutedText}"/>
-        <TextBlock FontSize="11" Foreground="{StaticResource AppHintText}" TextWrapping="Wrap" Margin="0,2,0,0"
+        <TextBlock x:Name="VersionText" FontSize="11" Foreground="{DynamicResource AppMutedText}"/>
+        <TextBlock FontSize="11" Foreground="{DynamicResource AppHintText}" TextWrapping="Wrap" Margin="0,2,0,0"
                    Text="If you use this tool in published work, please cite the accompanying CMPB publication."/>
       </StackPanel>
     </Border>

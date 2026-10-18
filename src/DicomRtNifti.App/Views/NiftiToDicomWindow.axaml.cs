@@ -15,6 +15,13 @@ namespace DicomRtNifti.App.Views
 
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
+        // Keep the read-only log scrolled to the latest line as it grows.
+        private void LogTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is TextBox tb)
+                tb.CaretIndex = tb.Text?.Length ?? 0;
+        }
+
         protected override void OnClosed(EventArgs e)
         {
             // Stop the server watcher timer (and cancel any in-flight conversion) so it

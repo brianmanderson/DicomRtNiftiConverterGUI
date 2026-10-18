@@ -4,23 +4,23 @@
         Title="Help: DICOM → NIfTI" Width="780" Height="700"
         WindowStartupLocation="CenterOwner"
         CanResize="True" MinHeight="400" MinWidth="540"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
   <Window.Styles>
     <Style Selector="TextBlock.h1">
       <Setter Property="FontSize" Value="16"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="{StaticResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
       <Setter Property="Margin" Value="0,18,0,8"/>
     </Style>
     <Style Selector="TextBlock.h2">
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="{StaticResource AppHeadingText}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppHeadingText}"/>
       <Setter Property="Margin" Value="0,8,0,4"/>
     </Style>
     <Style Selector="TextBlock.body">
       <Setter Property="FontSize" Value="12"/>
-      <Setter Property="Foreground" Value="{StaticResource AppBodyText}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppBodyText}"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
       <Setter Property="Margin" Value="0,2,0,2"/>
     </Style>
@@ -28,17 +28,17 @@
 
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,10">
       <StackPanel>
-        <TextBlock Text="Help: DICOM → NIfTI" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Text="Help: DICOM → NIfTI" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
         <TextBlock Text="How to convert DICOM RT-STRUCT, CT/MR/PT image series, and RT-DOSE into NIfTI files."
-                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" Margin="0,4,0,0"/>
+                   Foreground="{DynamicResource AppOnAccentSubtitle}" FontSize="11" Margin="0,4,0,0"/>
         <TextBlock Text="Research use only: this software is not a medical device and has not been cleared or approved by any regulatory body for clinical use."
-                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                   Foreground="{DynamicResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
+    <Border Grid.Row="1" Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1"
             CornerRadius="4" Margin="12,12,12,0" Padding="20,12">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
@@ -56,7 +56,10 @@
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">2.</Run> Click <Run FontWeight="SemiBold">Scan</Run>. The
             Patient / Study / Series tree fills in. Tick the patients (or individual
-            series) you want to export.
+            series) you want to export. Click a series to see its geometry, links and tags in the
+            <Run FontWeight="SemiBold">Series inspector</Run> beside the tree; look at any row
+            badged <Run FontWeight="SemiBold">non-uniform Z</Run> or
+            <Run FontWeight="SemiBold">link guessed</Run> before exporting it.
           </TextBlock>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">3.</Run> In the <Run FontWeight="SemiBold">Data to export</Run>
@@ -136,7 +139,10 @@
             rasterizer runs against each selected RT-STRUCT to compute per-ROI volumes (in cc), and
             image spacings are read, but nothing is written except
             <Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root. Ideal for
-            cohort sizing, ROI prevalence audits, and spacing surveys.
+            cohort sizing, ROI prevalence audits, and spacing surveys. The log carries the same
+            slice-spacing warnings Convert Selected would: a series with mixed slice gaps is surveyed
+            on the flattened grid a conversion would write, so its spacing columns and volumes carry
+            the same error.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="E. Resampled to a target voxel spacing"/>
@@ -184,6 +190,68 @@
             <Run FontWeight="SemiBold">ROI Names</Run> expander appears underneath the row and lists
             every ROI name found in that structure set.
           </TextBlock>
+          <TextBlock Classes="body">
+            Two amber badges flag what the scan found that deserves a look, on the series row and,
+            counted, on its patient row (so they show while the tree is collapsed):
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">non-uniform Z</Run> — the series' slice gaps are mixed
+              (say 3 mm through the target, 6 mm elsewhere). NIfTI stores one spacing per axis, so
+              the export flattens them to one averaged spacing and every volume computed from it is
+              off. The badge appears exactly when Convert Selected and Export Manifest Only would
+              log the warning; hover it to read that warning.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">link guessed</Run> — an RT-STRUCT or RT-DOSE was attached to
+              this series by the largest-series fallback: neither its referenced series UID nor its
+              frame of reference matched an image series, so the series with the most slices was
+              assumed.
+            <LineBreak/>
+            The scan log also counts the badged series. Clicking any series row shows it in the
+            <Run FontWeight="SemiBold">Series inspector</Run>.
+          </TextBlock>
+
+          <TextBlock Classes="h1" Text="Reference: Series inspector"/>
+          <TextBlock Classes="body">
+            The panel right of the tree describes the selected series from the headers the scan
+            already read; nothing is converted. Drag the divider between the panels to resize them.
+          </TextBlock>
+          <TextBlock Classes="h2" Text="Geometry &amp; links"/>
+          <TextBlock Classes="body">
+            • <Run FontWeight="SemiBold">Instances</Run> — files in the series.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Slice spacing</Run> — the median gap between consecutive
+              slices. A reader that assumes a regular grid reports a different number on a mixed-gap
+              series (first-to-last distance over slices − 1).
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Distinct gaps</Run> — every different slice gap present. One
+              value means a regular grid. Two values with no badge differ only by rounding (for
+              example 0.62 / 0.63 mm on a 0.625 mm grid): flattening them moves a volume by under 5%.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Pixel spacing</Run> — in-plane row × column spacing in mm.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Z extent</Run> — first-to-last slice distance, with the z range.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Frame of reference</Run> and
+              <Run FontWeight="SemiBold">Series UID</Run> — selectable for copying.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">RTSTRUCT</Run> / <Run FontWeight="SemiBold">RTDOSE</Run> — how
+              many structure sets and doses are linked to the series, and by which rule:
+              <Run FontWeight="SemiBold">referenced series UID</Run> (the RT object names this series;
+              authoritative), <Run FontWeight="SemiBold">frame of reference UID</Run> (it shares the
+              series' frame of reference; ties go to the series with most slices), or
+              <Run FontWeight="SemiBold">largest-series fallback</Run> (nothing matched; a guess).
+            <LineBreak/>
+            Amber notes repeat, word for word, the warnings a conversion of the series logs: mixed
+            slice gaps, and slices skipped for lacking a usable ImagePositionPatient. A list of the
+            linked RT objects follows, each with its ROI or file count and its link rule.
+          </TextBlock>
+          <TextBlock Classes="h2" Text="DICOM tags"/>
+          <TextBlock Classes="body">
+            A read-only grid of curated attributes from the series' first slice and its first linked
+            RT-STRUCT and RT-DOSE — the same lists, under the same names, that
+            <Run FontWeight="SemiBold">Select Metadata Tags...</Run> offers for the
+            <Run FontFamily="Consolas">metadata.json</Run> sidecar. Attributes absent from the file
+            are left out. The files are read the first time the series is selected.
+          </TextBlock>
 
           <TextBlock Classes="h1" Text="Reference: export options"/>
           <TextBlock Classes="body">
@@ -194,6 +262,8 @@
             <Run FontWeight="SemiBold">Export Options...</Run> button as a separate window you can leave
             open and reposition while you keep working in the main window. Its settings apply to Convert
             Selected and Export Manifest Only immediately, whether that window is open or closed.
+            Every checkbox here and in the Data to export row is saved the moment you change it, so
+            the next window opens with them as you left them.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Export Images / Export Structures / Export Dose"/>
@@ -223,8 +293,9 @@
 
           <TextBlock Classes="h2" Text="Multi-RT-STRUCT / multi-RT-DOSE per series"/>
           <TextBlock Classes="body">
-            When several RT-STRUCT (or RT-DOSE) files reference the same image series, only one is
-            linked per series. If you need to export multiple structure sets from one image series,
+            When several RT-STRUCT (or RT-DOSE) files reference the same image series, the scan links
+            them all — the Series inspector counts and lists them — but Convert Selected exports only
+            the first of each. If you need to export multiple structure sets from one image series,
             run the export twice with the unwanted RT-STRUCT files moved out of the input tree
             between runs.
           </TextBlock>
@@ -320,7 +391,8 @@
             Inventory pass — writes only the CSV manifest
             (<Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root). No
             .nii.gz files are produced; the rasterizer still runs in-memory to compute per-ROI
-            volumes if <Run FontWeight="SemiBold">Export Structures</Run> is ON.
+            volumes if <Run FontWeight="SemiBold">Export Structures</Run> is ON. It logs the same
+            non-uniform slice-spacing and missing-position warnings as Convert Selected.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Settings..."/>
@@ -329,7 +401,9 @@
             <Run FontFamily="Consolas">%AppData%\DicomToNifti\settings.json</Run>:
             <LineBreak/>
             • <Run FontWeight="SemiBold">Default Output Directory</Run> — pre-fills the Output field
-              on startup.
+              until you have used another output folder; from then on the last one used is restored
+              (with the last Input folder) from
+              <Run FontFamily="Consolas">%AppData%\DicomToNifti\gui_state.json</Run>.
             <LineBreak/>
             • <Run FontWeight="SemiBold">Auto-open after conversion</Run> — opens the Output folder
               in the system file browser when Convert Selected finishes.
@@ -341,27 +415,27 @@
           <TextBlock Classes="h1" Text="Output structure"/>
 
           <TextBlock Classes="h2" Text="Non-anonymized"/>
-          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
+          <Border Background="{DynamicResource AppWindowBg}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">{Output}/
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource AppHeadingText}" xml:space="preserve">{Output}/
 │
 ├─ {PatientID}/
 │   └─ {SeriesDate}_{SeriesDescription}/
-│       ├─ image.nii.gz            → CT/MR/PT volume        <Run Foreground="{StaticResource AppBadgeText}">(if Export Images is ON)</Run>
+│       ├─ image.nii.gz            → CT/MR/PT volume        <Run Foreground="{DynamicResource AppBadgeText}">(if Export Images is ON)</Run>
 │       ├─ doses/
-│       │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume  <Run Foreground="{StaticResource AppBadgeText}">(if Export Dose is ON and a dose is linked)</Run>
+│       │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume  <Run Foreground="{DynamicResource AppBadgeText}">(if Export Dose is ON and a dose is linked)</Run>
 │       └─ masks/
-│           └─ {ROI_Name}.nii.gz   → per-ROI binary mask    <Run Foreground="{StaticResource AppBadgeText}">(if Export Structures is ON)</Run>
+│           └─ {ROI_Name}.nii.gz   → per-ROI binary mask    <Run Foreground="{DynamicResource AppBadgeText}">(if Export Structures is ON)</Run>
 │
-└─ export_manifest.csv                                      <Run Foreground="{StaticResource AppBadgeText}">(or export_manifest_meta.csv from Export Manifest Only)</Run></TextBlock>
+└─ export_manifest.csv                                      <Run Foreground="{DynamicResource AppBadgeText}">(or export_manifest_meta.csv from Export Manifest Only)</Run></TextBlock>
           </Border>
 
           <TextBlock Classes="h2" Text="Anonymized"/>
-          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
+          <Border Background="{DynamicResource AppWindowBg}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">{Output}/
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource AppHeadingText}" xml:space="preserve">{Output}/
 │
-├─ {PatientHash}/{StudyHash}/{SeriesHash}/                  <Run Foreground="{StaticResource AppBadgeText}">(hashed identifiers in place of {PatientID}/{Date}_...)</Run>
+├─ {PatientHash}/{StudyHash}/{SeriesHash}/                  <Run Foreground="{DynamicResource AppBadgeText}">(hashed identifiers in place of {PatientID}/{Date}_...)</Run>
 │   ├─ image.nii.gz                → CT/MR/PT volume
 │   ├─ doses/
 │   │   └─ {SeriesDescription}.nii.gz → RT-DOSE volume
@@ -369,7 +443,7 @@
 │       └─ {ROI_Name}.nii.gz       → per-ROI binary mask
 │
 ├─ export_manifest.csv
-└─ AnonymizationKey.json                                    <Run Foreground="{StaticResource AppBadgeText}">(deterministic identifier ↔ hash mapping)</Run></TextBlock>
+└─ AnonymizationKey.json                                    <Run Foreground="{DynamicResource AppBadgeText}">(deterministic identifier ↔ hash mapping)</Run></TextBlock>
           </Border>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">Export Manifest Only</Run> writes
@@ -424,8 +498,11 @@
             • The log box at the bottom keeps a timestamped record of every step; the status bar at
               the very bottom of the window mirrors the latest message.
             <LineBreak/>
-            • Closing this window returns you to the launcher; the in-memory state (last folder,
-              options, scan results) is retained until the launcher closes.
+            • Closing this window returns you to the launcher. The Input and Output folders and every
+              export checkbox are remembered across launches (they are saved as you change them); the
+              scan results are not, so the next window starts with an empty tree.
+            <LineBreak/>
+            • The app follows the operating system's light or dark theme.
             <LineBreak/>
             • For very large archives, scan a subset first — Scan opens
               <Run FontStyle="Italic">every</Run> file in the input tree.
@@ -438,7 +515,7 @@
       </ScrollViewer>
     </Border>
 
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
+    <Border Grid.Row="2" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>

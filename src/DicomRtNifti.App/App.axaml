@@ -1,7 +1,8 @@
+<!-- No RequestedThemeVariant: the app follows the OS light/dark setting. Theme.axaml carries
+     both variants of every surface and text brush; windows read them with DynamicResource. -->
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="DicomRtNifti.App.App"
-             RequestedThemeVariant="Light">
+             x:Class="DicomRtNifti.App.App">
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
@@ -16,20 +17,49 @@
 
     <!-- Shared button hierarchy. Filled accent = the stage primary; red text = Stop. -->
     <Style Selector="Button.primary">
-      <Setter Property="Background" Value="{StaticResource AppAccentBrush}"/>
-      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentText}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{StaticResource AppAccentHoverBrush}"/>
-      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Background" Value="{DynamicResource AppAccentHoverBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentText}"/>
     </Style>
     <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{StaticResource AppAccentPressedBrush}"/>
-      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Background" Value="{DynamicResource AppAccentPressedBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentText}"/>
     </Style>
     <Style Selector="Button.danger">
-      <Setter Property="Foreground" Value="{StaticResource AppDangerBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppDangerBrush}"/>
+    </Style>
+
+    <!-- A small amber pill: "non-uniform Z", "link guessed". -->
+    <Style Selector="Border.warningBadge">
+      <Setter Property="Background" Value="{DynamicResource AppWarningBg}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppWarningBorder}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="3"/>
+      <Setter Property="Padding" Value="5,0,5,1"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.warningBadge > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AppWarningText}"/>
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- A full-width amber note: the warning text behind a badge. -->
+    <Style Selector="Border.warningNote">
+      <Setter Property="Background" Value="{DynamicResource AppWarningBg}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppWarningBorder}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="3"/>
+      <Setter Property="Padding" Value="8,6"/>
+    </Style>
+    <Style Selector="Border.warningNote > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AppWarningText}"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
   </Application.Styles>
 </Application>
