@@ -4,29 +4,29 @@
         Title="Settings" Width="500" Height="280"
         WindowStartupLocation="CenterOwner"
         CanResize="False"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
-      <TextBlock Text="Settings" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,10">
+      <TextBlock Text="Settings" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
     </Border>
 
-    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}"
+    <Border Grid.Row="1" Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}"
             BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="16">
       <StackPanel>
-        <TextBlock Text="Default Output Directory:" Margin="0,0,0,4" FontWeight="Medium" Foreground="{StaticResource AppLabelText}"/>
+        <TextBlock Text="Default Output Directory:" Margin="0,0,0,4" FontWeight="Medium" Foreground="{DynamicResource AppLabelText}"/>
         <DockPanel Margin="0,0,0,12">
           <Button DockPanel.Dock="Right" Content="Browse..." Click="BrowseOutput_Click"
                   Width="80" Margin="8,0,0,0" Padding="8,4"/>
-          <TextBox x:Name="OutputDirTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}"/>
+          <TextBox x:Name="OutputDirTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{DynamicResource AppBorderAlt}"/>
         </DockPanel>
 
         <CheckBox x:Name="AutoOpenCheckBox" Content="Open output folder after conversion" Margin="0,0,0,8" FontSize="13"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
+    <Border Grid.Row="2" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Cancel" Click="CancelButton_Click" Width="90" Padding="12,6" Margin="0,0,8,0" IsCancel="True"/>

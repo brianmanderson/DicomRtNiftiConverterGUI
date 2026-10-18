@@ -4,45 +4,45 @@
         Title="Output Spacing" Width="420" Height="360"
         WindowStartupLocation="CenterOwner"
         CanResize="False"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
-      <TextBlock Text="Output Voxel Spacing" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,10">
+      <TextBlock Text="Output Voxel Spacing" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
     </Border>
 
-    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}"
+    <Border Grid.Row="1" Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}"
             BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="16">
       <StackPanel>
         <TextBlock Text="Specify the output voxel size in millimeters. All exported images, doses, and structure masks will be resampled to this spacing."
-                   TextWrapping="Wrap" Margin="0,0,0,12" Foreground="{StaticResource AppLabelText}"/>
+                   TextWrapping="Wrap" Margin="0,0,0,12" Foreground="{DynamicResource AppLabelText}"/>
 
         <Grid Margin="0,0,0,8" ColumnDefinitions="40,*,40">
           <TextBlock Grid.Column="0" Text="X:" VerticalAlignment="Center" FontWeight="Medium"/>
-          <TextBox Grid.Column="1" x:Name="XTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}"/>
-          <TextBlock Grid.Column="2" Text="mm" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{StaticResource AppLabelText}"/>
+          <TextBox Grid.Column="1" x:Name="XTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{DynamicResource AppBorderAlt}"/>
+          <TextBlock Grid.Column="2" Text="mm" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{DynamicResource AppLabelText}"/>
         </Grid>
 
         <Grid Margin="0,0,0,8" ColumnDefinitions="40,*,40">
           <TextBlock Grid.Column="0" Text="Y:" VerticalAlignment="Center" FontWeight="Medium"/>
-          <TextBox Grid.Column="1" x:Name="YTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}"/>
-          <TextBlock Grid.Column="2" Text="mm" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{StaticResource AppLabelText}"/>
+          <TextBox Grid.Column="1" x:Name="YTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{DynamicResource AppBorderAlt}"/>
+          <TextBlock Grid.Column="2" Text="mm" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{DynamicResource AppLabelText}"/>
         </Grid>
 
         <Grid Margin="0,0,0,8" ColumnDefinitions="40,*,40">
           <TextBlock Grid.Column="0" Text="Z:" VerticalAlignment="Center" FontWeight="Medium"/>
-          <TextBox Grid.Column="1" x:Name="ZTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}"/>
-          <TextBlock Grid.Column="2" Text="mm" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{StaticResource AppLabelText}"/>
+          <TextBox Grid.Column="1" x:Name="ZTextBox" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{DynamicResource AppBorderAlt}"/>
+          <TextBlock Grid.Column="2" Text="mm" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{DynamicResource AppLabelText}"/>
         </Grid>
 
         <!-- Inline validation message (replaces the WPF MessageBox popups). -->
-        <TextBlock x:Name="ErrorText" Foreground="{StaticResource AppDangerBrush}" FontSize="12" TextWrapping="Wrap"
+        <TextBlock x:Name="ErrorText" Foreground="{DynamicResource AppDangerBrush}" FontSize="12" TextWrapping="Wrap"
                    IsVisible="False" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
+    <Border Grid.Row="2" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Cancel" Click="CancelButton_Click" Width="90" Padding="12,6" Margin="0,0,8,0" IsCancel="True"/>

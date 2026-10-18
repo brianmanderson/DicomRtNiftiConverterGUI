@@ -5,15 +5,15 @@
         Title="Select DICOM Metadata Tags" Width="820" Height="640"
         MinWidth="600" MinHeight="460"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,*,Auto,Auto">
 
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,12">
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,12">
       <StackPanel>
-        <TextBlock Text="Select DICOM Metadata Tags" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Text="Select DICOM Metadata Tags" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
         <TextBlock Text="Pick the attributes to write to metadata.json, grouped by modality. Each tab writes its own JSON section (ImageAttributes / StructureAttributes / DoseAttributes)."
-                   FontSize="11" Foreground="{StaticResource AppOnAccentSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                   FontSize="11" Foreground="{DynamicResource AppOnAccentSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
 
@@ -29,10 +29,10 @@
       </TabItem>
     </TabControl>
 
-    <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource AppMutedText}" Margin="16,8,16,0"
+    <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AppMutedText}" Margin="16,8,16,0"
                Text="Image tags are read from the series' first slice, structure tags from the linked RTSTRUCT, and dose tags from the linked RTDOSE; missing files or tags are written as null. Computed values (e.g. Voxel Size) and friendly names are used as the JSON keys."/>
 
-    <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
+    <Border Grid.Row="3" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,8,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Cancel" Click="CancelButton_Click" MinWidth="70" Padding="12,6" Margin="4,0"

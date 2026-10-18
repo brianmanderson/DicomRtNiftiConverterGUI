@@ -64,6 +64,8 @@ namespace DicomRtNifti.App.Tests
                 Assert.Single(vm.Patients);
                 var series = Assert.Single(Assert.Single(vm.Patients[0].Studies).ImageSeries);
                 Assert.True(series.HasLinkedRtStruct, "the RTSTRUCT was not linked to the CT series");
+                Assert.False(series.IsNonUniformZ, "a regular grid was badged non-uniform");
+                Assert.False(series.HasGuessedLink, "the RTSTRUCT link was reported as a guess");
                 Assert.Equal(testCase.RoiNames.OrderBy(n => n).ToList(), vm.AllDiscoveredRoiNames.OrderBy(n => n).ToList());
 
                 vm.AllPatientsSelected = true;
@@ -107,7 +109,7 @@ namespace DicomRtNifti.App.Tests
                 vm.ConvertDoses = false;
 
                 Assert.True(vm.ScanRootFolderCommand.CanExecute(null));
-                vm.ScanRootFolderCommand.Execute(null);
+                await vm.ScanRootFolderCommand.ExecuteAsync(null);
                 Dispatcher.UIThread.RunJobs();
 
                 var job = Assert.Single(vm.DiscoveredJobs);

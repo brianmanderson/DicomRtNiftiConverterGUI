@@ -4,23 +4,23 @@
         Title="Help: NIfTI → DICOM" Width="780" Height="700"
         WindowStartupLocation="CenterOwner"
         CanResize="True" MinHeight="400" MinWidth="540"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
   <Window.Styles>
     <Style Selector="TextBlock.h1">
       <Setter Property="FontSize" Value="16"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="{StaticResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
       <Setter Property="Margin" Value="0,18,0,8"/>
     </Style>
     <Style Selector="TextBlock.h2">
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="{StaticResource AppHeadingText}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppHeadingText}"/>
       <Setter Property="Margin" Value="0,8,0,4"/>
     </Style>
     <Style Selector="TextBlock.body">
       <Setter Property="FontSize" Value="12"/>
-      <Setter Property="Foreground" Value="{StaticResource AppBodyText}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppBodyText}"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
       <Setter Property="Margin" Value="0,2,0,2"/>
     </Style>
@@ -28,17 +28,17 @@
 
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,10">
       <StackPanel>
-        <TextBlock Text="Help: NIfTI → DICOM" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Text="Help: NIfTI → DICOM" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
         <TextBlock Text="How to convert NIfTI binary masks and dose volumes back into DICOM RT-STRUCT and RT-DOSE files."
-                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                   Foreground="{DynamicResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
         <TextBlock Text="Research use only: this software is not a medical device and has not been cleared or approved by any regulatory body for clinical use."
-                   Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                   Foreground="{DynamicResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
+    <Border Grid.Row="1" Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1"
             CornerRadius="4" Margin="12,12,12,0" Padding="20,12">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
@@ -67,7 +67,10 @@
           </TextBlock>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert All</Run>.
-            DICOM files are written into each input folder; the Status column shows live progress.
+            DICOM files are written into each input folder; the Status column shows live progress,
+            the progress bar counts finished folders, and the log box below records each folder's
+            outcome with the full text of any error.
+            <Run FontWeight="SemiBold">Stop</Run> cancels the folder in progress.
           </TextBlock>
           <TextBlock Classes="body">
             On the first run a <Run FontFamily="Consolas">metadata.json</Run> is created in each
@@ -132,10 +135,17 @@
             <LineBreak/>
             <LineBreak/>
             Outputs use name-derived filenames (see <Run FontWeight="SemiBold">Output details</Run>
-            below), so server mode is idempotent: re-running on the same inputs skips files that
-            already exist; adding a new mask or dose changes the hash and produces a new output
-            without overwriting prior ones. Click <Run FontWeight="SemiBold">Stop Server</Run> to
-            end watching.
+            below). A settled folder whose output already exists is left alone unless one of its
+            inputs is newer than that output: a mask (or dose) overwritten in place under the same
+            name — a corrected prediction, say — rebuilds the RT-STRUCT (or that RT-DOSE) at the same
+            path. Adding a new mask or dose changes the hash and produces a new output alongside the
+            prior one.
+            <LineBreak/>
+            <LineBreak/>
+            While a tick converts, <Run FontWeight="SemiBold">Stop</Run> cancels the folder in
+            progress. The server keeps watching, and the cancelled folder is not retried until one of
+            its files changes. <Run FontWeight="SemiBold">Stop Server</Run> ends watching, and
+            cancels a conversion in progress too. The log box records what each tick converted.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="D. Batch over many patient folders"/>
@@ -162,19 +172,19 @@
             <Run FontFamily="Consolas">doses</Run> are never treated as jobs and are not descended
             into (they hold a parent job's NIfTI inputs).
           </TextBlock>
-          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
+          <Border Background="{DynamicResource AppWindowBg}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">PatientFolder/
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource AppHeadingText}" xml:space="preserve">PatientFolder/
 │
-├─ image.nii.gz              → DICOM CT/MR/PT image series       <Run Foreground="{StaticResource AppBadgeText}">(optional)</Run>
-├─ metadata.json                patient / study / UIDs           <Run Foreground="{StaticResource AppBadgeText}">(optional — auto-generated with anonymous defaults if missing)</Run>
-├─ CT.1.dcm, CT.2.dcm, ...      existing reference image series  <Run Foreground="{StaticResource AppBadgeText}">(optional — used instead of image.nii.gz if present)</Run>
+├─ image.nii.gz              → DICOM CT/MR/PT image series       <Run Foreground="{DynamicResource AppBadgeText}">(optional)</Run>
+├─ metadata.json                patient / study / UIDs           <Run Foreground="{DynamicResource AppBadgeText}">(optional — auto-generated with anonymous defaults if missing)</Run>
+├─ CT.1.dcm, CT.2.dcm, ...      existing reference image series  <Run Foreground="{DynamicResource AppBadgeText}">(optional — used instead of image.nii.gz if present)</Run>
 │
-├─ masks/                                                        <Run Foreground="{StaticResource AppBadgeText}">(optional folder — each .nii.gz below becomes one ROI)</Run>
+├─ masks/                                                        <Run Foreground="{DynamicResource AppBadgeText}">(optional folder — each .nii.gz below becomes one ROI)</Run>
 │   ├─ Brain.nii.gz          → ROI "Brain"  in the generated RT-STRUCT
 │   └─ CTV.nii.gz            → ROI "CTV"    in the generated RT-STRUCT
 │
-└─ doses/                                                        <Run Foreground="{StaticResource AppBadgeText}">(optional folder — each .nii.gz below becomes its own RT-DOSE)</Run>
+└─ doses/                                                        <Run Foreground="{DynamicResource AppBadgeText}">(optional folder — each .nii.gz below becomes its own RT-DOSE)</Run>
     └─ plan_total.nii.gz     → one RT-DOSE file</TextBlock>
           </Border>
           <TextBlock Classes="body">
@@ -255,9 +265,9 @@
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Sample metadata.json (CT defaults)"/>
-          <Border Background="{StaticResource AppWindowBg}" BorderBrush="{StaticResource AppBorder}" BorderThickness="1"
+          <Border Background="{DynamicResource AppWindowBg}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1"
                   CornerRadius="2" Padding="10,8" Margin="0,4,0,4">
-            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AppHeadingText}" xml:space="preserve">{
+            <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource AppHeadingText}" xml:space="preserve">{
     "PatientId": "ANON_a1b2c3",
     "PatientName": "ANON^ANON",
     "PatientBirthDate": "",
@@ -340,7 +350,9 @@
             <Run FontFamily="Consolas">masks</Run> and <Run FontFamily="Consolas">doses</Run>
             folders are skipped, and unreadable directories are passed over silently rather than
             failing the scan. Each match becomes one row in the grid. Click Scan again any time
-            after editing the folder path or adding/removing files to refresh the list.
+            after editing the folder path or adding/removing files to refresh the list. The walk
+            runs in the background, so a large tree does not freeze the window, and
+            <Run FontWeight="SemiBold">Stop</Run> abandons it.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Convert Images / Convert Structures / Convert Dose"/>
@@ -353,7 +365,9 @@
             <Run FontWeight="SemiBold">Convert Dose</Run> is ON. With all three off, the Convert
             / Run Server buttons are disabled. When Convert Images is ON, the image is written
             first per folder so the RT-STRUCT and RT-DOSE reference the resulting DICOM image
-            series.
+            series. The three toggles and the folder are remembered across launches (in
+            <Run FontFamily="Consolas">%AppData%\DicomToNifti\gui_state.json</Run>), saved as you
+            change them.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Discovered jobs grid"/>
@@ -377,17 +391,27 @@
             • <Run FontWeight="SemiBold">Dose Files</Run> — comma-separated dose basenames.
             <LineBreak/>
             • <Run FontWeight="SemiBold">Status</Run> — live per-folder progress; see
-              <Run FontWeight="SemiBold">Reference: status values</Run> below.
+              <Run FontWeight="SemiBold">Reference: status values</Run> below. A long status is
+              trimmed to the column: hover it for the whole text, which the log box also keeps.
+          </TextBlock>
+
+          <TextBlock Classes="h2" Text="Progress bar, status line and log"/>
+          <TextBlock Classes="body">
+            As in the DICOM → NIfTI window: the bar fills as the folders of a Convert All (or of a
+            server tick) finish, the line beside it shows the latest step, and the log box keeps a
+            timestamped record — scans, each folder's outcome, the full text of every error, server
+            start and stop, and cancellations.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Run Server / Stop Server"/>
           <TextBlock Classes="body">
             Toggles a periodic watcher (every 10 seconds). The button text flips from
             <Run FontWeight="SemiBold">Run Server</Run> to
-            <Run FontWeight="SemiBold">Stop Server</Run> while the watcher is active. See workflow C
-            above for the per-tick logic. Server mode writes name-derived filenames so re-running
-            on identical inputs is idempotent — see <Run FontWeight="SemiBold">Output details</Run>
-            below.
+            <Run FontWeight="SemiBold">Stop Server</Run> while the watcher is active, and stays
+            clickable while a tick is converting (stopping cancels that conversion). See workflow C
+            above for the per-tick logic. Server mode writes name-derived filenames, skips an output
+            that is newer than all its inputs and rebuilds one that is not — see
+            <Run FontWeight="SemiBold">Output details</Run> below.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Convert All"/>
@@ -401,10 +425,13 @@
 
           <TextBlock Classes="h2" Text="Stop / Close"/>
           <TextBlock Classes="body">
-            <Run FontWeight="SemiBold">Stop</Run>: aborts an in-progress
-            <Run FontWeight="SemiBold">Convert All</Run>.
-            <Run FontWeight="SemiBold">Close</Run>: closes the window; the state (folder, toggles,
-            discovered jobs, server status) is preserved while the launcher is open.
+            <Run FontWeight="SemiBold">Stop</Run>: cancels whatever is running — a Scan, the folder
+            in progress in a <Run FontWeight="SemiBold">Convert All</Run>, or the folder a server tick
+            is converting (the server keeps watching; see workflow C). Enabled only while something
+            is running.
+            <Run FontWeight="SemiBold">Close</Run>: closes the window, stopping the server and
+            cancelling any conversion. The folder and the Convert toggles are restored the next time
+            the window opens; discovered jobs are not.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Reference: status values"/>
@@ -414,6 +441,9 @@
             • <Run FontFamily="Consolas">Pending</Run> — initial state, set when Scan discovers the
               folder.
             <LineBreak/>
+            • <Run FontFamily="Consolas">Preparing...</Run> — server mode; loading (or creating)
+              the folder's <Run FontFamily="Consolas">metadata.json</Run>.
+            <LineBreak/>
             • <Run FontFamily="Consolas">Converting image...</Run> — image.nii.gz → DICOM image
               series in progress.
             <LineBreak/>
@@ -421,6 +451,9 @@
               reference image series after the image pass.
             <LineBreak/>
             • <Run FontFamily="Consolas">Converting masks...</Run> — masks → RT-STRUCT in progress.
+            <LineBreak/>
+            • <Run FontFamily="Consolas">Rebuilding RT-STRUCT (a mask is newer)...</Run> — server
+              mode; a mask was written after the existing RT-STRUCT, which is being rewritten.
             <LineBreak/>
             • <Run FontFamily="Consolas">Converting doses...</Run> — doses → RT-DOSE in progress.
             <LineBreak/>
@@ -431,7 +464,18 @@
               new files for this job.
             <LineBreak/>
             • <Run FontFamily="Consolas">Up-to-date — &lt;reason&gt;</Run> — server-mode tick; the
-              stable-hash output(s) already exist on disk, nothing was written.
+              stable-hash output(s) already exist on disk and are newer than every input, nothing
+              was written.
+            <LineBreak/>
+            • <Run FontFamily="Consolas">Cancelled.</Run> — Stop during Convert All; the remaining
+              folders stay Pending.
+            <LineBreak/>
+            • <Run FontFamily="Consolas">Cancelled — not retried until its files change.</Run> —
+              Stop during a server tick; the server leaves the folder alone until its fingerprint
+              moves.
+            <LineBreak/>
+            • <Run FontFamily="Consolas">Cancelled — server stopped.</Run> — Stop Server (or closing
+              the window) during a server tick.
             <LineBreak/>
             • <Run FontFamily="Consolas">Skipped — &lt;reason&gt;</Run> — Convert All was clicked
               but every applicable Convert toggle was OFF for this folder.
@@ -440,9 +484,10 @@
               server-mode tick; this folder's fingerprint differs from the previous tick. The next
               tick will re-check.
             <LineBreak/>
-            • <Run FontFamily="Consolas">FAILED — &lt;reason&gt;</Run> — exception raised during
-              scan, image, mask, or dose write; the rest of the batch continues. The reason
-              includes the per-stage error message.
+            • <Run FontFamily="Consolas">FAILED — &lt;reason&gt;</Run> — exception raised while
+              reading metadata.json, scanning, or writing the image, masks or doses; the rest of the
+              batch continues. The reason names the stage and carries the whole error, inner causes
+              included; the log box keeps the same text.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Output details"/>
@@ -503,7 +548,7 @@
               (one per dose file)
             <LineBreak/>
             <LineBreak/>
-            <Run FontWeight="SemiBold">Run Server</Run> (stable hash, idempotent):
+            <Run FontWeight="SemiBold">Run Server</Run> (stable hash):
             <LineBreak/>
             • <Run FontFamily="Consolas">RTSTRUCT_&lt;hash12&gt;.dcm</Run>
             <LineBreak/>
@@ -512,9 +557,12 @@
             <LineBreak/>
             <Run FontFamily="Consolas">hash12</Run> = first 12 hex characters (48 bits) of SHA-256
             over the input basenames, normalized to lowercase invariant culture, sorted ordinally,
-            and joined with <Run FontFamily="Consolas">|</Run>. Same inputs always produce the same
-            filename; adding a new mask or dose changes the hash and produces a new file alongside
-            the prior one.
+            and joined with <Run FontFamily="Consolas">|</Run>. Same input names always produce the
+            same filename; adding a new mask or dose changes the hash and produces a new file
+            alongside the prior one. Because the name ignores content, server mode also compares
+            times: an existing RT-STRUCT is rebuilt in place when any mask was last written after
+            it, and the RT-DOSE files are rebuilt when any dose was written after its RT-DOSE.
+            Otherwise the existing output is kept.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Tips"/>
@@ -522,10 +570,13 @@
             • Server mode is ideal for "drop-folder" pipelines: copy the image / masks / doses into
               a watch directory and walk away.
             <LineBreak/>
-            • To force a re-run of a settled job in server mode, delete the existing
+            • Replacing a mask or dose in a watched folder is enough to have server mode rebuild its
+              output. To force a re-run without touching the inputs, delete the existing
               <Run FontFamily="Consolas">RTSTRUCT_*.dcm</Run> /
-              <Run FontFamily="Consolas">RTDOSE_*.dcm</Run> outputs — the next tick will find the
-              hash missing and rebuild them.
+              <Run FontFamily="Consolas">RTDOSE_*.dcm</Run> outputs — the next settled tick will find
+              them missing and write them again.
+            <LineBreak/>
+            • The app follows the operating system's light or dark theme.
             <LineBreak/>
             • If a TPS rejects the generated series with "Unknown patient position", check
               <Run FontFamily="Consolas">PatientPosition</Run> in
@@ -535,7 +586,7 @@
       </ScrollViewer>
     </Border>
 
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
+    <Border Grid.Row="2" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Close" Click="CloseButton_Click" Width="90" Padding="12,6" IsCancel="True"/>

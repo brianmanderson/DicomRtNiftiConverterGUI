@@ -3,11 +3,13 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using DicomRtNifti.Core.Models;
+using DicomRtNifti.Core.Services;
 
 namespace DicomRtNifti.App.ViewModels
 {
-    /// <summary>ViewModel for a patient node in the TreeView. Ported verbatim from WPF
-    /// (no UI dependencies — INotifyPropertyChanged + Core models only).</summary>
+    /// <summary>ViewModel for a patient node in the TreeView. Ported from WPF (no UI
+    /// dependencies — INotifyPropertyChanged + Core models only), plus the geometry and link
+    /// badges rolled up from its series.</summary>
     public class PatientGroupViewModel : INotifyPropertyChanged
     {
         private bool _isExpanded;
@@ -22,10 +24,29 @@ namespace DicomRtNifti.App.ViewModels
 
             Studies = new ObservableCollection<StudyGroupViewModel>(
                 model.Studies.Select(s => new StudyGroupViewModel(s)));
+
+            // Rolled up from the series so the badges show on a collapsed patient row too.
+            var series = Studies.SelectMany(s => s.ImageSeries).ToList();
+            NonUniformSeriesCount = series.Count(s => s.IsNonUniformZ);
+            GuessedLinkSeriesCount = series.Count(s => s.HasGuessedLink);
         }
 
         public DicomPatientGroup Model { get; }
         public string DisplayName { get; }
+
+        /// <summary>Image series of this patient badged "non-uniform Z".</summary>
+        public int NonUniformSeriesCount { get; }
+        public bool HasNonUniformSeries => NonUniformSeriesCount > 0;
+        public string NonUniformBadgeText => NonUniformSeriesCount == 1
+            ? "non-uniform Z"
+            : $"{NonUniformSeriesCount} non-uniform Z";
+
+        /// <summary>Image series of this patient badged "link guessed".</summary>
+        public int GuessedLinkSeriesCount { get; }
+        public bool HasGuessedLinkSeries => GuessedLinkSeriesCount > 0;
+        public string GuessedLinkBadgeText => GuessedLinkSeriesCount == 1
+            ? "link guessed"
+            : $"{GuessedLinkSeriesCount} links guessed";
 
         /// <summary>Whether this patient is selected for export. Propagates to all child series.</summary>
         public bool IsSelected
@@ -96,6 +117,7 @@ namespace DicomRtNifti.App.ViewModels
     {
         private bool _isSelected = true;
         private bool _isExpanded;
+        private SeriesInspectorViewModel _inspector;
 
         public SeriesGroupViewModel(DicomSeriesGroup model)
         {
@@ -106,6 +128,17 @@ namespace DicomRtNifti.App.ViewModels
 
             HasLinkedRtStruct = model.LinkedRtStruct != null;
             HasLinkedRtDose = model.LinkedRtDose != null;
+
+            // The same test the conversions use to decide whether to warn, so a badge in the tree
+            // means the log line will follow on Convert Selected and Export Manifest Only.
+            string warning;
+            IsNonUniformZ = SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(model, out warning);
+            NonUniformZWarning = warning ?? "";
+
+            HasGuessedLink = new[] { model.LinkedRtStruct, model.LinkedRtDose }
+                .Concat(model.LinkedRtStructs ?? Enumerable.Empty<DicomSeriesGroup>())
+                .Concat(model.LinkedRtDoses ?? Enumerable.Empty<DicomSeriesGroup>())
+                .Any(rt => rt != null && rt.LinkMatchRule == RtLinkMatchRule.LargestSeriesFallback);
 
             RoiNames = new ObservableCollection<string>();
             if (model.LinkedRtStruct != null)
@@ -128,6 +161,18 @@ namespace DicomRtNifti.App.ViewModels
         public bool HasLinkedRtDose { get; }
         public string LinkedRtDoseLabel { get; }
         public ObservableCollection<string> RoiNames { get; }
+
+        /// <summary>Drives the "non-uniform Z" badge on the series row.</summary>
+        public bool IsNonUniformZ { get; }
+
+        /// <summary>The conversion warning, shown as the badge's tooltip.</summary>
+        public string NonUniformZWarning { get; }
+
+        /// <summary>Drives the "link guessed" badge: an RT object was attached by the largest-series fallback.</summary>
+        public bool HasGuessedLink { get; }
+
+        /// <summary>The inspector panel's content for this series, built on first selection.</summary>
+        public SeriesInspectorViewModel Inspector => _inspector ??= new SeriesInspectorViewModel(Model);
 
         public bool IsSelected
         {

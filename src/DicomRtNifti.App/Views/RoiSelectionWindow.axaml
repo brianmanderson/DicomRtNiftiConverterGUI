@@ -3,43 +3,43 @@
         x:Class="DicomRtNifti.App.Views.RoiSelectionWindow"
         Title="Select ROIs for Export" Width="700" Height="600"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,*,Auto,Auto">
 
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,12">
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,12">
       <StackPanel>
-        <TextBlock Text="Select ROIs for Export" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Text="Select ROIs for Export" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
         <TextBlock Text="Choose which ROIs to include. Patients missing all selected ROIs will be de-selected."
-                   FontSize="11" Foreground="{StaticResource AppOnAccentSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                   FontSize="11" Foreground="{DynamicResource AppOnAccentSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
 
     <Grid Grid.Row="1" Margin="12,12,12,0" ColumnDefinitions="*,250">
 
       <!-- Left: ROI checklist with search -->
-      <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource AppBorder}"
+      <Border Grid.Column="0" Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}"
               BorderThickness="1" CornerRadius="4" Margin="0,0,8,0">
         <Grid RowDefinitions="Auto,Auto,*">
-          <Border Grid.Row="0" Background="{StaticResource AppSurfaceAlt}" BorderBrush="#EEEEEE"
+          <Border Grid.Row="0" Background="{DynamicResource AppSurfaceAlt}" BorderBrush="{DynamicResource AppDivider}"
                   BorderThickness="0,0,0,1" Padding="12,8" CornerRadius="4,4,0,0">
             <Grid ColumnDefinitions="*,Auto">
               <CheckBox Grid.Column="0" Content="Select All" IsChecked="{Binding AllSelected}"
-                        FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AppHeadingText}"/>
+                        FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource AppHeadingText}"/>
               <TextBlock Grid.Column="1" Text="Patients" FontWeight="Medium" FontSize="11"
-                         Foreground="{StaticResource AppHintText}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                         Foreground="{DynamicResource AppHintText}" VerticalAlignment="Center" Margin="0,0,12,0"/>
             </Grid>
           </Border>
 
           <TextBox Grid.Row="1" Text="{Binding SearchText}" Watermark="Search ROIs..."
-                   Margin="8,8,8,4" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}" VerticalContentAlignment="Center"/>
+                   Margin="8,8,8,4" Padding="6,4" BorderBrush="{DynamicResource AppBorderAlt}" VerticalContentAlignment="Center"/>
 
           <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="4">
             <ItemsControl ItemsSource="{Binding FilteredRoiItems}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <CheckBox IsChecked="{Binding IsSelected}" Margin="12,4">
-                    <TextBlock Text="{Binding DisplayText}" FontSize="12" Foreground="{StaticResource AppHeadingText}"/>
+                    <TextBlock Text="{Binding DisplayText}" FontSize="12" Foreground="{DynamicResource AppHeadingText}"/>
                   </CheckBox>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -49,25 +49,25 @@
       </Border>
 
       <!-- Right: selected summary -->
-      <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource AppBorder}" BorderThickness="1" CornerRadius="4">
+      <Border Grid.Column="1" Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1" CornerRadius="4">
         <Grid RowDefinitions="Auto,*">
-          <Border Grid.Row="0" Background="{StaticResource AppSurfaceAlt}" BorderBrush="#EEEEEE"
+          <Border Grid.Row="0" Background="{DynamicResource AppSurfaceAlt}" BorderBrush="{DynamicResource AppDivider}"
                   BorderThickness="0,0,0,1" Padding="10,8" CornerRadius="4,4,0,0">
-            <TextBlock Text="Selected ROIs" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AppHeadingText}"/>
+            <TextBlock Text="Selected ROIs" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource AppHeadingText}"/>
           </Border>
 
           <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="4">
             <ItemsControl ItemsSource="{Binding SelectedSummaryItems}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Border Background="{StaticResource AppWindowBg}" BorderBrush="#E0E0E0" BorderThickness="1"
+                  <Border Background="{DynamicResource AppWindowBg}" BorderBrush="{DynamicResource AppBorderSubtle}" BorderThickness="1"
                           CornerRadius="3" Margin="4,2" Padding="8,5">
                     <Grid ColumnDefinitions="*,Auto">
                       <TextBlock Grid.Column="0" Text="{Binding CanonicalName}" FontWeight="Medium"
-                                 FontSize="12" Foreground="{StaticResource AppHeadingText}" VerticalAlignment="Center"
+                                 FontSize="12" Foreground="{DynamicResource AppHeadingText}" VerticalAlignment="Center"
                                  TextTrimming="CharacterEllipsis"/>
                       <TextBlock Grid.Column="1" Text="{Binding DisplayText}" FontSize="11"
-                                 Foreground="{StaticResource AppBadgeText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                 Foreground="{DynamicResource AppBadgeText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -78,10 +78,10 @@
       </Border>
     </Grid>
 
-    <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource AppMutedText}" Margin="16,8,16,0"
+    <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AppMutedText}" Margin="16,8,16,0"
                Text="ROI names are shown after resolving aliases through your ROI Associations. Patients that do not contain any of the selected ROIs will be automatically de-selected for export."/>
 
-    <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
+    <Border Grid.Row="3" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,8,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Cancel" Click="CancelButton_Click" MinWidth="70" Padding="12,6" Margin="4,0" FontSize="12"/>

@@ -1,0 +1,142 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DicomRtNifti.App.Views.SeriesInspectorView">
+  <!-- DataContext: a SeriesInspectorViewModel (the series selected in the forward window's tree). -->
+  <UserControl.Styles>
+    <Style Selector="TextBlock.label">
+      <Setter Property="Foreground" Value="{DynamicResource AppLabelText}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,0,12,4"/>
+      <Setter Property="VerticalAlignment" Value="Top"/>
+    </Style>
+    <Style Selector="TextBlock.value, SelectableTextBlock.value">
+      <Setter Property="Foreground" Value="{DynamicResource AppBodyText}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,0,0,4"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style Selector="TextBlock.section">
+      <Setter Property="Foreground" Value="{DynamicResource AppHeadingText}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="0,6,0,4"/>
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="Padding" Value="10,0"/>
+    </Style>
+  </UserControl.Styles>
+
+  <TabControl Padding="0">
+    <TabItem Header="Geometry &amp; links">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="12,8,12,12">
+
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+            <TextBlock Text="{Binding Modality, StringFormat='[{0}]'}" FontSize="12" FontWeight="Bold"
+                       Foreground="{DynamicResource AppAccentBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AppHeadingText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+
+          <WrapPanel Margin="0,0,0,8">
+            <Border Classes="warningBadge" Margin="0,0,6,4" IsVisible="{Binding IsNonUniformZ}"
+                    ToolTip.Tip="{Binding NonUniformZWarning}">
+              <TextBlock Text="non-uniform Z"/>
+            </Border>
+            <Border Classes="warningBadge" Margin="0,0,6,4" IsVisible="{Binding HasGuessedLink}">
+              <TextBlock Text="link guessed"/>
+            </Border>
+            <Border Classes="warningBadge" Margin="0,0,6,4" IsVisible="{Binding HasMissingPositions}">
+              <TextBlock Text="{Binding UnpositionedSliceCount, StringFormat='{}{0} slice(s) unpositioned'}"/>
+            </Border>
+          </WrapPanel>
+
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Instances"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" Text="{Binding InstanceCount}"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Slice spacing"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" Text="{Binding SliceSpacingText, StringFormat='{}{0} (median gap)'}"/>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Distinct gaps"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Classes="value" Text="{Binding DistinctGapsText}"/>
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Pixel spacing"/>
+            <TextBlock Grid.Row="3" Grid.Column="1" Classes="value" Text="{Binding PixelSpacingText}"/>
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Classes="label" Text="Z extent"/>
+            <TextBlock Grid.Row="4" Grid.Column="1" Classes="value" Text="{Binding ExtentText}"/>
+
+            <TextBlock Grid.Row="5" Grid.Column="0" Classes="label" Text="Frame of reference"/>
+            <SelectableTextBlock Grid.Row="5" Grid.Column="1" Classes="value" Text="{Binding FrameOfReferenceUid}"/>
+
+            <TextBlock Grid.Row="6" Grid.Column="0" Classes="label" Text="Series UID"/>
+            <SelectableTextBlock Grid.Row="6" Grid.Column="1" Classes="value" Text="{Binding SeriesInstanceUid}"/>
+
+            <TextBlock Grid.Row="7" Grid.Column="0" Classes="label" Text="RTSTRUCT"/>
+            <TextBlock Grid.Row="7" Grid.Column="1" Classes="value" Text="{Binding RtStructLinkText}"/>
+
+            <TextBlock Grid.Row="8" Grid.Column="0" Classes="label" Text="RTDOSE"/>
+            <TextBlock Grid.Row="8" Grid.Column="1" Classes="value" Text="{Binding RtDoseLinkText}"/>
+          </Grid>
+
+          <Border Classes="warningNote" Margin="0,6,0,0" IsVisible="{Binding IsNonUniformZ}">
+            <TextBlock Text="{Binding NonUniformZWarning}"/>
+          </Border>
+          <Border Classes="warningNote" Margin="0,6,0,0" IsVisible="{Binding HasMissingPositions}">
+            <TextBlock Text="{Binding MissingPositionWarning}"/>
+          </Border>
+          <Border Classes="warningNote" Margin="0,6,0,0" IsVisible="{Binding HasGuessedLink}">
+            <TextBlock Text="An RT object below was linked by the largest-series fallback: neither its referenced series UID nor its frame of reference matched an image series in the study, so it was attached to the series with the most slices. Check that this is the series it was drawn on before exporting."/>
+          </Border>
+          <TextBlock Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AppMutedText}"
+                     IsVisible="{Binding GapsWithinTolerance}"
+                     Text="The gaps differ only by rounding or jitter: flattening them to one spacing changes a volume by under 5%, so no warning is raised."/>
+
+          <TextBlock Classes="section" Text="Linked RT objects" IsVisible="{Binding HasLinkedObjects}"/>
+          <ItemsControl ItemsSource="{Binding LinkedObjects}" IsVisible="{Binding HasLinkedObjects}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Margin="0,0,0,6">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Kind, StringFormat='[{0}]'}" FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource AppAccentBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource AppBodyText}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                  <TextBlock FontSize="11" Margin="0,1,0,0" Foreground="{DynamicResource AppMutedText}" TextWrapping="Wrap">
+                    <Run Text="{Binding Detail}"/>
+                    <Run Text=" · linked by "/>
+                    <Run Text="{Binding Rule}"/>
+                  </TextBlock>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+    </TabItem>
+
+    <TabItem Header="DICOM tags">
+      <Grid RowDefinitions="Auto,*">
+        <TextBlock Grid.Row="0" Margin="12,8,12,4" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AppMutedText}"
+                   Text="Curated tags from the series' first slice and its first linked RTSTRUCT and RTDOSE: the same lists the metadata.json sidecar offers. Read-only."/>
+        <TextBlock Grid.Row="1" Margin="12,4" FontSize="12" Foreground="{DynamicResource AppHintText}"
+                   Text="{Binding TagStatus}" IsVisible="{Binding HasTagStatus}"/>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Tags}" AutoGenerateColumns="False"
+                  IsReadOnly="True" CanUserResizeColumns="True" CanUserSortColumns="True"
+                  GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                  Background="Transparent" FontSize="12" Margin="4,0,4,4"
+                  IsVisible="{Binding !HasTagStatus}">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Section" Binding="{Binding Section}" Width="100"/>
+            <DataGridTextColumn Header="Attribute" Binding="{Binding Attribute}" Width="160"/>
+            <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"/>
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </TabItem>
+  </TabControl>
+</UserControl>

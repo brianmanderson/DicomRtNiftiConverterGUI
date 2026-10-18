@@ -46,6 +46,7 @@ namespace DicomRtNifti.App.Tests
         [AvaloniaFact]
         public void Nifti_to_dicom_button_opens_the_reverse_window()
         {
+            using (new UserSettingsGuard())
             using (var launcher = new LauncherSession())
             {
                 var window = launcher.Open<NiftiToDicomWindow, NiftiToDicomViewModel>("NIfTI → DICOM", out var vm);

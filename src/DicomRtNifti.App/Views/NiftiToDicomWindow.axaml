@@ -1,51 +1,51 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="DicomRtNifti.App.Views.NiftiToDicomWindow"
-        Title="NIfTI → DICOM" Width="820" Height="640"
-        MinWidth="640" MinHeight="500"
+        Title="NIfTI → DICOM" Width="980" Height="760"
+        MinWidth="680" MinHeight="560"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- Header -->
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,10">
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,10">
       <DockPanel>
         <Button DockPanel.Dock="Right" Content="Help" Command="{Binding OpenHelpCommand}"
-                VerticalAlignment="Center" Padding="14,6" Background="White" Foreground="{StaticResource AppAccentBrush}"
+                VerticalAlignment="Center" Padding="14,6" Background="{DynamicResource AppOnAccentButtonBg}" Foreground="{DynamicResource AppAccentBrush}"
                 FontWeight="SemiBold" FontSize="13" MinWidth="80" BorderThickness="0"/>
         <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="NIfTI → DICOM (Batch)" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
-          <TextBlock Foreground="{StaticResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+          <TextBlock Text="NIfTI → DICOM (Batch)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
+          <TextBlock Foreground="{DynamicResource AppOnAccentSubtitle}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
                      Text="Scan a folder of NIfTI jobs, then convert each to a DICOM image series, RT-STRUCT, and RT-DOSE. Open Help for the folder layout and metadata.json schema."/>
         </StackPanel>
       </DockPanel>
     </Border>
 
     <!-- Content -->
-    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource AppBorder}"
+    <Border Grid.Row="1" Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}"
             BorderThickness="1" CornerRadius="4" Margin="12,12,12,0" Padding="16">
-      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
 
-        <TextBlock Grid.Row="0" Text="Folder:" Margin="0,0,0,4" FontWeight="Medium" Foreground="{StaticResource AppLabelText}"/>
+        <TextBlock Grid.Row="0" Text="Folder:" Margin="0,0,0,4" FontWeight="Medium" Foreground="{DynamicResource AppLabelText}"/>
         <DockPanel Grid.Row="1" Margin="0,0,0,8">
           <Button DockPanel.Dock="Right" Content="Scan" Command="{Binding ScanRootFolderCommand}"
                   Width="80" Margin="8,0,0,0" Padding="8,4"
                   Classes="primary"/>
           <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowseRootFolderCommand}"
                   Width="80" Margin="8,0,0,0" Padding="8,4"/>
-          <TextBox Text="{Binding RootFolder}" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{StaticResource AppBorderAlt}"/>
+          <TextBox Text="{Binding RootFolder}" VerticalContentAlignment="Center" Padding="6,4" BorderBrush="{DynamicResource AppBorderAlt}"/>
         </DockPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
           <TextBlock Text="Data to convert:" VerticalAlignment="Center" FontWeight="Medium"
-                     Foreground="{StaticResource AppLabelText}" Margin="0,0,16,0"/>
+                     Foreground="{DynamicResource AppLabelText}" Margin="0,0,16,0"/>
           <CheckBox Content="Convert Images" IsChecked="{Binding ConvertImage}" FontSize="13" Margin="0,0,20,0"/>
           <CheckBox Content="Convert Structures" IsChecked="{Binding ConvertStructures}" FontSize="13" Margin="0,0,20,0"/>
           <CheckBox Content="Convert Dose" IsChecked="{Binding ConvertDoses}" FontSize="13"/>
         </StackPanel>
 
-        <Border Grid.Row="3" BorderBrush="{StaticResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="{StaticResource AppSurfaceAlt}">
+        <Border Grid.Row="3" BorderBrush="{DynamicResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="{DynamicResource AppSurfaceAlt}">
           <Grid>
           <DataGrid ItemsSource="{Binding DiscoveredJobs}" AutoGenerateColumns="False"
                     IsReadOnly="True" CanUserResizeColumns="True"
@@ -53,32 +53,48 @@
                     Background="Transparent" FontSize="12">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Folder" Binding="{Binding FolderDisplayName}" Width="150"/>
-              <DataGridTextColumn Header="Image" Binding="{Binding ImageDisplay}" Width="55"/>
-              <DataGridTextColumn Header="Masks" Binding="{Binding MaskCount}" Width="60"/>
+              <DataGridTextColumn Header="Image" Binding="{Binding ImageDisplay}" Width="72"/>
+              <DataGridTextColumn Header="Masks" Binding="{Binding MaskCount}" Width="76"/>
               <DataGridTextColumn Header="ROI Names" Binding="{Binding MaskNames}" Width="*"/>
-              <DataGridTextColumn Header="Doses" Binding="{Binding DoseCount}" Width="60"/>
+              <DataGridTextColumn Header="Doses" Binding="{Binding DoseCount}" Width="76"/>
               <DataGridTextColumn Header="Dose Files" Binding="{Binding DoseNames}" Width="*"/>
-              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="220"/>
+              <!-- Trimmed to the column; the tooltip and the log below carry the full text. -->
+              <DataGridTemplateColumn Header="Status" Width="260">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Status}" ToolTip.Tip="{Binding Status}" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" Margin="12,0,8,0"/>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
 
           <!-- Empty-state hint: shown until a scan discovers jobs. -->
           <TextBlock Text="Set a folder and click Scan to list conversion jobs here."
                      IsVisible="{Binding ShowJobsEmptyHint}" IsHitTestVisible="False"
-                     Foreground="{StaticResource AppHintText}" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                     Foreground="{DynamicResource AppHintText}" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
                      MaxWidth="360" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Grid>
         </Border>
 
-        <Border Grid.Row="4" Background="{StaticResource AppWindowBg}" BorderBrush="#E0E0E0" BorderThickness="1"
-                CornerRadius="2" Padding="10,8" Margin="0,12,0,0">
-          <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource AppBodyText}" FontSize="12" TextWrapping="Wrap"/>
-        </Border>
+        <!-- Progress + status, as in the forward window's toolbar. -->
+        <Grid Grid.Row="4" Margin="0,12,0,0" ColumnDefinitions="220,*">
+          <ProgressBar Grid.Column="0" Value="{Binding ProgressValue}" Minimum="0" Maximum="100"
+                       Height="18" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource AppBodyText}" FontSize="12"
+                     TextWrapping="Wrap" VerticalAlignment="Center" Margin="10,0,0,0"/>
+        </Grid>
+
+        <TextBox Grid.Row="5" x:Name="LogTextBox" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" Margin="0,8,0,0"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" Height="120" FontFamily="Consolas" FontSize="11"
+                 TextWrapping="Wrap" AcceptsReturn="True" TextChanged="LogTextBox_TextChanged"
+                 Background="{DynamicResource AppSurfaceAlt}" BorderBrush="{DynamicResource AppBorderSubtle}" Padding="8"/>
       </Grid>
     </Border>
 
     <!-- Buttons -->
-    <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
+    <Border Grid.Row="2" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="{Binding ServerButtonText}" Command="{Binding RunServerCommand}" Width="120" Padding="12,6"

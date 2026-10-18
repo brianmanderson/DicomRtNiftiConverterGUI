@@ -25,6 +25,11 @@ namespace DicomRtNifti.App.ViewModels
     /// async ShowDialog for the OutputSpacing / RoiSelection / Settings / ROI-association /
     /// anonymization-key dialogs, and an OS-switched folder reveal. The Help and Export Options
     /// windows open non-modally via Show(); ROI associations load from disk and apply during export.
+    ///
+    /// Every export toggle is written to settings.json the moment it changes, and the input and
+    /// output folders to gui_state.json (<see cref="GuiStateStore"/>), so a window closed without
+    /// converting still reopens as it was left. Selecting a series in the tree shows it in the
+    /// series inspector (<see cref="SeriesInspectorViewModel"/>).
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
@@ -33,6 +38,10 @@ namespace DicomRtNifti.App.ViewModels
         private readonly RtStructMaskService _maskService;
         private readonly SettingsService _settingsService;
         private readonly IFolderPicker _folderPicker;
+        private readonly GuiStateStore _guiState;
+        private bool _guiStateErrorLogged;
+        private object _selectedTreeItem;
+        private SeriesInspectorViewModel _selectedInspector;
 
         private string _inputFolder = "";
         private string _outputFolder = "";
@@ -71,13 +80,15 @@ namespace DicomRtNifti.App.ViewModels
             NiftiConversionService conversionService,
             RtStructMaskService maskService,
             SettingsService settingsService,
-            IFolderPicker folderPicker)
+            IFolderPicker folderPicker,
+            GuiStateStore guiState = null)
         {
             _scannerService = scannerService;
             _conversionService = conversionService;
             _maskService = maskService;
             _settingsService = settingsService;
             _folderPicker = folderPicker;
+            _guiState = guiState ?? new GuiStateStore();
 
             Patients = new ObservableCollection<PatientGroupViewModel>();
             Patients.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowTreeEmptyHint));
@@ -105,7 +116,17 @@ namespace DicomRtNifti.App.ViewModels
             _settings = LoadSettingsGuarded();
             _associations = LoadAssociationsGuarded();
 
-            if (!string.IsNullOrEmpty(_settings.DefaultOutputDirectory))
+            // The last folders used win over Settings' default output directory, which remains
+            // the fallback until another output folder has been used. A remembered folder that no
+            // longer exists is not restored.
+            var gui = _guiState.Load();
+            if (_guiState.IsBlocked)
+                NoteGuiStateNotSaved(_guiState.BlockedReason);
+            if (Directory.Exists(gui.LastInputFolder ?? ""))
+                _inputFolder = gui.LastInputFolder;
+            if (Directory.Exists(gui.LastOutputFolder ?? ""))
+                _outputFolder = gui.LastOutputFolder;
+            else if (!string.IsNullOrEmpty(_settings.DefaultOutputDirectory))
                 _outputFolder = _settings.DefaultOutputDirectory;
 
             _exportImages = _settings.ExportImages;
@@ -123,11 +144,52 @@ namespace DicomRtNifti.App.ViewModels
             _metadataDoseTagKeywords = _settings.MetadataDoseTagKeywords ?? new List<string>();
         }
 
-        public string InputFolder { get { return _inputFolder; } set { _inputFolder = value; OnPropertyChanged(); RefreshCommands(); } }
-        public string OutputFolder { get { return _outputFolder; } set { _outputFolder = value; OnPropertyChanged(); RefreshCommands(); } }
+        public string InputFolder
+        {
+            get { return _inputFolder; }
+            set { _inputFolder = value; OnPropertyChanged(); RefreshCommands(); RememberFolder(value, s => s.LastInputFolder = value); }
+        }
+
+        public string OutputFolder
+        {
+            get { return _outputFolder; }
+            set { _outputFolder = value; OnPropertyChanged(); RefreshCommands(); RememberFolder(value, s => s.LastOutputFolder = value); }
+        }
 
         /// <summary>True when no scan results are loaded yet — drives the tree's empty-state hint.</summary>
         public bool ShowTreeEmptyHint => Patients.Count == 0;
+
+        /// <summary>The tree's selected node (patient, study or series), bound two-way to the TreeView.</summary>
+        public object SelectedTreeItem
+        {
+            get { return _selectedTreeItem; }
+            set
+            {
+                _selectedTreeItem = value;
+                OnPropertyChanged();
+                SelectedInspector = (value as SeriesGroupViewModel)?.Inspector;
+            }
+        }
+
+        /// <summary>
+        /// What the series inspector shows: the selected series, or null (and the inspector's hint)
+        /// when a patient or study row, or nothing, is selected. Selecting a series starts reading
+        /// its tag grid in the background.
+        /// </summary>
+        public SeriesInspectorViewModel SelectedInspector
+        {
+            get { return _selectedInspector; }
+            private set
+            {
+                _selectedInspector = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ShowInspectorHint));
+                if (value != null)
+                    _ = value.EnsureTagsLoadedAsync();
+            }
+        }
+
+        public bool ShowInspectorHint => SelectedInspector == null;
 
         public bool IsScanning { get { return _isScanning; } set { _isScanning = value; OnPropertyChanged(); RefreshCommands(); } }
         public bool IsConverting { get { return _isConverting; } set { _isConverting = value; OnPropertyChanged(); RefreshCommands(); } }
@@ -136,16 +198,45 @@ namespace DicomRtNifti.App.ViewModels
         public string StatusText { get { return _statusText; } set { _statusText = value; OnPropertyChanged(); } }
         public string LogText { get { return _logText; } set { _logText = value; OnPropertyChanged(); } }
 
-        public bool ExportImages { get { return _exportImages; } set { _exportImages = value; OnPropertyChanged(); } }
-        public bool IncludeStructures { get { return _includeStructures; } set { _includeStructures = value; OnPropertyChanged(); } }
-        public bool IncludeDose { get { return _includeDose; } set { _includeDose = value; OnPropertyChanged(); } }
-        public bool OnlyExportSpecificRois { get { return _onlyExportSpecificRois; } set { _onlyExportSpecificRois = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
-        public bool SpecifyOutputSpacing { get { return _specifyOutputSpacing; } set { _specifyOutputSpacing = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+        // The toggles below persist on change (PersistSetting); only a real change writes.
+        public bool ExportImages
+        {
+            get { return _exportImages; }
+            set { if (_exportImages == value) return; _exportImages = value; OnPropertyChanged(); PersistSetting(s => s.ExportImages = value); }
+        }
+        public bool IncludeStructures
+        {
+            get { return _includeStructures; }
+            set { if (_includeStructures == value) return; _includeStructures = value; OnPropertyChanged(); PersistSetting(s => s.IncludeStructures = value); }
+        }
+        public bool IncludeDose
+        {
+            get { return _includeDose; }
+            set { if (_includeDose == value) return; _includeDose = value; OnPropertyChanged(); PersistSetting(s => s.IncludeDose = value); }
+        }
+        public bool OnlyExportSpecificRois
+        {
+            get { return _onlyExportSpecificRois; }
+            set { if (_onlyExportSpecificRois == value) return; _onlyExportSpecificRois = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); PersistSetting(s => s.OnlyExportSpecificRois = value); }
+        }
+        public bool SpecifyOutputSpacing
+        {
+            get { return _specifyOutputSpacing; }
+            set { if (_specifyOutputSpacing == value) return; _specifyOutputSpacing = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); PersistSetting(s => s.SpecifyOutputSpacing = value); }
+        }
         public double OutputSpacingX { get { return _outputSpacingX; } set { _outputSpacingX = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
         public double OutputSpacingY { get { return _outputSpacingY; } set { _outputSpacingY = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
         public double OutputSpacingZ { get { return _outputSpacingZ; } set { _outputSpacingZ = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
-        public bool AnonymizeExport { get { return _anonymizeExport; } set { _anonymizeExport = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
-        public bool ExportDicomMetadata { get { return _exportDicomMetadata; } set { _exportDicomMetadata = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); } }
+        public bool AnonymizeExport
+        {
+            get { return _anonymizeExport; }
+            set { if (_anonymizeExport == value) return; _anonymizeExport = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); PersistSetting(s => s.AnonymizeExport = value); }
+        }
+        public bool ExportDicomMetadata
+        {
+            get { return _exportDicomMetadata; }
+            set { if (_exportDicomMetadata == value) return; _exportDicomMetadata = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); PersistSetting(s => s.ExportDicomMetadata = value); }
+        }
 
         /// <summary>
         /// One-line digest of the non-default Export Options, shown next to the Export Options
@@ -230,9 +321,11 @@ namespace DicomRtNifti.App.ViewModels
 
             IsScanning = true;
             _cts = new CancellationTokenSource();
+            SelectedTreeItem = null;
             Patients.Clear();
             AllDiscoveredRoiNames.Clear();
             ProgressValue = 0;
+            RememberFolder(InputFolder, s => s.LastInputFolder = InputFolder);
 
             var progress = new Progress<string>(msg => StatusText = msg);
 
@@ -260,6 +353,7 @@ namespace DicomRtNifti.App.ViewModels
                     if (scanResult.SkippedErrorCount > scanResult.SkippedErrorSamples.Count)
                         AppendLog($"  ...and {scanResult.SkippedErrorCount - scanResult.SkippedErrorSamples.Count} more.");
                 }
+                LogScanGeometryNotes();
                 StatusText = "Scan complete.";
                 ProgressValue = 100;
             }
@@ -280,6 +374,41 @@ namespace DicomRtNifti.App.ViewModels
                 _cts = null;
                 RefreshCommands();
             }
+        }
+
+        /// <summary>
+        /// Says at scan time what used to surface only on Convert: how many series have mixed
+        /// slice gaps, and how many carry an RT object linked by the largest-series fallback.
+        /// Both are badged in the tree; the inspector has the detail.
+        /// </summary>
+        private void LogScanGeometryNotes()
+        {
+            var series = Patients.SelectMany(p => p.Studies).SelectMany(s => s.ImageSeries).ToList();
+
+            int nonUniform = series.Count(s => s.IsNonUniformZ);
+            if (nonUniform > 0)
+                AppendLog($"{nonUniform} series ha{(nonUniform == 1 ? "s" : "ve")} non-uniform slice spacing (badged \"non-uniform Z\"). " +
+                          "NIfTI stores one spacing per axis, so exporting flattens the gaps; select the series to see them.");
+
+            int guessed = series.Count(s => s.HasGuessedLink);
+            if (guessed > 0)
+                AppendLog($"{guessed} series ha{(guessed == 1 ? "s" : "ve")} an RTSTRUCT or RTDOSE linked by the largest-series fallback (badged \"link guessed\"): " +
+                          "nothing in the RT object identified its image series. Check it in the inspector before exporting.");
+        }
+
+        /// <summary>
+        /// The geometry warnings a conversion of <paramref name="model"/> earns, in the CLI's order:
+        /// skipped unpositioned slices first, then non-uniform spacing, which judges the series
+        /// without them. Shared by Convert Selected and Export Manifest Only so the two say the
+        /// same thing about the same series.
+        /// </summary>
+        private void LogGeometryWarnings(DicomSeriesGroup model, double[] targetSpacing)
+        {
+            string warning;
+            if (SeriesGeometryProbe.TryBuildMissingPositionWarning(model, out warning))
+                AppendLog("  " + warning);
+            if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(model, targetSpacing, out warning))
+                AppendLog("  " + warning);
         }
 
         private void AggregateDiscoveredRoiNames()
@@ -320,6 +449,7 @@ namespace DicomRtNifti.App.ViewModels
             }
             if (!Directory.Exists(OutputFolder))
                 Directory.CreateDirectory(OutputFolder);
+            RememberFolder(OutputFolder, s => s.LastOutputFolder = OutputFolder);
 
             var selectedSeries = new List<SeriesGroupViewModel>();
             foreach (var patient in Patients)
@@ -442,12 +572,7 @@ namespace DicomRtNifti.App.ViewModels
                     // has said so on its single-series modes for a while; the GUI — where nobody is
                     // reading stderr — said nothing on any path. Log it and carry on: the export is
                     // still the best available answer and the geometry written is untouched.
-                    string spacingWarning;
-                    if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
-                            model, targetSpacing, out spacingWarning))
-                    {
-                        AppendLog("  " + spacingWarning);
-                    }
+                    LogGeometryWarnings(model, targetSpacing);
 
                     double[] seriesSpacing = null;
                     if (ExportImages)
@@ -584,6 +709,7 @@ namespace DicomRtNifti.App.ViewModels
                 return;
             }
             Directory.CreateDirectory(OutputFolder);
+            RememberFolder(OutputFolder, s => s.LastOutputFolder = OutputFolder);
 
             var selectedSeries = new List<SeriesGroupViewModel>();
             foreach (var patient in Patients)
@@ -647,6 +773,10 @@ namespace DicomRtNifti.App.ViewModels
                     string seriesUid = model.SeriesInstanceUID;
 
                     string displayLabel = $"{patientId}/{seriesUid.Substring(0, Math.Min(8, seriesUid.Length))}";
+
+                    // The manifest's spacing columns and ROI volumes come from the same flattened
+                    // grid a conversion would write, so this survey earns the same warning.
+                    LogGeometryWarnings(model, targetSpacing);
 
                     progress.Report($"Reading spacing: {displayLabel}");
                     double[] seriesSpacing = await Task.Run(() => _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
@@ -971,6 +1101,66 @@ namespace DicomRtNifti.App.ViewModels
             _settingsPersistenceBlocked = true;
             StatusText = ex.Message;
             AppendLog(ex.Message);
+        }
+
+        private bool _settingsNotSavedLogged;
+
+        /// <summary>
+        /// Writes one changed export toggle to settings.json straight away. The file is re-read
+        /// first and only this field is changed on it: a second forward window may have saved its
+        /// own toggles since this one loaded, and writing this window's whole snapshot back would
+        /// revert them. While an unreadable settings file is being preserved the change stays in
+        /// memory, and the log says so once.
+        /// </summary>
+        private void PersistSetting(Action<AppSettings> change)
+        {
+            change(_settings);
+            if (_settingsPersistenceBlocked)
+            {
+                if (!_settingsNotSavedLogged)
+                {
+                    _settingsNotSavedLogged = true;
+                    AppendLog("Settings not saved — an unreadable settings file is being preserved.");
+                }
+                return;
+            }
+
+            try
+            {
+                AppSettings onDisk = _settingsService.LoadSettings();
+                change(onDisk);
+                _settingsService.SaveSettings(onDisk);
+                _settings = onDisk;
+            }
+            catch (InvalidDataException ex)
+            {
+                BlockSettingsPersistence(ex);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                AppendLog($"Settings not saved: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Records a folder in gui_state.json once it names a directory that exists, so a path
+        /// being typed is not saved one keystroke at a time.
+        /// </summary>
+        private void RememberFolder(string folder, Action<GuiState> change)
+        {
+            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+                return;
+            string error;
+            if (!_guiState.Update(change, out error))
+                NoteGuiStateNotSaved(error);
+        }
+
+        private void NoteGuiStateNotSaved(string reason)
+        {
+            if (_guiStateErrorLogged)
+                return;
+            _guiStateErrorLogged = true;
+            AppendLog("Last-used folders will not be remembered: " + reason);
         }
 
         /// <summary>

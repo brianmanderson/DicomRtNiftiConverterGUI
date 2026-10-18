@@ -3,20 +3,20 @@
         x:Class="DicomRtNifti.App.Views.AnonymizationKeyEditorWindow"
         Title="Edit Anonymization Key" Width="780" Height="640"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource AppWindowBg}">
+        Background="{DynamicResource AppWindowBg}">
 
   <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
 
-    <Border Grid.Row="0" Background="{StaticResource AppAccentBrush}" Padding="16,12">
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,12">
       <StackPanel>
-        <TextBlock Text="Anonymization Key Editor" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Text="Anonymization Key Editor" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
         <TextBlock Text="View and override the input → hash mappings used for anonymized exports. Edit a Hash cell (or add a row) to pin a specific output hash for a given MRN, Study UID, or Series UID."
-                   FontSize="11" Foreground="{StaticResource AppOnAccentSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                   FontSize="11" Foreground="{DynamicResource AppOnAccentSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="1" Background="#ECEFF1" BorderBrush="{StaticResource AppOnAccentSubtitle}" BorderThickness="0,0,0,1" Padding="12,6">
-      <TextBlock Text="{Binding FileStatus}" FontSize="11" Foreground="#37474F" TextWrapping="Wrap"/>
+    <Border Grid.Row="1" Background="{DynamicResource AppInfoBg}" BorderBrush="{DynamicResource AppOnAccentSubtitle}" BorderThickness="0,0,0,1" Padding="12,6">
+      <TextBlock Text="{Binding FileStatus}" FontSize="11" Foreground="{DynamicResource AppInfoText}" TextWrapping="Wrap"/>
     </Border>
 
     <TabControl Grid.Row="2" Margin="12,12,12,0">
@@ -27,7 +27,7 @@
             <Button Content="Add" Command="{Binding AddPatientCommand}" Width="80" Padding="10,5" Margin="0,0,8,0"/>
             <Button Content="Delete Selected" Command="{Binding DeletePatientCommand}" Width="130" Padding="10,5"/>
           </StackPanel>
-          <Border Grid.Row="1" BorderBrush="{StaticResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="White">
+          <Border Grid.Row="1" BorderBrush="{DynamicResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="{DynamicResource AppSurface}">
             <DataGrid ItemsSource="{Binding Patients}" SelectedItem="{Binding SelectedPatient}"
                       AutoGenerateColumns="False" IsReadOnly="False" CanUserResizeColumns="True"
                       GridLinesVisibility="All" HeadersVisibility="Column" FontSize="12">
@@ -46,7 +46,7 @@
             <Button Content="Add" Command="{Binding AddStudyCommand}" Width="80" Padding="10,5" Margin="0,0,8,0"/>
             <Button Content="Delete Selected" Command="{Binding DeleteStudyCommand}" Width="130" Padding="10,5"/>
           </StackPanel>
-          <Border Grid.Row="1" BorderBrush="{StaticResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="White">
+          <Border Grid.Row="1" BorderBrush="{DynamicResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="{DynamicResource AppSurface}">
             <DataGrid ItemsSource="{Binding Studies}" SelectedItem="{Binding SelectedStudy}"
                       AutoGenerateColumns="False" IsReadOnly="False" CanUserResizeColumns="True"
                       GridLinesVisibility="All" HeadersVisibility="Column" FontSize="12">
@@ -65,7 +65,7 @@
             <Button Content="Add" Command="{Binding AddSeriesCommand}" Width="80" Padding="10,5" Margin="0,0,8,0"/>
             <Button Content="Delete Selected" Command="{Binding DeleteSeriesCommand}" Width="130" Padding="10,5"/>
           </StackPanel>
-          <Border Grid.Row="1" BorderBrush="{StaticResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="White">
+          <Border Grid.Row="1" BorderBrush="{DynamicResource AppBorderAlt}" BorderThickness="1" CornerRadius="2" Background="{DynamicResource AppSurface}">
             <DataGrid ItemsSource="{Binding Series}" SelectedItem="{Binding SelectedSeries}"
                       AutoGenerateColumns="False" IsReadOnly="False" CanUserResizeColumns="True"
                       GridLinesVisibility="All" HeadersVisibility="Column" FontSize="12">
@@ -81,9 +81,9 @@
     </TabControl>
 
     <TextBlock Grid.Row="3" Text="{Binding ErrorText}" IsVisible="{Binding HasError}"
-               Foreground="{StaticResource AppDangerBrush}" FontSize="12" TextWrapping="Wrap" Margin="16,8,16,0"/>
+               Foreground="{DynamicResource AppDangerBrush}" FontSize="12" TextWrapping="Wrap" Margin="16,8,16,0"/>
 
-    <Border Grid.Row="4" Background="#F0F0F0" BorderBrush="{StaticResource AppBorderAlt}"
+    <Border Grid.Row="4" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,8,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Content="Cancel" Click="CancelButton_Click" Width="90" Padding="12,6" Margin="0,0,8,0" IsCancel="True"/>

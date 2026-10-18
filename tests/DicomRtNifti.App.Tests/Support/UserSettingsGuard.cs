@@ -8,16 +8,17 @@ namespace DicomRtNifti.App.Tests.Support
     /// on Windows, XDG config on Linux/macOS), MainViewModel reads it on construction and saves it
     /// on every Convert. On a developer machine that would both perturb the test (a saved
     /// DefaultOutputDirectory, AutoOpenAfterConversion launching a file manager, a stored output
-    /// spacing) and overwrite real preferences. Each workflow test therefore renames the two JSON
-    /// files aside on disk (<c>*.gui-test-bak</c>) so the view-model starts from defaults, and
-    /// renames them back on dispose. The originals never leave the disk: if the test host dies
-    /// before Dispose, the next guard finds the backup and restores it before doing anything else.
-    /// CI runners start empty, so there the guard is a no-op.
+    /// spacing) and overwrite real preferences. Both workflow view-models also persist toggles and
+    /// last-used folders on change (settings.json, gui_state.json). Each workflow test therefore
+    /// renames the three JSON files aside on disk (<c>*.gui-test-bak</c>) so the view-models start
+    /// from defaults, and renames them back on dispose. The originals never leave the disk: if the
+    /// test host dies before Dispose, the next guard finds the backup and restores it before doing
+    /// anything else. CI runners start empty, so there the guard is a no-op.
     /// </summary>
     public sealed class UserSettingsGuard : IDisposable
     {
         private const string BackupSuffix = ".gui-test-bak";
-        private static readonly string[] Files = { "settings.json", "roi_associations.json" };
+        private static readonly string[] Files = { "settings.json", "roi_associations.json", "gui_state.json" };
 
         private readonly string _folder;
 

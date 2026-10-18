@@ -6,32 +6,87 @@
     change in one place. Button look lives in the Button.primary / Button.danger
     style classes (App.axaml), which read AppAccentBrush / AppDangerBrush below.
 
+    The app follows the OS light/dark setting (App.axaml no longer forces Light).
+    Surfaces, borders, text and the warning/info tints therefore come in a Light and
+    a Dark variant below, and windows must reference them with DynamicResource so
+    they re-resolve when the variant changes; a StaticResource would freeze the
+    variant that was current when the window loaded. The accent bar and its white
+    text read the same in both variants and live outside the theme dictionaries.
+
     Adding a primary action? Use Classes="primary". A destructive / stop action?
-    Classes="danger". Do not reintroduce per-window accent hex.
+    Classes="danger". Do not reintroduce per-window accent hex, and do not
+    hard-code a surface colour (White, #F0F0F0, ...): add a key here instead.
   -->
 
-  <!-- Brand accent: the one colour for headers and primary actions. -->
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <!-- Reserved for Stop / destructive actions and validation errors. -->
+      <SolidColorBrush x:Key="AppDangerBrush" Color="#D32F2F"/>
+
+      <!-- Surfaces and borders. -->
+      <SolidColorBrush x:Key="AppWindowBg" Color="#F5F5F5"/>
+      <SolidColorBrush x:Key="AppSurface" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="AppSurfaceAlt" Color="#FAFAFA"/>
+      <SolidColorBrush x:Key="AppToolbarBg" Color="#F0F0F0"/>
+      <SolidColorBrush x:Key="AppBorder" Color="#DDDDDD"/>
+      <SolidColorBrush x:Key="AppBorderAlt" Color="#CCCCCC"/>
+      <SolidColorBrush x:Key="AppBorderSubtle" Color="#E0E0E0"/>
+      <SolidColorBrush x:Key="AppDivider" Color="#EEEEEE"/>
+
+      <!-- Text scale, lightest-used to darkest. -->
+      <SolidColorBrush x:Key="AppHeadingText" Color="#333333"/>
+      <SolidColorBrush x:Key="AppBodyText" Color="#444444"/>
+      <SolidColorBrush x:Key="AppLabelText" Color="#555555"/>
+      <SolidColorBrush x:Key="AppMutedText" Color="#666666"/>
+      <SolidColorBrush x:Key="AppBadgeText" Color="#888888"/>
+      <SolidColorBrush x:Key="AppHintText" Color="#999999"/>
+
+      <!-- Neutral information strip (key editor file status). -->
+      <SolidColorBrush x:Key="AppInfoBg" Color="#ECEFF1"/>
+      <SolidColorBrush x:Key="AppInfoText" Color="#37474F"/>
+
+      <!-- Warning badges and notes: non-uniform Z, a guessed RT link. -->
+      <SolidColorBrush x:Key="AppWarningBg" Color="#FFF3E0"/>
+      <SolidColorBrush x:Key="AppWarningBorder" Color="#F5A623"/>
+      <SolidColorBrush x:Key="AppWarningText" Color="#8A4B00"/>
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="AppDangerBrush" Color="#EF6C6C"/>
+
+      <SolidColorBrush x:Key="AppWindowBg" Color="#1E1E1E"/>
+      <SolidColorBrush x:Key="AppSurface" Color="#262626"/>
+      <SolidColorBrush x:Key="AppSurfaceAlt" Color="#2D2D2D"/>
+      <SolidColorBrush x:Key="AppToolbarBg" Color="#2A2A2A"/>
+      <SolidColorBrush x:Key="AppBorder" Color="#3F3F3F"/>
+      <SolidColorBrush x:Key="AppBorderAlt" Color="#4A4A4A"/>
+      <SolidColorBrush x:Key="AppBorderSubtle" Color="#3A3A3A"/>
+      <SolidColorBrush x:Key="AppDivider" Color="#353535"/>
+
+      <SolidColorBrush x:Key="AppHeadingText" Color="#F0F0F0"/>
+      <SolidColorBrush x:Key="AppBodyText" Color="#E0E0E0"/>
+      <SolidColorBrush x:Key="AppLabelText" Color="#CCCCCC"/>
+      <SolidColorBrush x:Key="AppMutedText" Color="#B0B0B0"/>
+      <SolidColorBrush x:Key="AppBadgeText" Color="#A0A0A0"/>
+      <SolidColorBrush x:Key="AppHintText" Color="#8C8C8C"/>
+
+      <SolidColorBrush x:Key="AppInfoBg" Color="#263238"/>
+      <SolidColorBrush x:Key="AppInfoText" Color="#CFD8DC"/>
+
+      <SolidColorBrush x:Key="AppWarningBg" Color="#3A2A12"/>
+      <SolidColorBrush x:Key="AppWarningBorder" Color="#C98A1A"/>
+      <SolidColorBrush x:Key="AppWarningText" Color="#FFCC80"/>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- Brand accent: the one colour for headers and primary actions, in either variant. -->
   <SolidColorBrush x:Key="AppAccentBrush" Color="#1976D2"/>
   <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#1565C0"/>
   <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#0D47A1"/>
 
-  <!-- Reserved for Stop / destructive actions and validation errors. -->
-  <SolidColorBrush x:Key="AppDangerBrush" Color="#D32F2F"/>
-
-  <!-- Surfaces and borders. -->
-  <SolidColorBrush x:Key="AppWindowBg" Color="#F5F5F5"/>
-  <SolidColorBrush x:Key="AppSurfaceAlt" Color="#FAFAFA"/>
-  <SolidColorBrush x:Key="AppBorder" Color="#DDDDDD"/>
-  <SolidColorBrush x:Key="AppBorderAlt" Color="#CCCCCC"/>
-
-  <!-- Text scale, lightest-used to darkest. -->
-  <SolidColorBrush x:Key="AppHeadingText" Color="#333333"/>
-  <SolidColorBrush x:Key="AppBodyText" Color="#444444"/>
-  <SolidColorBrush x:Key="AppLabelText" Color="#555555"/>
-  <SolidColorBrush x:Key="AppMutedText" Color="#666666"/>
-  <SolidColorBrush x:Key="AppBadgeText" Color="#888888"/>
-  <SolidColorBrush x:Key="AppHintText" Color="#999999"/>
-
-  <!-- Subtitle text sitting on the accent header bar. -->
+  <!-- Content sitting on the accent header bar: title text, subtitles, the white Help button. -->
+  <SolidColorBrush x:Key="AppOnAccentText" Color="#FFFFFF"/>
   <SolidColorBrush x:Key="AppOnAccentSubtitle" Color="#BBDEFB"/>
+  <SolidColorBrush x:Key="AppOnAccentCaption" Color="#E3F2FD"/>
+  <SolidColorBrush x:Key="AppOnAccentButtonBg" Color="#FFFFFF"/>
 </ResourceDictionary>

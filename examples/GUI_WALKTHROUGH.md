@@ -25,7 +25,10 @@ Or download `DicomRtNifti-gui-<platform>` from the
 builds are self-contained and need no .NET install.
 
 A launcher window offers the two directions: **DICOM → NIfTI** (forward) and **NIfTI → DICOM**
-(reverse).
+(reverse). The app follows the operating system's light or dark theme. Each window remembers its
+folders and checkboxes across launches: they are saved the moment you change them, the export
+toggles to `settings.json` and the folders (plus the reverse window's Convert toggles) to
+`gui_state.json`, both under `%AppData%\DicomToNifti\` (XDG config on Linux and macOS).
 
 ---
 
@@ -35,7 +38,9 @@ A launcher window offers the two directions: **DICOM → NIfTI** (forward) and *
 
 1. Set **Input** — your DICOM archive, scanned recursively — and **Output**, where the NIfTI
    files land.
-2. Click **Scan**. The Patient / Study / Series tree fills in.
+2. Click **Scan**. The Patient / Study / Series tree fills in. Rows badged **non-uniform Z** or
+   **link guessed** deserve a look first; click a series to see it in the **Series inspector**
+   (below).
 3. Tick the patients, or individual series, you want.
 4. In the bottom action bar, tick the artifact types: **Export Images**, **Export Structures**
    (RT-STRUCT → per-ROI masks under `masks/`), **Export Dose** (RT-DOSE → one file per dose under
@@ -110,6 +115,10 @@ ROI prevalence audits, and spacing surveys.
 Note the manifest still costs a rasterization pass, in either front-end. There is no analytic
 contour-area shortcut — a volume in cc means the mask was built.
 
+The survey reads each series on the same flattened grid a conversion writes, so it logs the same
+slice-spacing and missing-position warnings Convert Selected does, and a series with mixed slice
+gaps carries the same volume error in its manifest row.
+
 ### E. Resampled to a target voxel spacing
 
 Tick **Resample to fixed spacing**, click **Set Spacing…**, and enter X / Y / Z in mm. On Convert
@@ -131,11 +140,12 @@ Main window:
 | **Scan** | Walks the input in parallel and builds the Patient → Study → Series tree | `--cohort-scan` |
 | **Stop** | Aborts an in-progress scan or conversion | — |
 | **Select all** | Ticks every patient in the tree | (the CLI converts everything it plans; narrow it with `--patients`) |
+| **Series inspector** | Geometry, RT links and curated tags of the series selected in the tree | `--cohort-scan` (per-series spacing, uniformity and link rule in the JSON) |
 | **Export Images / Structures / Dose** | Which artifact types to write | `--no-images` / `--no-structures` / `--no-doses` invert these |
 | **Export Options…** | Opens the panel below; stays open while you work | — |
 | **Convert Selected** | Run the full export | `--cohort-convert` |
 | **Export Manifest Only** | Survey without writing volumes | `--cohort-manifest` |
-| **Settings…** | Default output directory; open the output folder after a conversion | — (`%AppData%\DicomToNifti\settings.json`) |
+| **Settings…** | Default output directory (used until another output folder has been used; the last one is restored after that); open the output folder after a conversion | — (`%AppData%\DicomToNifti\settings.json`) |
 
 Export Options panel:
 
@@ -154,7 +164,15 @@ same mismatch, before it walks the input tree.
 | **Write DICOM tag sidecar (metadata.json)** + **Select Metadata Tags…** | Per-series `metadata.json` of chosen DICOM attributes and computed values, in three sections | `--metadata-tags` / `--metadata-structure-tags` / `--metadata-dose-tags` |
 
 The tree shows a checkbox at the patient and series level — studies are a structural grouping
-only — and a modality badge in brackets on each series row.
+only — and a modality badge in brackets on each series row. Two amber badges flag what the scan
+found, on the series row and, counted, on its patient row so they show while the tree is collapsed;
+the scan log counts them too:
+
+- **non-uniform Z** — the series' slice gaps are mixed. NIfTI stores one spacing per axis, so the
+  export flattens them and every volume computed from the output is off. The badge appears exactly
+  when Convert Selected and Export Manifest Only would log the warning (hover it to read it).
+- **link guessed** — an RT-STRUCT or RT-DOSE was attached by the largest-series fallback: neither
+  its referenced series UID nor its frame of reference matched an image series in the study.
 
 **Modality scope is fixed, not a control.** Only `CT`, `MR` and `PT` series are linked to
 RT-STRUCT and RT-DOSE during the scan. Other modalities still appear in the tree and still export
@@ -163,10 +181,36 @@ as `image.nii.gz`, but no structures or dose are associated with them.
 **Selected tags are written verbatim, even under Anonymize export.** Asking for `PatientName` or
 `PatientID` puts the real identifiers inside a folder tree whose names were just hashed.
 
+### The series inspector
+
+Click a series row and the panel to the right of the tree describes it from the headers the scan
+already read; nothing is converted.
+
+| Field | What it shows |
+|---|---|
+| **Slice spacing** | The median gap between consecutive slices (a regular-grid reader reports first-to-last distance over slices − 1 instead) |
+| **Distinct gaps** | Every different slice gap. One value is a regular grid; two values without a badge differ only by rounding (0.62 / 0.63 mm on a 0.625 mm grid), under the 5% volume effect the warning starts at |
+| **Pixel spacing**, **Z extent** | In-plane spacing; first-to-last slice distance with its z range |
+| **Frame of reference**, **Series UID** | Selectable, for copying |
+| **RTSTRUCT**, **RTDOSE** | How many are linked, and by which rule: referenced series UID (authoritative), frame of reference UID (ties go to the series with most slices), or largest-series fallback (a guess) |
+
+Amber notes repeat, word for word, the warnings a conversion of the series logs. Below them, every
+linked RT object is listed with its ROI or file count and link rule. The **DICOM tags** tab is a
+read-only grid of curated attributes from the series' first slice and its first linked RT-STRUCT and
+RT-DOSE: the lists **Select Metadata Tags…** offers, under the names the `metadata.json` sidecar
+uses.
+
+`--cohort-scan` reports the same geometry per series in its JSON (`slice_spacing`,
+`slice_spacing_values`, and the link rule as `match_rule`). Its `slice_spacing_uniform` is the strict
+test, false for rounding-only differences too, where the GUI badge uses the conversion warning's 5%
+threshold.
+
 ### Selecting among several image series
 
 The GUI shows slice counts in the tree, so you can see at a glance which series is the planning
-CT and which are the shorter aligned CBCTs, and tick accordingly. The CLI has no tree to look at,
+CT and which are the shorter aligned CBCTs, and tick accordingly; the inspector shows which rule
+linked each structure set, so a set attached by frame of reference alone (the CBCT case) is visible
+before export. The CLI has no tree to look at,
 which is why it has filters instead — `--struct-description` first (structure sets are named for
 what they were drawn on, and CBCTs resampled onto the planning grid are otherwise
 indistinguishable), then `--series-description`, with `--prefer-largest-series` as a last resort
@@ -215,8 +259,10 @@ columns, and new ROI columns are appended without disturbing the existing ones.
 2. The discovered-jobs grid lists what was found (Folder, Image, Masks, ROI Names, Doses, Dose
    Files) and a per-case Status.
 3. Tick **Convert Images / Convert Structures / Convert Dose** as needed.
-4. **Convert All** — or **Run Server** to watch the folder instead (workflow C). **Stop** aborts
-   either.
+4. **Convert All** — or **Run Server** to watch the folder instead (workflow C). As in the forward
+   window, a progress bar counts finished cases and a log box records each case's outcome, with the
+   full text of any error (the grid's Status cell is trimmed; hover it for the rest). **Stop**
+   cancels whatever is running: a scan, a Convert All, or the case a server tick is converting.
 
 ## Workflow walkthroughs
 
@@ -255,14 +301,20 @@ Instance UIDs, so the structure set references the actual images rather than a s
 count, total bytes, latest write time across the folder plus `masks/` and `doses/` — is unchanged
 from the previous tick, i.e. the upload has settled. There is no CLI equivalent; run the app.
 
-Server mode names its outputs `RTSTRUCT_<hash12>.dcm` / `RTDOSE_<hash12>.dcm` and skips a case
-whose output file already exists, where **`hash12` is derived from the input file *names* only** —
-lowercased, sorted, joined, SHA-256'd. Adding or removing a mask changes the name and produces a
-new file alongside the old one. **Overwriting a mask in place does not**: `masks/PTV.nii.gz`
-replaced by a corrected prediction hashes identically, so the next tick sees the output present
-and keeps the stale structure set. Delete the existing `RTSTRUCT_*.dcm` / `RTDOSE_*.dcm` to force
-a rebuild. (Convert All sidesteps this entirely — it timestamps every output,
-`RTSTRUCT_YYYYMMDD_HHmmss.dcm`, and is therefore never idempotent.)
+Server mode names its outputs `RTSTRUCT_<hash12>.dcm` / `RTDOSE_<hash12>.dcm`, where
+**`hash12` is derived from the input file *names* only** — lowercased, sorted, joined, SHA-256'd.
+Adding or removing a mask changes the name and produces a new file alongside the old one. A name
+cannot see content, so server mode also compares times: an existing `RTSTRUCT_<hash12>.dcm` is kept
+only while it is newer than every mask, and rebuilt in place as soon as one is not. A
+`masks/PTV.nii.gz` replaced by a corrected prediction is therefore picked up on the next settled
+tick (the job's status reads "RT-STRUCT rebuilt, a mask was newer"). The RT-DOSE files follow the
+same rule, per dose. Delete the existing `RTSTRUCT_*.dcm` / `RTDOSE_*.dcm` to force a rebuild
+without touching the inputs. (Convert All timestamps every output, `RTSTRUCT_YYYYMMDD_HHmmss.dcm`,
+and is therefore never idempotent.)
+
+While a tick converts, **Stop** cancels the case in progress. The server keeps watching and leaves
+that case alone until one of its files changes, so a case you stopped is not simply restarted ten
+seconds later. **Stop Server** stays clickable during a conversion and cancels it too.
 
 ### D. Batch over many patient folders
 
@@ -284,7 +336,8 @@ UIDs instead of creating a new series each time.
 
 ## Reference: status values and output
 
-The jobs grid reports per-case status as the run proceeds. On completion:
+The jobs grid reports per-case status as the run proceeds, and the log box below it keeps the
+history, including each failure's full error text and every cancellation. On completion:
 
 - The **RT-STRUCT writer** emits `CLOSED_PLANAR` contours for every structure. This is a real
   limitation and worth understanding: a binary mask does not record the original
