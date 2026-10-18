@@ -116,15 +116,18 @@ namespace DicomRtNifti.Core.Services
                     continue;
                 }
 
-                // Cast to float32 for max-finding and scaling.
-                Image doseF = (dose.GetPixelID() == PixelIDValueEnum.sitkFloat32)
+                // Cast to float64 for max-finding and scaling. float32 used to sit here, and its
+                // 24-bit mantissa is ~2^8 coarser than the 32-bit quantization written below: a
+                // 70 Gy plan came back up to 229 quantization steps (3.7 uGy) off a dose the
+                // forward export had written exactly as float64 (W2-E, RtDoseRoundTripTests).
+                Image doseD = (dose.GetPixelID() == PixelIDValueEnum.sitkFloat64)
                     ? dose
-                    : SimpleITK.Cast(dose, PixelIDValueEnum.sitkFloat32);
-                if (!ReferenceEquals(doseF, dose))
+                    : SimpleITK.Cast(dose, PixelIDValueEnum.sitkFloat64);
+                if (!ReferenceEquals(doseD, dose))
                     dose.Dispose();
 
                 BuildPixelDataAndScaling(
-                    doseF,
+                    doseD,
                     out double scaling,
                     out int rows,
                     out int cols,
@@ -133,7 +136,7 @@ namespace DicomRtNifti.Core.Services
                     out double[] spacing,
                     out double[] direction,
                     out byte[] pixelBytes);
-                doseF.Dispose();
+                doseD.Dispose();
 
                 // Build the RT-DOSE dataset.
                 var rtDs = BuildRtDoseShell(refDs, referenceSeries, baseName, timestamp);
@@ -207,8 +210,10 @@ namespace DicomRtNifti.Core.Services
         // ---------- Internals ----------
 
         /// <summary>
-        /// Reads dose voxel values, finds the max, computes a uint32 scaling factor, and returns
-        /// the scaled little-endian uint32 byte buffer suitable for the DICOM PixelData element.
+        /// Reads dose voxel values (from a float64 image), finds the max, computes a uint32
+        /// scaling factor, and returns the scaled little-endian uint32 byte buffer suitable for
+        /// the DICOM PixelData element. Every voxel is then within half a quantization step
+        /// (DoseGridScaling) of the input.
         /// </summary>
         private static void BuildPixelDataAndScaling(
             Image dose,
@@ -240,20 +245,20 @@ namespace DicomRtNifti.Core.Services
                     $"Dose volume too large for 32-bit pixel encoding ({total} voxels).");
             int totalInt = (int)total;
 
-            // Read the float buffer directly into managed memory and do the scaling in C#.
+            // Read the double buffer directly into managed memory and do the scaling in C#.
             // We avoid SimpleITK.Divide because its denominator-zero safety check trips on the
             // very small scaling factors that result from typical dose ranges
             // (scaling = maxDose / uint.MaxValue is ~1e-8 for a max dose of ~80 Gy).
-            IntPtr floatBuf = dose.GetBufferAsFloat();
-            float[] floatData = new float[totalInt];
-            Marshal.Copy(floatBuf, floatData, 0, totalInt);
+            IntPtr doubleBuf = dose.GetBufferAsDouble();
+            double[] doseData = new double[totalInt];
+            Marshal.Copy(doubleBuf, doseData, 0, totalInt);
 
             // Find the max (clipping NaN/infinity and treating negatives as 0).
             double maxVal = 0;
             for (int i = 0; i < totalInt; i++)
             {
-                float v = floatData[i];
-                if (float.IsNaN(v) || float.IsInfinity(v)) continue;
+                double v = doseData[i];
+                if (double.IsNaN(v) || double.IsInfinity(v)) continue;
                 if (v > maxVal) maxVal = v;
             }
 
@@ -271,7 +276,7 @@ namespace DicomRtNifti.Core.Services
 
             for (int i = 0; i < totalInt; i++)
             {
-                double v = floatData[i];
+                double v = doseData[i];
                 if (double.IsNaN(v) || double.IsInfinity(v) || v < 0) v = 0;
                 double scaled = v * inv;
                 if (scaled > uint.MaxValue) scaled = uint.MaxValue;
@@ -313,25 +318,31 @@ namespace DicomRtNifti.Core.Services
             ds.AddOrUpdate(DicomTag.SOPInstanceUID, sopInstanceUid);
             ds.AddOrUpdate(DicomTag.SpecificCharacterSet, "ISO_IR 192");
 
-            // Patient
-            CopyTagIfPresent(refDs, ds, DicomTag.PatientID);
-            CopyTagIfPresent(refDs, ds, DicomTag.PatientName);
-            CopyTagIfPresent(refDs, ds, DicomTag.PatientBirthDate);
-            CopyTagIfPresent(refDs, ds, DicomTag.PatientSex);
+            // Patient and General Study modules. Every attribute here is Type 2 (or Type 1 for
+            // StudyInstanceUID), so it is written empty rather than left out when the reference
+            // lacks it: a reference CT with no birth date or referring physician used to produce
+            // an RT-DOSE missing those elements, which the RT Dose IOD does not allow (W2-E).
+            CopyType2(refDs, ds, DicomTag.PatientID);
+            CopyType2(refDs, ds, DicomTag.PatientName);
+            CopyType2(refDs, ds, DicomTag.PatientBirthDate);
+            CopyType2(refDs, ds, DicomTag.PatientSex);
 
-            // Study (copied)
-            CopyTagIfPresent(refDs, ds, DicomTag.StudyInstanceUID);
-            CopyTagIfPresent(refDs, ds, DicomTag.StudyDate);
-            CopyTagIfPresent(refDs, ds, DicomTag.StudyTime);
-            CopyTagIfPresent(refDs, ds, DicomTag.AccessionNumber);
-            CopyTagIfPresent(refDs, ds, DicomTag.ReferringPhysicianName);
-            CopyTagIfPresent(refDs, ds, DicomTag.StudyID);
+            string studyUid = GetStringTag(refDs, DicomTag.StudyInstanceUID, "");
+            if (string.IsNullOrEmpty(studyUid))
+                studyUid = DicomUIDGenerator.GenerateDerivedFromUUID().UID;
+            ds.AddOrUpdate(DicomTag.StudyInstanceUID, studyUid);
+            CopyType2(refDs, ds, DicomTag.StudyDate);
+            CopyType2(refDs, ds, DicomTag.StudyTime);
+            CopyType2(refDs, ds, DicomTag.AccessionNumber);
+            CopyType2(refDs, ds, DicomTag.ReferringPhysicianName);
+            CopyType2(refDs, ds, DicomTag.StudyID);
 
-            // RT-DOSE series (new)
+            // RT-DOSE series (new). Operators' Name is Type 2 in the RT Series module.
             ds.AddOrUpdate(DicomTag.Modality, "RTDOSE");
             ds.AddOrUpdate(DicomTag.SeriesInstanceUID, seriesInstanceUid);
             ds.AddOrUpdate(DicomTag.SeriesNumber, 1);
             ds.AddOrUpdate(DicomTag.SeriesDescription, $"Generated RTDOSE: {baseName}");
+            ds.AddOrUpdate(DicomTag.OperatorsName, "");
             ds.AddOrUpdate(DicomTag.InstanceNumber, 1);
 
             // Manufacturer / instance creation
@@ -354,17 +365,21 @@ namespace DicomRtNifti.Core.Services
             return ds;
         }
 
-        private static void CopyTagIfPresent(DicomDataset src, DicomDataset dst, DicomTag tag)
+        /// <summary>
+        /// Copies a Type 2 attribute from the reference, or writes it empty when the reference
+        /// does not carry it (or carries a value that cannot be read): Type 2 means present,
+        /// possibly zero-length, never absent.
+        /// </summary>
+        private static void CopyType2(DicomDataset src, DicomDataset dst, DicomTag tag)
         {
+            string v = "";
             try
             {
                 if (src.Contains(tag))
-                {
-                    string v = src.GetSingleValueOrDefault(tag, "");
-                    dst.AddOrUpdate(tag, v ?? "");
-                }
+                    v = src.GetSingleValueOrDefault(tag, "") ?? "";
             }
-            catch (Exception) { }
+            catch (Exception) { v = ""; }
+            dst.AddOrUpdate(tag, v);
         }
 
         private static string GetStringTag(DicomDataset ds, DicomTag tag, string defaultValue)
