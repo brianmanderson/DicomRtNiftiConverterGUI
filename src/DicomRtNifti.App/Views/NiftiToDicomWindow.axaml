@@ -53,10 +53,10 @@
                     Background="Transparent" FontSize="12">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Folder" Binding="{Binding FolderDisplayName}" Width="150"/>
-              <DataGridTextColumn Header="Image" Binding="{Binding ImageDisplay}" Width="72"/>
-              <DataGridTextColumn Header="Masks" Binding="{Binding MaskCount}" Width="76"/>
+              <DataGridTextColumn Header="Image" Binding="{Binding ImageDisplay}" Width="84"/>
+              <DataGridTextColumn Header="Masks" Binding="{Binding MaskCount}" Width="84"/>
               <DataGridTextColumn Header="ROI Names" Binding="{Binding MaskNames}" Width="*"/>
-              <DataGridTextColumn Header="Doses" Binding="{Binding DoseCount}" Width="76"/>
+              <DataGridTextColumn Header="Doses" Binding="{Binding DoseCount}" Width="84"/>
               <DataGridTextColumn Header="Dose Files" Binding="{Binding DoseNames}" Width="*"/>
               <!-- Trimmed to the column; the tooltip and the log below carry the full text. -->
               <DataGridTemplateColumn Header="Status" Width="260">

@@ -91,6 +91,8 @@ namespace DicomRtNifti.App.Tests
                 await vm.RunServerTickAsync();
                 Assert.StartsWith("Cancelled", job.Status);
                 Assert.Empty(Directory.GetFiles(caseFolder, "RTSTRUCT_*.dcm"));
+                Assert.Contains("1 cancelled, left alone until their files change", vm.StatusText);
+                Assert.DoesNotContain("waiting for stability", vm.StatusText);
 
                 Screenshots.Capture(window, "11_nifti_to_dicom_server_stopped_job");
 

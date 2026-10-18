@@ -775,6 +775,7 @@ namespace DicomRtNifti.App.ViewModels
                 // 2. Decide which folders are settled (same signature as last tick). A folder whose
                 //    job Stop cancelled waits until its files change.
                 var settled = new List<NiftiToDicomJob>();
+                int parked = 0;
                 foreach (var job in DiscoveredJobs)
                 {
                     string sig;
@@ -785,7 +786,10 @@ namespace DicomRtNifti.App.ViewModels
                     if (_cancelledFingerprints.TryGetValue(job.DicomFolder, out cancelledAt))
                     {
                         if (cancelledAt == sig)
+                        {
+                            parked++;
                             continue;
+                        }
                         _cancelledFingerprints.Remove(job.DicomFolder);
                     }
 
@@ -801,7 +805,11 @@ namespace DicomRtNifti.App.ViewModels
 
                 if (settled.Count == 0)
                 {
-                    StatusText = $"Server running — {DiscoveredJobs.Count} folder(s), waiting for stability...";
+                    int waiting = DiscoveredJobs.Count - parked;
+                    var parts = new List<string>();
+                    if (waiting > 0) parts.Add($"{waiting} folder(s) waiting for stability");
+                    if (parked > 0) parts.Add($"{parked} cancelled, left alone until their files change");
+                    StatusText = $"Server running — {string.Join("; ", parts)}. Watching '{RootFolder}'.";
                     return;
                 }
 
