@@ -186,6 +186,10 @@ as `image.nii.gz`, but no structures or dose are associated with them.
 Click a series row and the panel to the right of the tree describes it from the headers the scan
 already read; nothing is converted.
 
+![The forward window after scanning a synthetic phantom CT with ten slices removed: the patient and
+series rows carry the non-uniform Z badge, and the series inspector shows gaps of 1 and 2 mm, the
+RTSTRUCT linked by referenced series UID, and the conversion warning](images/gui-series-inspector.png)
+
 | Field | What it shows |
 |---|---|
 | **Slice spacing** | The median gap between consecutive slices (a regular-grid reader reports first-to-last distance over slices − 1 instead) |
@@ -199,6 +203,9 @@ linked RT object is listed with its ROI or file count and link rule. The **DICOM
 read-only grid of curated attributes from the series' first slice and its first linked RT-STRUCT and
 RT-DOSE: the lists **Select Metadata Tags…** offers, under the names the `metadata.json` sidecar
 uses.
+
+![The DICOM tags tab of the series inspector: section, attribute and value for the curated image
+tags of the same phantom series](images/gui-series-inspector-tags.png)
 
 `--cohort-scan` reports the same geometry per series in its JSON (`slice_spacing`,
 `slice_spacing_values`, and the link rule as `match_rule`). Its `slice_spacing_uniform` is the strict
@@ -315,6 +322,13 @@ and is therefore never idempotent.)
 While a tick converts, **Stop** cancels the case in progress. The server keeps watching and leaves
 that case alone until one of its files changes, so a case you stopped is not simply restarted ten
 seconds later. **Stop Server** stays clickable during a conversion and cancels it too.
+
+![Server mode on the phantom case exported by the forward window: converted on the first settled
+tick, then a mask overwritten in place and the RT-STRUCT rebuilt at the same path, recorded in the
+log](images/gui-nifti-to-dicom-rebuilt.png)
+
+![The same case after Stop was pressed during a rebuild: the job reads cancelled, the server keeps
+watching and leaves it alone until its files change](images/gui-nifti-to-dicom-stopped.png)
 
 ### D. Batch over many patient folders
 
