@@ -374,22 +374,25 @@ namespace DicomRtNifti.Core.Services
         // SimpleITK's managed wrapper hands file paths to the native library through the ANSI
         // code page on Windows, so a path containing a character outside that code page is
         // best-fit mapped or lost before the native ever sees it: "Ĺ_ROI.nii.gz" is written as
-        // "L_ROI.nii.gz" on a cp1252 system, and reading it back fails. ROI names are user
-        // data, so every path this service hands to the native goes through the two helpers
-        // below. An ASCII path, and every path on Linux and macOS, goes straight through; on
-        // Windows a non-ASCII path is written to an ASCII temporary file and moved into place
-        // with .NET's wide-character file API, or copied out the same way before reading.
+        // "L_ROI.nii.gz" on a cp1252 system, and reading it back fails. Nor can the native open
+        // a path of 260 characters (MAX_PATH) or more, even with long paths enabled in Windows,
+        // and a deep output folder plus a long ROI name gets there. ROI names are user data, so
+        // every path this service hands to the native goes through the two helpers below. A
+        // short ASCII path, and every path on Linux and macOS, goes straight through; on
+        // Windows any other path is written to a short ASCII temporary file and moved into
+        // place with .NET's wide-character, long-path-capable file API, or copied out the same
+        // way before reading.
 
         /// <summary>Writes <paramref name="image"/> to <paramref name="path"/>, see the note above.</summary>
         internal static void WriteImageSafely(Image image, string path)
         {
-            if (!NeedsAsciiDetour(path))
+            if (!NeedsDetour(path))
             {
                 SimpleITK.WriteImage(image, path);
                 return;
             }
 
-            string tmp = AsciiTempPath(path);
+            string tmp = DetourTempPath(path);
             try
             {
                 SimpleITK.WriteImage(image, tmp);
@@ -404,10 +407,10 @@ namespace DicomRtNifti.Core.Services
         /// <summary>Reads the image at <paramref name="path"/>, see the note above.</summary>
         internal static Image ReadImageSafely(string path)
         {
-            if (!NeedsAsciiDetour(path))
+            if (!NeedsDetour(path))
                 return SimpleITK.ReadImage(path);
 
-            string tmp = AsciiTempPath(path);
+            string tmp = DetourTempPath(path);
             try
             {
                 File.Copy(path, tmp, overwrite: true);
@@ -419,30 +422,42 @@ namespace DicomRtNifti.Core.Services
             }
         }
 
+        // The native opens at most 259 characters (MAX_PATH less the terminator); detouring from
+        // 250 leaves a margin, at the cost of a file move for the few paths inside it.
+        internal const int LongPathThreshold = 250;
+
+        internal static bool NeedsDetour(string path) => NeedsAsciiDetour(path) || NeedsLongPathDetour(path);
+
         internal static bool NeedsAsciiDetour(string path) =>
             OperatingSystem.IsWindows() && path != null && path.Any(c => c > 127);
 
-        private static string AsciiTempPath(string path)
+        // Measured on the full path: the native resolves a relative one against the working directory.
+        internal static bool NeedsLongPathDetour(string path) =>
+            OperatingSystem.IsWindows() && !string.IsNullOrEmpty(path) && Path.GetFullPath(path).Length >= LongPathThreshold;
+
+        private static string DetourTempPath(string path)
         {
             // Keep the NIfTI extension: ITK chooses its reader/writer by it, and .nii.gz must stay gzipped.
             string ext = path.EndsWith(".nii.gz", StringComparison.OrdinalIgnoreCase) ? ".nii.gz" : Path.GetExtension(path);
             if (ext.Any(c => c > 127))
                 ext = "";
 
-            // The detour only helps if the detour itself is ASCII: the user's temp folder sits in
-            // their profile, whose name need not be. Fall back to the target's own folder, and
-            // fail with both paths named rather than hand SimpleITK another unrepresentable path.
+            // The detour only helps if the detour itself is a path the native can open, ASCII and
+            // short: the user's temp folder sits in their profile, whose name need not be ASCII.
+            // Fall back to the target's own folder, and fail with both paths named rather than
+            // hand SimpleITK another path it cannot open.
             string name = "drt_sitk_" + Guid.NewGuid().ToString("N") + ext;
             string tempDir = Path.GetTempPath();
-            if (!tempDir.Any(c => c > 127))
+            if (!NeedsDetour(Path.Combine(tempDir, name)))
                 return Path.Combine(tempDir, name);
             string targetDir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? "";
-            if (targetDir.Length > 0 && !targetDir.Any(c => c > 127))
+            if (targetDir.Length > 0 && !NeedsDetour(Path.Combine(targetDir, name)))
                 return Path.Combine(targetDir, name);
             throw new InvalidOperationException(
                 $"Cannot read or write '{path}' through SimpleITK on Windows: the path contains characters " +
-                $"outside the system code page, and neither the temp folder '{tempDir}' nor the target's " +
-                "folder offers an ASCII location to stage it through. Use a folder whose path is ASCII.");
+                $"outside the system code page or is {LongPathThreshold} characters or longer, and neither the " +
+                $"temp folder '{tempDir}' nor the target's folder offers a short ASCII location to stage it " +
+                "through. Use a shorter folder whose path is ASCII.");
         }
 
         /// <summary>
