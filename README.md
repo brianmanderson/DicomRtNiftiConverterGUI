@@ -264,16 +264,22 @@ Key points:
   series, so printing it in a notebook cannot leak identifiers. Re-identification lives solely in
   `AnonymizationKey.json` — which also records the `--salt` in plaintext, so it is re-identification
   data twice over. Keep it out of version control.
+- **The key is written outside the export.** By default it goes to a folder beside it,
+  `OUT.key/AnonymizationKey.json`, so zipping or uploading `OUT` does not ship the key with the
+  pseudonyms. `--key-path FILE|FOLDER` puts it elsewhere; a location inside `--output` is refused
+  (exit 2), and the JSON's `anonymization_key` gives its full path. A key that an earlier version
+  wrote inside the output root is merged into the new location on the next anonymized run, with a
+  warning naming the old copy: move or delete it before sharing the export.
 - **A `--salt` that disagrees with an existing `AnonymizationKey.json` is refused.** The salt is
   half of every hash in that file, so continuing under a different one would leave some patients
   carrying salt-A pseudonyms and the rest salt-B, in a key file recording only the later salt —
   two sets that can no longer be linked. The run stops before the tree is walked and names both
   salts. Use the recorded salt, or start a new output root. A key file that exists but does not
   parse is likewise refused rather than replaced.
-- **`--anonymize` does not filter `--metadata-tags`.** Selected tags are written to each series'
-  `metadata.json` verbatim, so `--metadata-tags PatientName,PatientID` puts the real identifiers
-  back inside a folder tree whose names you just hashed. Choose the tags accordingly; the GUI's
-  Export Options panel carries the same warning.
+- **`--anonymize` de-identifies `metadata.json`.** PatientID, StudyInstanceUID and
+  SeriesInstanceUID carry the export's hashes, so the sidecar still joins to the folders and the
+  manifest; person names, dates, times, ages, instance UIDs and identifying attributes (IDs,
+  addresses, institution, device) are written as `null`. The GUI's Convert Selected does the same.
 - **Volumes cost a rasterization pass.** There is no analytic contour-area shortcut;
   `--no-volumes` skips the work and writes the missing sentinel (`-1`) instead.
 - **The manifest merges.** Re-running extends it — rows are keyed on the three identifier columns,
@@ -454,6 +460,7 @@ Anonymized (folders named by deterministic per-identifier hashes; a patient's da
         masks/
           {ROI_Name}.nii.gz
   export_manifest.csv
+{OutputFolder}.key/         # beside the export, not in it (or the Key location chosen in Export Options)
   AnonymizationKey.json     # the salt + three reverse-lookup maps: MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash
 ```
 
@@ -514,10 +521,10 @@ Point the **NIfTI -> DICOM** window at a single such folder, or at a parent fold
 
 Stored in `%AppData%\DicomToNifti\`:
 
-- `settings.json` - default output directory, auto-open after conversion, global Export Images / Export Structures / Export Dose toggles, output spacing, anonymization salt (`HashSalt`), and the persisted state of the "Limit export to selected ROIs" / "Anonymize export" / "Resample to fixed spacing" checkboxes.
+- `settings.json` - default output directory, auto-open after conversion, global Export Images / Export Structures / Export Dose toggles, output spacing, anonymization salt (`HashSalt`), anonymization key location (`AnonymizationKeyPath`, empty for the default), and the persisted state of the "Limit export to selected ROIs" / "Anonymize export" / "Resample to fixed spacing" checkboxes.
 - `roi_associations.json` - ROI canonical-name <-> alias-set mappings used to rename DICOM ROIs to canonical names on export.
 
-`AnonymizationKey.json` (only present when anonymizing) lives in the **output folder** alongside the per-patient subfolders, not in `%AppData%`. It holds the salt plus three reverse-lookup maps - MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash - so anonymized exports can be traced back to their original identifiers. **It is re-identification data: store it access-controlled and keep it out of version control.** Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders.
+`AnonymizationKey.json` (only present when anonymizing) is written **beside the output folder, never inside it**: by default to `<output folder>.key\AnonymizationKey.json`, or to the **Key location** chosen in Export Options (`--key-path` on the CLI), which must lie outside the export. Sharing the export folder therefore does not share the key. It holds the salt plus three reverse-lookup maps - MRN->PatientHash, StudyUID->StudyHash, SeriesUID->SeriesHash - so anonymized exports can be traced back to their original identifiers. **It is re-identification data: store it access-controlled and keep it out of version control.** Hashes are deterministic (SHA256 of the salted identifier), so re-running an export reuses the same hashes and folders. A key that an earlier version wrote inside the output folder is merged into the new location on the next anonymized export (manual overrides included), and the log names the old copy so you can move or delete it; it is never deleted for you.
 
 ## History
 

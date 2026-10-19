@@ -17,6 +17,9 @@ namespace DicomRtNifti.Core.Services
     /// </summary>
     public class AnonymizationService
     {
+        /// <summary>The salt used when none is supplied.</summary>
+        public const string DefaultSalt = "DicomToNifti";
+
         private readonly string _salt;
         private readonly string _keyFilePath;
         private readonly Dictionary<string, string> _patients; // mrn       -> patient hash
@@ -41,7 +44,7 @@ namespace DicomRtNifti.Core.Services
         public AnonymizationService(string keyFilePath, string salt)
         {
             _keyFilePath = keyFilePath;
-            _salt = salt ?? "DicomToNifti";
+            _salt = salt ?? DefaultSalt;
 
             var keyFile = LoadKeyFile(_keyFilePath);
             if (keyFile != null)
@@ -58,6 +61,12 @@ namespace DicomRtNifti.Core.Services
                 _series = new Dictionary<string, string>();
             }
         }
+
+        /// <summary>
+        /// The key file this service loads from and saves to. For an export it lies outside the
+        /// export root (<see cref="AnonymizationKeyLocation"/>).
+        /// </summary>
+        public string KeyFilePath => _keyFilePath;
 
         /// <summary>
         /// Produces a deterministic, filesystem-safe hash string from the input + salt.

@@ -111,6 +111,7 @@ nifti/
       Eclipse Doses.nii.gz             # every linked dose, not just the first
     metadata.json                      # ImageAttributes / StructureAttributes / DoseAttributes
   export_manifest.csv                  # identifiers, spacing, per-ROI volume (cc)
+nifti.key/                             # --anonymize: beside the export, never in it (or --key-path)
   AnonymizationKey.json                # reverse lookup — keep this OUT of git
 ```
 
@@ -129,13 +130,16 @@ combining the two — the notebook's §10 shows the one-line `sitk.Resample` tha
 ## A note on privacy
 
 `AnonymizationKey.json` maps each hash back to the source identifier. **It is re-identification
-data.** Store it access-controlled, keep it out of version control, and delete it when you no
-longer need it. This folder's `.gitignore` already excludes it along with all imaging data.
+data.** It is written beside the export (`nifti.key/`, or wherever `--key-path` points), never
+inside it, so the export folder can be shared without it; a `--key-path` inside the export is
+refused. Store the key access-controlled, keep it out of version control, and delete it when you
+no longer need it. This folder's `.gitignore` already excludes it along with all imaging data.
 
-Two related traps the notebook calls out:
+Two related points the notebook calls out:
 
-- **Metadata tags are copied verbatim.** Requesting `PatientName` or `PatientID` writes the
-  identifiers straight back into a series whose folder name you just hashed.
+- **Metadata tags are de-identified under `--anonymize`.** `PatientID`, `StudyInstanceUID` and
+  `SeriesInstanceUID` become the export's hashes; names, dates and other identifying values are
+  written as `null`. Without `--anonymize` they are written as read.
 - **Notebook output gets committed.** The cohort JSON contains only hashes under `--anonymize`,
   including for skipped and unlinked series, so printing it is safe. That is a deliberate
   property, not an accident — but it only protects the JSON, not any cell where you print the

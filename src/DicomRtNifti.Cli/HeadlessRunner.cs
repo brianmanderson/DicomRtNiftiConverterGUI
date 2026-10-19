@@ -1041,7 +1041,10 @@ namespace DicomRtNifti.Cli
             Console.Error.WriteLine("                                    (warns without --associations; exit 1 if nothing matches)");
             Console.Error.WriteLine("  --output-spacing X,Y,Z            resample to a fixed grid, mm");
             Console.Error.WriteLine("                                    (--target-spacing is accepted as an alias)");
-            Console.Error.WriteLine("  --anonymize [--salt STRING]       hash identifiers; writes AnonymizationKey.json");
+            Console.Error.WriteLine("  --anonymize [--salt STRING]       hash identifiers; writes AnonymizationKey.json outside");
+            Console.Error.WriteLine("                                    the output, in <output>.key/ beside it by default");
+            Console.Error.WriteLine("  --key-path FILE|FOLDER            with --anonymize: where to write the key instead");
+            Console.Error.WriteLine("                                    (refused inside --output)");
             Console.Error.WriteLine("  --patients ID,ID                  restrict to these PatientIDs");
             Console.Error.WriteLine("  --series-description SUBSTR       keep image series whose description matches");
             Console.Error.WriteLine("  --struct-description SUBSTR       keep image series whose linked RTSTRUCT");

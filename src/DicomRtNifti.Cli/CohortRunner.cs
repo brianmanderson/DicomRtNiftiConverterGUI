@@ -24,8 +24,10 @@ namespace DicomRtNifti.Cli
     ///   * Per-series paths are relative to the output root and use forward slashes; only the
     ///     root itself is absolute.
     ///   * Under --anonymize the document contains hashes only — never a source PatientID,
-    ///     StudyInstanceUID, or file path. Re-identification lives solely in AnonymizationKey.json.
-    ///     Notebooks get committed, so their cell output must not carry PHI.
+    ///     StudyInstanceUID, or file path. Re-identification lives solely in AnonymizationKey.json,
+    ///     which is written outside the output root (beside it by default, or at --key-path) and
+    ///     whose full path is anonymization_key. Notebooks get committed, so their cell output must
+    ///     not carry PHI.
     /// Exit codes match the other modes: 0 ok, 1 conversion failure, 2 bad arguments.
     /// </summary>
     internal static class CohortRunner
@@ -220,13 +222,24 @@ namespace DicomRtNifti.Cli
             // outright — an unreadable key, or one recorded under a different salt — and refusing
             // after a full tree walk means the operator waits out a scan of the whole cohort to be
             // told the run was never going to start.
+            // The key goes beside the export (or to --key-path), never inside it (#54); a key an
+            // earlier run left inside the root is merged in and reported, not ignored.
             AnonymizationService anon = null;
             if (options.Anonymize)
             {
-                Directory.CreateDirectory(options.OutputRoot);
-                anon = new AnonymizationService(
-                    Path.Combine(options.OutputRoot, CohortExportService.AnonymizationKeyFileName),
-                    options.Salt);
+                string legacyKeyWarning;
+                try
+                {
+                    anon = AnonymizationKeyLocation.Open(
+                        options.OutputRoot, options.KeyPath, options.Salt, out legacyKeyWarning);
+                }
+                catch (ArgumentException ex)
+                {
+                    throw new CliUsageException(ex.Message);
+                }
+                if (legacyKeyWarning != null)
+                    Console.Error.WriteLine("  WARNING: " + legacyKeyWarning);
+                Console.Error.WriteLine($"  Anonymization key: {anon.KeyFilePath}");
             }
 
             var scan = ScanTree(options.InputRoot);
@@ -271,6 +284,14 @@ namespace DicomRtNifti.Cli
             string salt = CliArgs.OptionalArg(args, "--salt");
             if (!string.IsNullOrEmpty(salt))
                 options.Salt = salt;
+
+            string keyPath = CliArgs.OptionalArg(args, "--key-path");
+            if (!string.IsNullOrEmpty(keyPath))
+            {
+                if (!options.Anonymize)
+                    throw new CliUsageException("--key-path places the anonymization key, so it needs --anonymize.");
+                options.KeyPath = keyPath;
+            }
 
             string manifestName = CliArgs.OptionalArg(args, "--manifest-name");
             if (!string.IsNullOrEmpty(manifestName))

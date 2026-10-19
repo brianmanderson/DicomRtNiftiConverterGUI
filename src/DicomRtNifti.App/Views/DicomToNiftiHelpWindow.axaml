@@ -97,10 +97,11 @@
             tick <Run FontWeight="SemiBold">Anonymize export</Run> before Convert Selected. Each
             exported identifier (MRN, Study UID, Series UID) is replaced by a deterministic per-identifier
             hash; the output layout uses the hashed identifiers in place of the patient / series folder
-            names. An <Run FontFamily="Consolas">AnonymizationKey.json</Run> is written at the output root
-            mapping each hash back to its original identifier. Re-exporting the same series in any later
-            session — even into a different output folder that already has an
-            <Run FontFamily="Consolas">AnonymizationKey.json</Run> — reuses the previously assigned hash.
+            names. An <Run FontFamily="Consolas">AnonymizationKey.json</Run> mapping each hash back to its
+            original identifier is written beside the export, in
+            <Run FontFamily="Consolas">{Output}.key\</Run>, never inside it, so the export folder can be
+            shared on its own. Re-exporting the same series in any later session reuses the previously
+            assigned hash.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="C. Restricted ROI cohort with canonical renames"/>
@@ -353,12 +354,15 @@
             <Run FontFamily="Consolas">"DicomToNifti"</Run>, configurable in Settings) and SHA256-hashed,
             and the resulting hash is used in place of the original identifier.
             <LineBreak/>
-            <Run FontFamily="Consolas">AnonymizationKey.json</Run> is written to the output folder
-            and reused across sessions: the same identifier will always receive the same hash
-            provided the file is preserved.
+            <Run FontFamily="Consolas">AnonymizationKey.json</Run> is written outside the export, by
+            default to a folder beside it (<Run FontFamily="Consolas">{Output}.key\</Run>), and reused
+            across sessions: the same identifier will always receive the same hash provided the file is
+            preserved. <Run FontWeight="SemiBold">Key location</Run> places it elsewhere (a file, or a
+            folder to hold it); a location inside the export is refused, and the line under the field
+            shows where the key will go. The log names the key's path at the end of every anonymized export.
             <LineBreak/>
-            <Run FontWeight="SemiBold">Edit Anonymization Key...</Run> opens the key file in an
-            editor (output-folder copy if set, else the
+            <Run FontWeight="SemiBold">Edit Anonymization Key...</Run> opens that key file in an
+            editor (or, with no output folder set, the Key location, else the
             <Run FontFamily="Consolas">%AppData%\DicomToNifti\</Run> fallback) where you can view and
             override any input → hash mapping.
           </TextBlock>
@@ -442,7 +446,9 @@
 │   └─ masks/
 │       └─ {ROI_Name}.nii.gz       → per-ROI binary mask
 │
-├─ export_manifest.csv
+└─ export_manifest.csv
+
+{Output}.key/                                               <Run Foreground="{DynamicResource AppBadgeText}">(beside the export, not in it; or the Key location)</Run>
 └─ AnonymizationKey.json                                    <Run Foreground="{DynamicResource AppBadgeText}">(deterministic identifier ↔ hash mapping)</Run></TextBlock>
           </Border>
           <TextBlock Classes="body">
@@ -480,17 +486,25 @@
 
           <TextBlock Classes="h1" Text="AnonymizationKey.json"/>
           <TextBlock Classes="body">
-            Written to the output root whenever <Run FontWeight="SemiBold">Anonymize export</Run>
-            was ON. It holds the salt plus three reverse-lookup maps — MRN → patient hash, Study UID →
-            study hash, Series UID → series hash — so each original identifier always resolves to the
-            same hash and the mapping can be inverted for de-anonymization.
+            Written whenever <Run FontWeight="SemiBold">Anonymize export</Run> was ON, outside the
+            export: to <Run FontFamily="Consolas">{Output}.key\AnonymizationKey.json</Run> beside it by
+            default, or to the <Run FontWeight="SemiBold">Key location</Run> in Export Options. It holds
+            the salt plus three reverse-lookup maps — MRN → patient hash, Study UID → study hash,
+            Series UID → series hash — so each original identifier always resolves to the same hash and
+            the mapping can be inverted for de-anonymization. It is re-identification data: keep it,
+            access-controlled, and do not share it with the export.
           </TextBlock>
           <TextBlock Classes="body">
             Determinism guarantee: identical identifier + identical salt always yields the same hash
-            across sessions, provided the existing
-            <Run FontFamily="Consolas">AnonymizationKey.json</Run> in the target output folder is
-            preserved. Deleting that file does not change the hashes (they are recomputed
-            deterministically) but discards any manual overrides set in the key editor.
+            across sessions, provided the existing key file is preserved. Deleting it does not change
+            the hashes (they are recomputed deterministically) but discards any manual overrides set in
+            the key editor.
+          </TextBlock>
+          <TextBlock Classes="body">
+            Exports made before the key moved out wrote it inside the output folder. The next anonymized
+            export to that folder carries its mappings, overrides included, into the new location and
+            logs a warning naming the old copy; move or delete that copy before sharing the export. It
+            is never deleted for you.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Tips"/>

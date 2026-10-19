@@ -34,10 +34,14 @@ namespace DicomRtNifti.App.Tests
     /// Anonymized, every file the export writes — NIfTI headers and payloads (also inside the
     /// gzip stream), metadata.json, the manifest, file and folder names — plus the log the convert
     /// wrote and the GUI state it saved is searched for every source identifier, as UTF-8 and
-    /// UTF-16. AnonymizationKey.json is exempt: it is the re-identification key, and the test
-    /// asserts it holds the identifiers, so the audit is known to look for the right values.
-    /// Not anonymized, the same tags are written verbatim and the same search finds them, which
-    /// is the search's positive control.
+    /// UTF-16. Nothing under the export is exempt: AnonymizationKey.json, the re-identification
+    /// key, is written beside the export since #54, and the test asserts it holds the identifiers,
+    /// so the audit is known to look for the right values. Not anonymized, the same tags are
+    /// written verbatim and the same search finds them, which is the search's positive control.
+    ///
+    /// The key's location is driven through the window too: a Key location inside the export is
+    /// refused before anything is written, and a key an earlier export left inside the folder is
+    /// carried across, its pinned pseudonym intact, with a warning that names the old copy.
     /// </summary>
     public class AnonymizedExportMetadataTests
     {
@@ -79,11 +83,15 @@ namespace DicomRtNifti.App.Tests
             using (var launcher = new LauncherSession())
             {
                 string convertLog = await ConvertSelectedAsync(launcher, cohort, anonymize: true);
-                string keyPath = Path.Combine(cohort.OutputFolder, KeyFileName);
+                string keyPath = cohort.SiblingKeyPath;
+
+                // The key is beside the export, never in it (#54), and the log says where.
+                Assert.Empty(Directory.GetFiles(cohort.OutputFolder, KeyFileName, SearchOption.AllDirectories));
+                Assert.Contains($"Anonymization key (outside the export; keep it, do not share it): {keyPath}", convertLog);
 
                 // The audit is only as good as the identifiers it looks for: the key, which maps
                 // each source identifier to its hash, must hold the ones the export was given.
-                Assert.True(File.Exists(keyPath), "AnonymizationKey.json missing");
+                Assert.True(File.Exists(keyPath), "AnonymizationKey.json missing beside the export");
                 string keyText = File.ReadAllText(keyPath);
                 foreach (var p in cohort.Patients)
                 {
@@ -94,7 +102,7 @@ namespace DicomRtNifti.App.Tests
 
                 var identifiers = cohort.Patients.SelectMany(p => p.Identifiers()).ToList();
                 var leaks = new List<string>();
-                AuditTree(cohort.OutputFolder, keyPath, identifiers, leaks);
+                AuditTree(cohort.OutputFolder, identifiers, leaks);
                 AuditText("convert log", convertLog, identifiers, leaks);
                 string stateFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DicomToNifti");
@@ -174,8 +182,8 @@ namespace DicomRtNifti.App.Tests
             using (var launcher = new LauncherSession())
             {
                 await ConvertSelectedAsync(launcher, cohort, anonymize: false);
-                Assert.False(File.Exists(Path.Combine(cohort.OutputFolder, KeyFileName)),
-                    "a non-anonymized export wrote an anonymization key");
+                Assert.Empty(Directory.GetFiles(cohort.OutputFolder, KeyFileName, SearchOption.AllDirectories));
+                Assert.False(File.Exists(cohort.SiblingKeyPath), "a non-anonymized export wrote an anonymization key");
 
                 var sidecars = Directory.GetFiles(cohort.OutputFolder, "metadata.json", SearchOption.AllDirectories);
                 Assert.Equal(cohort.Patients.Count, sidecars.Length);
@@ -217,12 +225,73 @@ namespace DicomRtNifti.App.Tests
             }
         }
 
+        [AvaloniaFact]
+        public async Task A_key_location_inside_the_export_is_refused_before_anything_is_written()
+        {
+            using (new UserSettingsGuard())
+            using (var cohort = new PhiCohort())
+            using (var launcher = new LauncherSession())
+            {
+                string inside = Path.Combine(cohort.OutputFolder, "keys");
+                string convertLog = await ConvertSelectedAsync(launcher, cohort, anonymize: true,
+                    configure: vm =>
+                    {
+                        vm.AnonymizationKeyPath = inside;
+                        // Export Options says so before Convert is pressed.
+                        Assert.Contains("inside the export folder", vm.AnonymizationKeyLocationText);
+                    },
+                    expectComplete: false);
+
+                Assert.Contains("Conversion error", convertLog);
+                Assert.Contains("inside the export folder", convertLog);
+                Assert.Empty(Directory.GetFileSystemEntries(cohort.OutputFolder));
+                Assert.False(File.Exists(cohort.SiblingKeyPath));
+            }
+        }
+
+        [AvaloniaFact]
+        public async Task A_key_an_earlier_export_left_inside_the_folder_is_carried_across_with_its_overrides()
+        {
+            using (new UserSettingsGuard())
+            using (var cohort = new PhiCohort())
+            using (var launcher = new LauncherSession())
+            {
+                // What an export before #54 left behind: a key at the output root, with one
+                // pseudonym pinned by hand in the key editor.
+                var pinned = cohort.Patients[0];
+                const string PinnedHash = "P_PINNED_0001";
+                string legacy = Path.Combine(cohort.OutputFolder, KeyFileName);
+                AnonymizationService.SaveKeyFile(legacy, new AnonymizationKeyFile
+                {
+                    Salt = Salt,
+                    Patients = new Dictionary<string, string> { [pinned.PatientId] = PinnedHash },
+                });
+
+                string convertLog = await ConvertSelectedAsync(launcher, cohort, anonymize: true);
+
+                Assert.Contains($"Warning: An anonymization key from an earlier export is inside the export folder: '{legacy}'", convertLog);
+                Assert.True(File.Exists(legacy), "the old key was deleted; it may be the only copy");
+
+                // Tracking back still works: the pinned pseudonym names the folder and the sidecar,
+                // and the key beside the export maps it back to the MRN.
+                var key = AnonymizationService.LoadKeyFile(cohort.SiblingKeyPath);
+                Assert.Equal(PinnedHash, key.Patients[pinned.PatientId]);
+                string sidecar = Path.Combine(cohort.OutputFolder, PinnedHash,
+                    key.Studies[pinned.StudyUid], key.Series[pinned.CtSeriesUid], "metadata.json");
+                Assert.True(File.Exists(sidecar), "the pinned pseudonym did not name the export folder");
+                Assert.Equal(PinnedHash, (string)JObject.Parse(File.ReadAllText(sidecar))["ImageAttributes"][Friendly("PatientID")]);
+            }
+        }
+
         /// <summary>
         /// Seeds the tag picker's choices the way the picker persists them, opens DICOM → NIfTI
         /// from the launcher, scans the cohort and runs Convert Selected over every series.
+        /// <paramref name="configure"/> sets anything else on the window before Convert.
         /// Returns the part of the log the convert wrote.
         /// </summary>
-        private async Task<string> ConvertSelectedAsync(LauncherSession launcher, PhiCohort cohort, bool anonymize)
+        private async Task<string> ConvertSelectedAsync(
+            LauncherSession launcher, PhiCohort cohort, bool anonymize,
+            Action<MainViewModel> configure = null, bool expectComplete = true)
         {
             launcher.Services.Settings.SaveSettings(new AppSettings
             {
@@ -258,6 +327,7 @@ namespace DicomRtNifti.App.Tests
                 }
 
                 vm.AllPatientsSelected = true;
+                configure?.Invoke(vm);
                 int logStart = vm.LogText.Length;
                 Assert.True(vm.ConvertSelectedCommand.CanExecute(null));
                 await vm.ConvertSelectedCommand.ExecuteAsync(null);
@@ -267,10 +337,13 @@ namespace DicomRtNifti.App.Tests
                 // posted through Progress<T> and lands after "Conversion complete." (#59).
                 string convertLog = vm.LogText.Substring(logStart);
                 _out.WriteLine(convertLog);
-                Assert.DoesNotContain("Conversion error", convertLog);
-                Assert.Contains($"Conversion complete. {cohort.Patients.Count} series exported to", convertLog);
-                Assert.DoesNotContain("metadata.json failed", convertLog);
-                Assert.DoesNotContain("verbatim", convertLog);
+                if (expectComplete)
+                {
+                    Assert.DoesNotContain("Conversion error", convertLog);
+                    Assert.Contains($"Conversion complete. {cohort.Patients.Count} series exported to", convertLog);
+                    Assert.DoesNotContain("metadata.json failed", convertLog);
+                    Assert.DoesNotContain("verbatim", convertLog);
+                }
                 return convertLog;
             }
             finally
@@ -347,6 +420,9 @@ namespace DicomRtNifti.App.Tests
             public string InputFolder { get; }
             public string OutputFolder { get; }
             public IReadOnlyList<SyntheticPatient> Patients { get; }
+
+            /// <summary>Where an anonymized export to <see cref="OutputFolder"/> writes its key by default.</summary>
+            public string SiblingKeyPath => Path.Combine(OutputFolder + ".key", KeyFileName);
 
             public PhiCohort()
             {
@@ -499,17 +575,14 @@ namespace DicomRtNifti.App.Tests
         // ── the audit ──────────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Searches every file under <paramref name="root"/> except <paramref name="keyPath"/>:
-        /// its path, its raw bytes, and its decompressed bytes when it is gzip.
+        /// Searches every file under <paramref name="root"/>, none exempt: its path, its raw
+        /// bytes, and its decompressed bytes when it is gzip.
         /// </summary>
         private static void AuditTree(
-            string root, string keyPath, List<KeyValuePair<string, string>> identifiers, List<string> leaks)
+            string root, List<KeyValuePair<string, string>> identifiers, List<string> leaks)
         {
             foreach (string file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
             {
-                if (string.Equals(Path.GetFullPath(file), Path.GetFullPath(keyPath), StringComparison.OrdinalIgnoreCase))
-                    continue;
-
                 string rel = file.Substring(root.Length + 1).Replace('\\', '/');
                 AuditText(rel + " (path)", rel, identifiers, leaks);
 

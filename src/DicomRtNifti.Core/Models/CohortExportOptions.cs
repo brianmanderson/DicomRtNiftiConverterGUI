@@ -94,9 +94,16 @@ namespace DicomRtNifti.Core.Models
 
         /// <summary>
         /// When true, output folders and manifest identifier columns carry salted hashes and an
-        /// AnonymizationKey.json is written into <see cref="OutputRoot"/>.
+        /// AnonymizationKey.json is written outside <see cref="OutputRoot"/> (see <see cref="KeyPath"/>).
         /// </summary>
         public bool Anonymize { get; set; }
+
+        /// <summary>
+        /// Where the anonymization key goes: a file, or a folder to hold AnonymizationKey.json.
+        /// Null or empty for the default, a sibling folder <c>&lt;OutputRoot&gt;.key/</c>. A location
+        /// at or under <see cref="OutputRoot"/> is refused (<see cref="Services.AnonymizationKeyLocation"/>).
+        /// </summary>
+        public string KeyPath { get; set; }
 
         /// <summary>Salt for the deterministic hashes. The same salt reproduces the same folder names.</summary>
         public string Salt { get; set; } = "DicomToNifti";

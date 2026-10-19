@@ -53,8 +53,18 @@
           <Button Content="Edit Anonymization Key..." Command="{Binding OpenAnonymizationKeyEditorCommand}"
                   IsEnabled="{Binding AnonymizeExport}"
                   Padding="12,8" Margin="4,4,4,12" FontSize="13"/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AppMutedText}" Margin="4,0,4,8"
+                     Text="When checked, exports use hashed folder IDs instead of patient names. AnonymizationKey.json maps every hash back to its MRN / Study UID / Series UID across sessions. It is written outside the export, so sharing the export folder does not share the key."/>
+          <TextBlock Text="Key location (empty: a folder beside the export, &lt;output folder&gt;.key)" FontSize="12"
+                     Foreground="{DynamicResource AppHeadingText}" Margin="4,4,4,2" TextWrapping="Wrap"/>
+          <Grid ColumnDefinitions="*,Auto" Margin="4,0,4,4" IsEnabled="{Binding AnonymizeExport}">
+            <TextBox Grid.Column="0" Text="{Binding AnonymizationKeyPath, UpdateSourceTrigger=LostFocus}"
+                     Watermark="Default: beside the export" FontSize="12"/>
+            <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowseAnonymizationKeyFolderCommand}"
+                    Padding="10,4" Margin="6,0,0,0" FontSize="12"/>
+          </Grid>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AppMutedText}" Margin="4,0,4,0"
-                     Text="When checked, exports use hashed folder IDs instead of patient names. A CSV manifest and AnonymizationKey.json track all mappings across sessions."/>
+                     Text="{Binding AnonymizationKeyLocationText}"/>
 
           <Separator Margin="0,12"/>
 

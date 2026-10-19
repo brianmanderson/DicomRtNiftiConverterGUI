@@ -51,6 +51,13 @@ namespace DicomRtNifti.Core.Models
         public string HashSalt { get; set; } = "DicomToNifti";
 
         /// <summary>
+        /// Where anonymized exports write AnonymizationKey.json: a file, or a folder to hold it.
+        /// Empty for the default, a sibling folder &lt;output folder&gt;.key beside the export. A
+        /// location inside the export is refused (AnonymizationKeyLocation).
+        /// </summary>
+        public string AnonymizationKeyPath { get; set; } = "";
+
+        /// <summary>
         /// When true, all exports (image, dose, masks) are resampled to the user-specified output spacing.
         /// </summary>
         public bool SpecifyOutputSpacing { get; set; } = false;
