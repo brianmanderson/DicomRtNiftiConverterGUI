@@ -65,6 +65,18 @@ namespace DicomRtNifti.Core.Services
         /// </summary>
         public static void WriteMetadataJson(MetadataExportRequest request, string outputJsonPath)
         {
+            WriteMetadataJson(request, outputJsonPath, null);
+        }
+
+        /// <summary>
+        /// As <see cref="WriteMetadataJson(MetadataExportRequest, string)"/>, passing every DICOM
+        /// value through <paramref name="deidentifier"/> first when one is given. An anonymized
+        /// export must pass one: without it the selected tags are written verbatim, PHI included.
+        /// Computed "@..." values are not touched.
+        /// </summary>
+        public static void WriteMetadataJson(
+            MetadataExportRequest request, string outputJsonPath, MetadataDeidentifier deidentifier)
+        {
             if (request == null)
                 return;
 
@@ -84,7 +96,7 @@ namespace DicomRtNifti.Core.Services
                         return MetadataComputedValues.ImageDimensions(ds, sliceCount);
                     return null;
                 };
-                root["ImageAttributes"] = BuildSection(ds, request.ImageKeywords, resolver);
+                root["ImageAttributes"] = BuildSection(ds, request.ImageKeywords, resolver, deidentifier);
             }
 
             if (request.StructureKeywords != null && request.StructureKeywords.Count > 0)
@@ -98,7 +110,7 @@ namespace DicomRtNifti.Core.Services
                         return MetadataComputedValues.RoiCount(ds);
                     return null;
                 };
-                root["StructureAttributes"] = BuildSection(ds, request.StructureKeywords, resolver);
+                root["StructureAttributes"] = BuildSection(ds, request.StructureKeywords, resolver, deidentifier);
             }
 
             if (request.DoseKeywords != null && request.DoseKeywords.Count > 0)
@@ -115,7 +127,7 @@ namespace DicomRtNifti.Core.Services
                         return MetadataComputedValues.DoseVoxelSize(ds);
                     return null;
                 };
-                root["DoseAttributes"] = BuildSection(ds, request.DoseKeywords, resolver);
+                root["DoseAttributes"] = BuildSection(ds, request.DoseKeywords, resolver, deidentifier);
             }
 
             string json = JsonConvert.SerializeObject(root, Formatting.Indented);
@@ -149,7 +161,8 @@ namespace DicomRtNifti.Core.Services
         /// falls back to the raw keyword as the key.
         /// </summary>
         private static Dictionary<string, object> BuildSection(
-            DicomDataset dataset, IReadOnlyList<string> keywords, Func<string, object> computedResolver)
+            DicomDataset dataset, IReadOnlyList<string> keywords, Func<string, object> computedResolver,
+            MetadataDeidentifier deidentifier)
         {
             var section = new Dictionary<string, object>();
             if (keywords == null)
@@ -169,6 +182,8 @@ namespace DicomRtNifti.Core.Services
                 else if (dataset != null && map.TryGetValue(keyword, out var tag))
                 {
                     value = ExtractValue(dataset, tag);
+                    if (deidentifier != null && value != null)
+                        value = deidentifier.Apply(tag, VrCodeOf(dataset, tag), value);
                 }
                 else
                 {
@@ -185,6 +200,20 @@ namespace DicomRtNifti.Core.Services
                     section[keyword] = value; // friendly-name collision: fall back to raw keyword
             }
             return section;
+        }
+
+        /// <summary>The element's VR as written in the file, falling back to the dictionary's.</summary>
+        private static string VrCodeOf(DicomDataset dataset, DicomTag tag)
+        {
+            try
+            {
+                string code = dataset.GetDicomItem<DicomItem>(tag)?.ValueRepresentation?.Code;
+                if (!string.IsNullOrEmpty(code))
+                    return code;
+            }
+            catch { /* fall through to the dictionary */ }
+            var vrs = tag.DictionaryEntry?.ValueRepresentations;
+            return vrs != null && vrs.Length > 0 ? vrs[0].Code : "";
         }
 
         /// <summary>

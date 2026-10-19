@@ -112,24 +112,55 @@ namespace DicomRtNifti.Core.Services
             string doseFilePath = doseSeries.FilePaths[0];
             Image doseImage = ReadImageSafely(doseFilePath);
 
-            // Check for DoseGridScaling
+            // Stored values to dose in Gy: DoseGridScaling, then the unit. The NIfTI carries no
+            // unit, and NIfTI -> RT-DOSE (RtDoseWriterService) labels every volume GY, so a CGY
+            // dose exported as centigray numbers came back a hundredfold overdose (W2-E). A
+            // RELATIVE dose has no Gy equivalent and is written as stored, with a warning.
+            double factor = 1.0;
+            DicomDataset ds = null;
             try
             {
-                var dcmFile = DicomFile.Open(doseFilePath);
-                var ds = dcmFile.Dataset;
-                if (ds.Contains(DicomTag.DoseGridScaling))
+                ds = DicomFile.Open(doseFilePath, FileReadOption.SkipLargeTags).Dataset;
+            }
+            catch (Exception ex)
+            {
+                // A dose written without its scale is wrong by orders of magnitude, so say so
+                // rather than continue silently.
+                progress?.Report($"  WARNING: could not read the RT-DOSE header ({ex.Message}); " +
+                    "the dose is written as stored values, without DoseGridScaling or unit conversion.");
+            }
+
+            if (ds != null)
+            {
+                if (ds.TryGetSingleValue(DicomTag.DoseGridScaling, out double scaling))
                 {
-                    double scaling = ds.GetSingleValue<double>(DicomTag.DoseGridScaling);
-                    if (Math.Abs(scaling) > 1e-10 && Math.Abs(scaling - 1.0) > 1e-10)
-                    {
-                        doseImage = SimpleITK.Cast(doseImage, PixelIDValueEnum.sitkFloat64);
-                        doseImage = SimpleITK.Multiply(doseImage, scaling);
-                    }
+                    if (Math.Abs(scaling) > 1e-10)
+                        factor = scaling;
+                }
+                else if (ds.Contains(DicomTag.DoseGridScaling))
+                {
+                    progress?.Report("  WARNING: DoseGridScaling is unreadable; the dose is written unscaled.");
+                }
+
+                string units = (ds.GetSingleValueOrDefault(DicomTag.DoseUnits, "") ?? "").Trim();
+                if (string.Equals(units, "CGY", StringComparison.OrdinalIgnoreCase))
+                {
+                    factor *= 0.01;
+                    progress?.Report("  Dose units are CGY; converted to Gy.");
+                }
+                else if (string.Equals(units, "RELATIVE", StringComparison.OrdinalIgnoreCase))
+                {
+                    progress?.Report("  Dose units are RELATIVE: written unconverted. NIfTI -> RT-DOSE " +
+                        "labels every dose GY, so do not write this volume back as an absolute dose.");
                 }
             }
-            catch (Exception)
+
+            if (Math.Abs(factor - 1.0) > 1e-10)
             {
-                // Proceed without scaling if tag read fails
+                var asDouble = SimpleITK.Cast(doseImage, PixelIDValueEnum.sitkFloat64);
+                doseImage.Dispose();
+                doseImage = SimpleITK.Multiply(asDouble, factor);
+                asDouble.Dispose();
             }
 
             if (targetSpacing != null)

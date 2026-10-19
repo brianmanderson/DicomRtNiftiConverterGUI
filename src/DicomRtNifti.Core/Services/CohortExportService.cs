@@ -375,7 +375,7 @@ namespace DicomRtNifti.Core.Services
                 try
                 {
                     var seriesResult = await ConvertSeriesAsync(
-                        planned, options, outputRoot, progress, ct, writeFiles).ConfigureAwait(false);
+                        planned, options, anon, outputRoot, progress, ct, writeFiles).ConfigureAwait(false);
 
                     result.Series.Add(seriesResult);
                     result.SucceededCount++;
@@ -500,6 +500,7 @@ namespace DicomRtNifti.Core.Services
         private async Task<SeriesExportResult> ConvertSeriesAsync(
             PlannedSeries planned,
             CohortExportOptions options,
+            AnonymizationService anon,
             string outputRoot,
             IProgress<string> progress,
             CancellationToken ct,
@@ -632,8 +633,11 @@ namespace DicomRtNifti.Core.Services
                     ImageVoxelSpacing = spacing,
                 };
 
+                // Anonymized, the sidecar gets the same treatment as the folder names and the
+                // manifest: pseudonyms for the three identifiers, nothing identifying otherwise.
+                var deidentifier = options.Anonymize && anon != null ? new MetadataDeidentifier(anon) : null;
                 string metaPath = Path.Combine(outputDir, "metadata.json");
-                await Task.Run(() => DicomMetadataExtractor.WriteMetadataJson(request, metaPath), ct)
+                await Task.Run(() => DicomMetadataExtractor.WriteMetadataJson(request, metaPath, deidentifier), ct)
                     .ConfigureAwait(false);
                 seriesResult.Metadata = Join(planned.RelativeOutputDir, "metadata.json");
             }
