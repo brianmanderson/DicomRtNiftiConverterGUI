@@ -28,9 +28,10 @@ namespace DicomRtNifti.Core.Tests
     /// export log and the cohort result the CLI serializes — is searched for every source
     /// identifier.
     ///
-    /// The one file allowed to hold them is AnonymizationKey.json: it is the re-identification
-    /// key, written into the export root by design, and the test asserts it does hold them so
-    /// the identifiers searched for are known to be the ones the export saw.
+    /// No file under the export root is exempt. The one file allowed to hold the identifiers is
+    /// AnonymizationKey.json, the re-identification key, and since #54 it is written beside the
+    /// export, never in it: the test asserts it is absent from the export and that the key beside
+    /// it does hold them, so the identifiers searched for are known to be the ones the export saw.
     /// </summary>
     public class AnonymizedExportPhiAuditTests
     {
@@ -169,8 +170,8 @@ namespace DicomRtNifti.Core.Tests
                     StructureKeywords = StructureKeywords,
                     DoseKeywords = DoseKeywords,
                 };
-                var anon = new AnonymizationService(
-                    Path.Combine(outputRoot, CohortExportService.AnonymizationKeyFileName), Salt);
+                var anon = AnonymizationKeyLocation.Open(outputRoot, null, Salt, out string legacyKeyWarning);
+                Assert.Null(legacyKeyWarning);
                 var plan = CohortExportService.BuildPlan(scan, options, anon);
                 Assert.Equal(Patients.Length, plan.Series.Count);
                 Assert.All(plan.Series, s => Assert.NotNull(s.RtStruct));
@@ -183,7 +184,11 @@ namespace DicomRtNifti.Core.Tests
                 Assert.Equal(Patients.Length, result.SucceededCount);
 
                 var identifiers = Patients.SelectMany(p => p.Identifiers()).ToList();
-                string keyPath = Path.Combine(outputRoot, CohortExportService.AnonymizationKeyFileName);
+
+                // The key is written beside the export, never in it (#54), and the result says where.
+                string keyPath = Path.Combine(outputRoot + ".key", AnonymizationKeyLocation.FileName);
+                Assert.Equal(keyPath, result.AnonymizationKey);
+                Assert.Empty(Directory.GetFiles(outputRoot, AnonymizationKeyLocation.FileName, SearchOption.AllDirectories));
 
                 // The audit is only as good as the identifiers it looks for: the key, which maps
                 // each source identifier to its hash, must hold the ones the export was given.
@@ -197,7 +202,7 @@ namespace DicomRtNifti.Core.Tests
 
                 // Pass 1: the forward export as written, before any reverse run touches it.
                 var leaks = new List<string>();
-                AuditTree(outputRoot, keyPath, identifiers, leaks);
+                AuditTree(outputRoot, null, identifiers, leaks);
                 AuditText("export log", string.Join("\n", log.Messages), identifiers, leaks);
                 AuditText("cohort result", JsonConvert.SerializeObject(result), identifiers, leaks);
                 AuditText("cohort plan (skipped/unlinked)",
@@ -224,7 +229,7 @@ namespace DicomRtNifti.Core.Tests
                         dir, null, reverseLog, CancellationToken.None, useStableHashNames: true, metadata: metadata);
                     Assert.True(File.Exists(Assert.Single(doses)));
                 }
-                AuditTree(outputRoot, keyPath, identifiers, leaks);
+                AuditTree(outputRoot, null, identifiers, leaks);
                 AuditText("reverse log", string.Join("\n", reverseLog.Messages), identifiers, leaks);
 
                 var files = Directory.GetFiles(outputRoot, "*", SearchOption.AllDirectories)

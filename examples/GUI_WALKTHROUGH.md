@@ -66,12 +66,13 @@ The five steps above, unchanged. Equivalent to:
 Open **Export Options** and tick **Anonymize export** before Convert Selected. Each exported
 identifier — MRN, Study UID, Series UID — is replaced by a deterministic per-identifier hash, and
 the output layout uses those hashes in place of the patient and series folder names. An
-`AnonymizationKey.json` is written at the output root mapping each hash back to its original.
+`AnonymizationKey.json` mapping each hash back to its original is written beside the export, in
+`<output folder>.key\`, never inside it, so the export folder can be shared on its own. **Key
+location** in Export Options puts it elsewhere; a location inside the export is refused.
 
-Re-exporting the same series in a later session — even into a different output folder that
-already has an `AnonymizationKey.json` — reuses the previously assigned hash. That is what makes
-a cohort growable rather than duplicated, and it is the same property the notebook relies on in
-§11.
+Re-exporting the same series in a later session reuses the previously assigned hash. That is what
+makes a cohort growable rather than duplicated, and it is the same property the notebook relies on
+in §11.
 
 ```bash
 --cohort-convert --input ARCHIVE --output OUT --anonymize --salt "your-salt"
@@ -155,13 +156,14 @@ Export Options panel:
 | **Limit export to selected ROIs** + **Select ROIs for Export…** | Drop ROIs that match no association; choose which canonical names to keep | `--only-associated-rois` |
 | **Resample to fixed spacing** + **Set Spacing…** | Target voxel grid in mm | `--output-spacing X,Y,Z` |
 | **Anonymize export** + **Edit Anonymization Key…** | Hash identifiers; write (and hand-override) the key file | `--anonymize --salt` |
+| **Key location** + **Browse…** | Where the key file goes; empty for `<output folder>.key\` beside the export; refused inside the export | `--key-path FILE\|FOLDER` |
+| **Write DICOM tag sidecar (metadata.json)** + **Select Metadata Tags…** | Per-series `metadata.json` of chosen DICOM attributes and computed values, in three sections | `--metadata-tags` / `--metadata-structure-tags` / `--metadata-dose-tags` |
 
 **The key editor refuses a key file whose recorded salt is not the one in Settings**, and says so
 on open rather than after you have edited it. The salt is half of every hash in that file, so
 rewriting it under a different one would give already-exported patients a second, unlinkable
-pseudonym. Change `HashSalt` back, or point the export at a fresh output root. The CLI refuses the
+pseudonym. Change `HashSalt` back, or point the export at a fresh key location. The CLI refuses the
 same mismatch, before it walks the input tree.
-| **Write DICOM tag sidecar (metadata.json)** + **Select Metadata Tags…** | Per-series `metadata.json` of chosen DICOM attributes and computed values, in three sections | `--metadata-tags` / `--metadata-structure-tags` / `--metadata-dose-tags` |
 
 The tree shows a checkbox at the patient and series level — studies are a structural grouping
 only — and a modality badge in brackets on each series row. Two amber badges flag what the scan
@@ -178,8 +180,9 @@ the scan log counts them too:
 RT-STRUCT and RT-DOSE during the scan. Other modalities still appear in the tree and still export
 as `image.nii.gz`, but no structures or dose are associated with them.
 
-**Selected tags are written verbatim, even under Anonymize export.** Asking for `PatientName` or
-`PatientID` puts the real identifiers inside a folder tree whose names were just hashed.
+**Selected tags are de-identified under Anonymize export.** Patient ID and the Study and Series
+Instance UIDs carry the export's hashes, and names, dates, times, ages, instance UIDs and
+identifying attributes are written as null. Without Anonymize export they are written as read.
 
 ### The series inspector
 
@@ -243,8 +246,10 @@ file — see [Read the mask path from stdout](../README.md#headless-mode) for th
 does not depend on which ROIs you selected.
 
 **Anonymized** — the same tree with a three-level hash triple in place of the patient and series
-folders, plus `AnonymizationKey.json` at the output root. That key file holds the salt as well as
-the hash→identifier maps: it is re-identification data, so keep it out of version control.
+folders. `AnonymizationKey.json` is not in the tree: it is written beside it, in
+`{Output}.key\` (or the Key location), so the export can be shared without it. That key file holds
+the salt as well as the hash→identifier maps: it is re-identification data, so keep it out of
+version control.
 
 The CSV manifest sits at the output root either way — `export_manifest.csv` from Convert Selected,
 `export_manifest_meta.csv` from Export Manifest Only (the CLI writes `export_manifest.csv` for

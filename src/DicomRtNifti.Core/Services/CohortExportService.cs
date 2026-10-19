@@ -28,8 +28,11 @@ namespace DicomRtNifti.Core.Services
                 ?? throw new ArgumentNullException(nameof(conversionService));
         }
 
-        /// <summary>Anonymization key filename written into the cohort root.</summary>
-        public const string AnonymizationKeyFileName = "AnonymizationKey.json";
+        /// <summary>
+        /// Anonymization key filename. The key is written outside the cohort root; see
+        /// <see cref="AnonymizationKeyLocation"/>.
+        /// </summary>
+        public const string AnonymizationKeyFileName = AnonymizationKeyLocation.FileName;
 
         // -----------------------------------------------------------------------------------
         //  Planning (pure)
@@ -322,6 +325,14 @@ namespace DicomRtNifti.Core.Services
             bool writeFiles)
         {
             string outputRoot = Path.GetFullPath(options.OutputRoot);
+
+            // The key re-identifies every patient in the export, so it must not be written into it
+            // (#54). The front-ends resolve it through AnonymizationKeyLocation, which already
+            // refuses this; the check here covers any other caller, before a file is written.
+            string keyPath = options.Anonymize && anon != null ? Path.GetFullPath(anon.KeyFilePath) : null;
+            if (keyPath != null && AnonymizationKeyLocation.IsWithin(keyPath, outputRoot))
+                throw new InvalidOperationException(AnonymizationKeyLocation.BuildInsideExportMessage(keyPath, outputRoot));
+
             Directory.CreateDirectory(outputRoot);
 
             var result = new CohortExportResult
@@ -329,7 +340,7 @@ namespace DicomRtNifti.Core.Services
                 OutputRoot = outputRoot,
                 ManifestCsv = options.ManifestFileName,
                 Anonymized = options.Anonymize,
-                AnonymizationKey = options.Anonymize ? AnonymizationKeyFileName : null,
+                AnonymizationKey = keyPath,
                 OutputSpacing = options.OutputSpacing,
                 VolumesComputed = options.ComputeVolumes,
                 Skipped = plan.Skipped,

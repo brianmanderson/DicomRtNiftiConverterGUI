@@ -18,7 +18,10 @@ namespace DicomRtNifti.Core.Models
         /// <summary>True when identifiers in output paths, the manifest and this result are hashed.</summary>
         public bool Anonymized { get; set; }
 
-        /// <summary>Anonymization key filename relative to the root, or null when not anonymizing.</summary>
+        /// <summary>
+        /// Full path of the anonymization key, which lies outside the root, or null when not
+        /// anonymizing.
+        /// </summary>
         public string AnonymizationKey { get; set; }
 
         /// <summary>The spacing every series was resampled to, or null when native grids were kept.</summary>

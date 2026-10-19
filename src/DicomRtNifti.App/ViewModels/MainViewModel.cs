@@ -63,6 +63,7 @@ namespace DicomRtNifti.App.ViewModels
         private bool _includeDose = true;
         private bool _onlyExportSpecificRois;
         private bool _anonymizeExport;
+        private string _anonymizationKeyPath = "";
         private bool _allPatientsSelected = true;
         private bool _specifyOutputSpacing;
         private double _outputSpacingX = 1.0;
@@ -104,6 +105,7 @@ namespace DicomRtNifti.App.ViewModels
             ManageAssociationsCommand = new AsyncRelayCommand(OpenAssociationsAsync);
             SelectRoisCommand = new AsyncRelayCommand(OpenRoiSelectionAsync);
             OpenAnonymizationKeyEditorCommand = new AsyncRelayCommand(OpenAnonymizationKeyEditorAsync);
+            BrowseAnonymizationKeyFolderCommand = new AsyncRelayCommand(BrowseAnonymizationKeyFolderAsync);
             OpenSettingsCommand = new AsyncRelayCommand(OpenSettingsAsync);
             SelectAllPatientsCommand = new RelayCommand(ToggleSelectAllPatients);
             ExportMetaDataCommand = new AsyncRelayCommand(ExecuteExportMetaDataAsync,
@@ -134,6 +136,7 @@ namespace DicomRtNifti.App.ViewModels
             _includeDose = _settings.IncludeDose;
             _onlyExportSpecificRois = _settings.OnlyExportSpecificRois;
             _anonymizeExport = _settings.AnonymizeExport;
+            _anonymizationKeyPath = _settings.AnonymizationKeyPath ?? "";
             _specifyOutputSpacing = _settings.SpecifyOutputSpacing;
             _outputSpacingX = _settings.OutputSpacingX;
             _outputSpacingY = _settings.OutputSpacingY;
@@ -153,7 +156,7 @@ namespace DicomRtNifti.App.ViewModels
         public string OutputFolder
         {
             get { return _outputFolder; }
-            set { _outputFolder = value; OnPropertyChanged(); RefreshCommands(); RememberFolder(value, s => s.LastOutputFolder = value); }
+            set { _outputFolder = value; OnPropertyChanged(); OnPropertyChanged(nameof(AnonymizationKeyLocationText)); RefreshCommands(); RememberFolder(value, s => s.LastOutputFolder = value); }
         }
 
         /// <summary>True when no scan results are loaded yet — drives the tree's empty-state hint.</summary>
@@ -232,6 +235,42 @@ namespace DicomRtNifti.App.ViewModels
             get { return _anonymizeExport; }
             set { if (_anonymizeExport == value) return; _anonymizeExport = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); PersistSetting(s => s.AnonymizeExport = value); }
         }
+
+        /// <summary>
+        /// Where an anonymized export writes AnonymizationKey.json: a file, or a folder to hold it.
+        /// Empty for the default folder beside the export (<see cref="AnonymizationKeyLocation"/>).
+        /// </summary>
+        public string AnonymizationKeyPath
+        {
+            get { return _anonymizationKeyPath; }
+            set
+            {
+                value = value ?? "";
+                if (_anonymizationKeyPath == value) return;
+                _anonymizationKeyPath = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(AnonymizationKeyLocationText));
+                PersistSetting(s => s.AnonymizationKeyPath = value);
+            }
+        }
+
+        /// <summary>Where the key of an anonymized export to the current output folder would go, or why it cannot.</summary>
+        public string AnonymizationKeyLocationText
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(OutputFolder))
+                    return "Choose an output folder to see where the key will be written.";
+                try
+                {
+                    return "Key file: " + AnonymizationKeyLocation.Resolve(OutputFolder, AnonymizationKeyPath);
+                }
+                catch (ArgumentException ex)
+                {
+                    return ex.Message;
+                }
+            }
+        }
         public bool ExportDicomMetadata
         {
             get { return _exportDicomMetadata; }
@@ -283,6 +322,7 @@ namespace DicomRtNifti.App.ViewModels
         public IAsyncRelayCommand ManageAssociationsCommand { get; }
         public IAsyncRelayCommand SelectRoisCommand { get; }
         public IAsyncRelayCommand OpenAnonymizationKeyEditorCommand { get; }
+        public IAsyncRelayCommand BrowseAnonymizationKeyFolderCommand { get; }
         public IAsyncRelayCommand OpenSettingsCommand { get; }
         public IRelayCommand SelectAllPatientsCommand { get; }
         public IAsyncRelayCommand ExportMetaDataCommand { get; }
@@ -303,6 +343,13 @@ namespace DicomRtNifti.App.ViewModels
         {
             string picked = await _folderPicker.PickFolderAsync("Select DICOM input folder", InputFolder);
             if (!string.IsNullOrEmpty(picked)) InputFolder = picked;
+        }
+
+        private async Task BrowseAnonymizationKeyFolderAsync()
+        {
+            string picked = await _folderPicker.PickFolderAsync(
+                "Select a folder for AnonymizationKey.json (outside the export)", AnonymizationKeyPath);
+            if (!string.IsNullOrEmpty(picked)) AnonymizationKeyPath = picked;
         }
 
         private async Task BrowseOutputAsync()
@@ -524,10 +571,14 @@ namespace DicomRtNifti.App.ViewModels
                 int completed = 0;
 
                 AnonymizationService anonService = null;
+                MetadataDeidentifier metadataDeidentifier = null;
                 if (AnonymizeExport)
                 {
-                    string keyFilePath = Path.Combine(OutputFolder, "AnonymizationKey.json");
-                    anonService = new AnonymizationService(keyFilePath, _settings.HashSalt);
+                    // Beside the export or at the chosen key location, never inside it (#54). A
+                    // location inside the export throws here, before any file is written.
+                    anonService = OpenAnonymizationKey();
+                    // The rule CohortExportService applies to the CLI's cohort export (W2-E, #53).
+                    metadataDeidentifier = new MetadataDeidentifier(anonService);
                 }
 
                 var spacingPerSeries = new Dictionary<string, double[]>();
@@ -619,13 +670,13 @@ namespace DicomRtNifti.App.ViewModels
                     // Sidecar metadata.json: a section per modality (image tags from the series' first
                     // slice, structure tags from the linked RTSTRUCT, dose tags from the linked RTDOSE).
                     // Independent of the per-modality export toggles (outputDir always exists) and of
-                    // ExportImages. Tags are written verbatim, so warn when this lands in an anonymized export.
+                    // ExportImages. An anonymized export de-identifies it: PatientID / StudyInstanceUID /
+                    // SeriesInstanceUID carry this export's hashes, so the sidecar still joins to the
+                    // folders and manifest, and identifying values are written as null.
                     if (ExportDicomMetadata &&
                         (_metadataImageTagKeywords.Count > 0 || _metadataStructureTagKeywords.Count > 0 ||
                          _metadataDoseTagKeywords.Count > 0))
                     {
-                        if (AnonymizeExport)
-                            AppendLog($"  Warning: metadata.json for {displayLabel} writes selected tags verbatim — may include PHI in an anonymized export.");
                         try
                         {
                             var request = new MetadataExportRequest
@@ -642,7 +693,7 @@ namespace DicomRtNifti.App.ViewModels
                             };
                             string metaPath = Path.Combine(outputDir, "metadata.json");
                             await Task.Run(() =>
-                                DicomMetadataExtractor.WriteMetadataJson(request, metaPath), _cts.Token).ConfigureAwait(true);
+                                DicomMetadataExtractor.WriteMetadataJson(request, metaPath, metadataDeidentifier), _cts.Token).ConfigureAwait(true);
                             progress.Report($"Wrote metadata.json: {displayLabel}");
                         }
                         catch (Exception ex)
@@ -677,6 +728,8 @@ namespace DicomRtNifti.App.ViewModels
                 WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames);
 
                 AppendLog($"Conversion complete. {completed} series exported to {OutputFolder}");
+                if (anonService != null)
+                    AppendLog($"Anonymization key (outside the export; keep it, do not share it): {anonService.KeyFilePath}");
                 StatusText = "Conversion complete.";
 
                 if (_settings.AutoOpenAfterConversion)
@@ -808,10 +861,7 @@ namespace DicomRtNifti.App.ViewModels
                 // PatientID/StudyUID/SeriesUID columns carry hashes and the key file is written/extended.
                 AnonymizationService anonService = null;
                 if (AnonymizeExport)
-                {
-                    string keyFilePath = Path.Combine(OutputFolder, "AnonymizationKey.json");
-                    anonService = new AnonymizationService(keyFilePath, _settings.HashSalt);
-                }
+                    anonService = OpenAnonymizationKey();
 
                 var manifestRows = BuildManifestRows(selectedSeries, anonService, spacingPerSeries, roiVolumesPerSeries);
 
@@ -828,6 +878,8 @@ namespace DicomRtNifti.App.ViewModels
                 WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames, "export_manifest_meta.csv");
 
                 AppendLog($"Metadata export complete. {completed} series processed.");
+                if (anonService != null)
+                    AppendLog($"Anonymization key (outside the export; keep it, do not share it): {anonService.KeyFilePath}");
                 StatusText = "Metadata export complete.";
             }
             catch (OperationCanceledException)
@@ -961,13 +1013,27 @@ namespace DicomRtNifti.App.ViewModels
 
         private async Task OpenAnonymizationKeyEditorAsync()
         {
-            // Edit the key file that an anonymized export to the current output folder would use;
-            // fall back to the %AppData% location (inspection only) when no output folder is set.
-            string keyFilePath = !string.IsNullOrEmpty(OutputFolder)
-                ? Path.Combine(OutputFolder, "AnonymizationKey.json")
-                : Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "DicomToNifti", "AnonymizationKey.json");
+            // Edit the key file that an anonymized export to the current output folder would use,
+            // outside the export (#54); a key an earlier export left inside the folder is merged
+            // into it first. With no output folder: the chosen key location, else the %AppData%
+            // copy (inspection only).
+            string keyFilePath;
+            try
+            {
+                if (!string.IsNullOrEmpty(OutputFolder))
+                    keyFilePath = OpenAnonymizationKey().KeyFilePath;
+                else if (!string.IsNullOrWhiteSpace(AnonymizationKeyPath))
+                    keyFilePath = AnonymizationKeyLocation.NormalizeKeyPath(AnonymizationKeyPath);
+                else
+                    keyFilePath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "DicomToNifti", AnonymizationKeyLocation.FileName);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is InvalidDataException || ex is InvalidOperationException)
+            {
+                AppendLog($"Cannot open the anonymization key: {ex.Message}");
+                return;
+            }
 
             var vm = new AnonymizationKeyEditorViewModel(keyFilePath, _settings.HashSalt);
             var window = new AnonymizationKeyEditorWindow { DataContext = vm };
@@ -1161,6 +1227,22 @@ namespace DicomRtNifti.App.ViewModels
                 return;
             _guiStateErrorLogged = true;
             AppendLog("Last-used folders will not be remembered: " + reason);
+        }
+
+        /// <summary>
+        /// The anonymization key for an export to <see cref="OutputFolder"/>, at its location
+        /// outside the export (<see cref="AnonymizationKeyLocation"/>). A key an earlier export left
+        /// inside the folder is merged in, and the log says where that copy still sits.
+        /// </summary>
+        /// <exception cref="ArgumentException">The key location is inside the export.</exception>
+        private AnonymizationService OpenAnonymizationKey()
+        {
+            string legacyKeyWarning;
+            var service = AnonymizationKeyLocation.Open(
+                OutputFolder, AnonymizationKeyPath, _settings.HashSalt, out legacyKeyWarning);
+            if (legacyKeyWarning != null)
+                AppendLog("  Warning: " + legacyKeyWarning);
+            return service;
         }
 
         /// <summary>
