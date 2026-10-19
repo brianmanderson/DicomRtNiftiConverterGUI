@@ -524,10 +524,13 @@ namespace DicomRtNifti.App.ViewModels
                 int completed = 0;
 
                 AnonymizationService anonService = null;
+                MetadataDeidentifier metadataDeidentifier = null;
                 if (AnonymizeExport)
                 {
                     string keyFilePath = Path.Combine(OutputFolder, "AnonymizationKey.json");
                     anonService = new AnonymizationService(keyFilePath, _settings.HashSalt);
+                    // The rule CohortExportService applies to the CLI's cohort export (W2-E, #53).
+                    metadataDeidentifier = new MetadataDeidentifier(anonService);
                 }
 
                 var spacingPerSeries = new Dictionary<string, double[]>();
@@ -619,13 +622,13 @@ namespace DicomRtNifti.App.ViewModels
                     // Sidecar metadata.json: a section per modality (image tags from the series' first
                     // slice, structure tags from the linked RTSTRUCT, dose tags from the linked RTDOSE).
                     // Independent of the per-modality export toggles (outputDir always exists) and of
-                    // ExportImages. Tags are written verbatim, so warn when this lands in an anonymized export.
+                    // ExportImages. An anonymized export de-identifies it: PatientID / StudyInstanceUID /
+                    // SeriesInstanceUID carry this export's hashes, so the sidecar still joins to the
+                    // folders and manifest, and identifying values are written as null.
                     if (ExportDicomMetadata &&
                         (_metadataImageTagKeywords.Count > 0 || _metadataStructureTagKeywords.Count > 0 ||
                          _metadataDoseTagKeywords.Count > 0))
                     {
-                        if (AnonymizeExport)
-                            AppendLog($"  Warning: metadata.json for {displayLabel} writes selected tags verbatim — may include PHI in an anonymized export.");
                         try
                         {
                             var request = new MetadataExportRequest
@@ -642,7 +645,7 @@ namespace DicomRtNifti.App.ViewModels
                             };
                             string metaPath = Path.Combine(outputDir, "metadata.json");
                             await Task.Run(() =>
-                                DicomMetadataExtractor.WriteMetadataJson(request, metaPath), _cts.Token).ConfigureAwait(true);
+                                DicomMetadataExtractor.WriteMetadataJson(request, metaPath, metadataDeidentifier), _cts.Token).ConfigureAwait(true);
                             progress.Report($"Wrote metadata.json: {displayLabel}");
                         }
                         catch (Exception ex)

@@ -65,7 +65,7 @@
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AppMutedText}" Margin="4,0,4,4"
                      Text="When checked, a metadata.json with your selected DICOM tags is written into every export folder. Tags are read from each series' first image; numeric tags become numbers, multi-valued tags become arrays, and tags missing from a series are written as null."/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AppMutedText}" Margin="4,0,4,0"
-                     Text="Note: selected tags are written as-is even when anonymizing, so avoid selecting identifying tags (PatientName, PatientID, …) for anonymized exports."/>
+                     Text="When anonymizing, the sidecar is de-identified: Patient ID and the Study and Series Instance UIDs carry the export's hashes, and names, dates, times, ages, instance UIDs and identifying attributes (IDs, addresses, institution, device) are written as null."/>
         </StackPanel>
       </ScrollViewer>
     </Border>
