@@ -81,6 +81,75 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
+        /// The manifest survey of one series: <see cref="GetImageSpacing"/> and, when
+        /// <paramref name="rtStructSeries"/> is given, <see cref="ComputeStructVolumes"/>, with the
+        /// same results, computed by the same calls on one load of the series.
+        ///
+        /// Calling the two methods in turn decodes the CT's pixel data twice and opens every slice
+        /// header three times (two sorts and the per-slice Z read), and the pixel decode is most
+        /// of a survey's time. Here the reference image is loaded once and the per-slice Z comes
+        /// from the headers the sort already read.
+        /// </summary>
+        /// <param name="rtStructSeries">The structure set to measure, or null for spacing only.</param>
+        public SeriesSurvey SurveySeries(
+            DicomSeriesGroup imageSeries,
+            DicomSeriesGroup rtStructSeries,
+            List<RoiAssociation> associations,
+            bool exportUnmatched,
+            IProgress<string> progress,
+            CancellationToken ct,
+            double[] targetSpacing = null)
+        {
+            return SurveySeries(imageSeries, rtStructSeries, associations, exportUnmatched,
+                progress, ct, targetSpacing, volumeGate: null);
+        }
+
+        /// <param name="volumeGate">
+        /// Held, when given, while the ROIs are rasterized and measured: the part of a survey that
+        /// holds every ROI's mask in memory at once, and that already runs in parallel per ROI. A
+        /// caller surveying several series at once shares one gate of one slot, so their CT loads
+        /// overlap and their masks do not.
+        /// </param>
+        internal SeriesSurvey SurveySeries(
+            DicomSeriesGroup imageSeries,
+            DicomSeriesGroup rtStructSeries,
+            List<RoiAssociation> associations,
+            bool exportUnmatched,
+            IProgress<string> progress,
+            CancellationToken ct,
+            double[] targetSpacing,
+            SemaphoreSlim volumeGate)
+        {
+            var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths, out double[] sliceZsMm);
+            using (Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles))
+            {
+                var spacing = referenceImage.GetSpacing();
+                var survey = new SeriesSurvey { Spacing = new double[] { spacing[0], spacing[1], spacing[2] } };
+
+                if (rtStructSeries == null)
+                    return survey;
+
+                // From here on, ComputeStructVolumes' own order of checks.
+                ct.ThrowIfCancellationRequested();
+                if (rtStructSeries.FilePaths.Count == 0 || imageSeries.FilePaths.Count == 0)
+                    return survey;
+
+                volumeGate?.Wait(ct);
+                try
+                {
+                    survey.RoiVolumes = ComputeVolumesOnReference(
+                        rtStructSeries, referenceImage, sortedFiles, sliceZsMm,
+                        associations, exportUnmatched, progress, ct, targetSpacing);
+                }
+                finally
+                {
+                    volumeGate?.Release();
+                }
+                return survey;
+            }
+        }
+
+        /// <summary>
         /// Converts an RT Dose file to <paramref name="outputDir"/>/doses/&lt;safe-series-description&gt;.nii.gz,
         /// applying DoseGridScaling if present. The series description from the
         /// RT-DOSE file is sanitized for filesystem use; an empty description
@@ -348,11 +417,38 @@ namespace DicomRtNifti.Core.Services
             if (rtStructSeries.FilePaths.Count == 0 || imageSeries.FilePaths.Count == 0) return null;
 
             // Load reference image for geometry
-            var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths);
-            Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
+            var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths, out double[] sliceZsMm);
+            using (Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles))
+            {
+                return ComputeVolumesOnReference(
+                    rtStructSeries, referenceImage, sortedFiles, sliceZsMm,
+                    associations, exportUnmatched, progress, ct, targetSpacing);
+            }
+        }
+
+        /// <summary>
+        /// The volume half of <see cref="ComputeStructVolumes"/> and <see cref="SurveySeries"/>, on a
+        /// reference image the caller has loaded from <paramref name="sortedFiles"/>.
+        /// </summary>
+        /// <param name="sliceZsMm">
+        /// Per-slice IPP[2] in <paramref name="sortedFiles"/> order, as the sort read them, or null
+        /// when the sort read no positions (a single file), in which case they are read here.
+        /// </param>
+        private Dictionary<string, double> ComputeVolumesOnReference(
+            DicomSeriesGroup rtStructSeries,
+            Image referenceImage,
+            List<string> sortedFiles,
+            double[] sliceZsMm,
+            List<RoiAssociation> associations,
+            bool exportUnmatched,
+            IProgress<string> progress,
+            CancellationToken ct,
+            double[] targetSpacing)
+        {
             // Per-slice IPP[2] for nearest-slice rasterization on
             // non-uniform-Z CTs; see ConvertRtStructToNifti for rationale.
-            double[] sliceZsMm = DicomImageSeriesLoader.ReadPerSliceZ(sortedFiles);
+            if (sliceZsMm == null)
+                sliceZsMm = DicomImageSeriesLoader.ReadPerSliceZ(sortedFiles);
 
             var spacing = referenceImage.GetSpacing();
             double voxelVolume = spacing[0] * spacing[1] * spacing[2];
@@ -388,16 +484,59 @@ namespace DicomRtNifti.Core.Services
                     effectiveVoxelVolume = resampledVoxelVolume;
                 }
 
-                var stats = new StatisticsImageFilter();
-                stats.Execute(maskForStats);
-                double voxelCount = stats.GetSum();
+                double voxelCount = SumMaskVoxels(maskForStats);
                 roiVolumes[kvp.Key] = voxelCount * effectiveVoxelVolume / 1000; // convert to cc
 
                 maskForStats.Dispose();
             }
 
-            referenceImage.Dispose();
             return roiVolumes;
+        }
+
+        /// <summary>
+        /// The sum of a mask's voxel values: what <c>StatisticsImageFilter.GetSum()</c> returns,
+        /// and for a binary mask the count of set voxels.
+        ///
+        /// Read straight from the pixel buffer for the 8-bit masks the rasterizer and the nearest-
+        /// neighbour resample produce, because the filter also computes minimum, maximum, mean and
+        /// variance, in double, and on a survey that was a tenth of the time. The result is the
+        /// same double: the filter's sum over 8-bit integers is exact below 2^53, and so is this
+        /// one. Any other pixel type goes through the filter.
+        /// </summary>
+        internal static double SumMaskVoxels(Image mask)
+        {
+            if (mask.GetPixelID() != PixelIDValueEnum.sitkUInt8)
+            {
+                var stats = new StatisticsImageFilter();
+                stats.Execute(mask);
+                return stats.GetSum();
+            }
+
+            long voxels = (long)mask.GetNumberOfPixels();
+            IntPtr buffer = mask.GetBufferAsUInt8();
+            byte[] chunk = new byte[(int)Math.Min(voxels, 1 << 20)];
+            long sum = 0;
+            for (long offset = 0; offset < voxels; offset += chunk.Length)
+            {
+                int n = (int)Math.Min(chunk.Length, voxels - offset);
+                System.Runtime.InteropServices.Marshal.Copy(new IntPtr(buffer.ToInt64() + offset), chunk, 0, n);
+                var span = new ReadOnlySpan<byte>(chunk, 0, n);
+
+                // A binary mask holds only 0 and 1, and two vectorized counts settle the chunk;
+                // anything else is summed value by value.
+                int zeros = span.Count((byte)0);
+                int ones = span.Count((byte)1);
+                if (zeros + ones == n)
+                {
+                    sum += ones;
+                }
+                else
+                {
+                    foreach (byte b in span)
+                        sum += b;
+                }
+            }
+            return sum;
         }
 
         // ── SimpleITK path handling ────────────────────────────────────────────────────────
@@ -588,6 +727,17 @@ namespace DicomRtNifti.Core.Services
         /// </summary>
         private List<string> SortFilesBySlicePosition(List<string> filePaths)
         {
+            return SortFilesBySlicePosition(filePaths, out _);
+        }
+
+        /// <param name="sliceZsMm">
+        /// Each sorted file's ImagePositionPatient[2], in the returned order: the values
+        /// <see cref="DicomImageSeriesLoader.ReadPerSliceZ"/> would read back from the same headers,
+        /// saved from this pass. Null when no position was read (fewer than two files).
+        /// </param>
+        internal List<string> SortFilesBySlicePosition(List<string> filePaths, out double[] sliceZsMm)
+        {
+            sliceZsMm = null;
             if (filePaths == null || filePaths.Count == 0)
                 return new List<string>();
 
@@ -599,7 +749,7 @@ namespace DicomRtNifti.Core.Services
             if (filePaths.Count == 1)
                 return new List<string>(filePaths);
 
-            var filePositions = new List<Tuple<string, double>>(filePaths.Count);
+            var filePositions = new List<Tuple<string, double, double>>(filePaths.Count);
             var unplaceable = new List<string>();
             foreach (var path in filePaths)
             {
@@ -607,12 +757,12 @@ namespace DicomRtNifti.Core.Services
                 // which already exclude and name such slices; a group assembled by any other path
                 // that still holds one is refused here instead of being sorted to an invented position.
                 double projection = double.NaN;
+                double z = double.NaN;
                 try
                 {
                     var ds = DicomFile.Open(path, FileReadOption.SkipLargeTags).Dataset;
-                    double ignoredZ;
                     string ignoredWhy;
-                    if (SeriesGeometryProbe.TryReadSliceZ(ds, out ignoredZ, out ignoredWhy))
+                    if (SeriesGeometryProbe.TryReadSliceZ(ds, out z, out ignoredWhy))
                     {
                         var ipp = ds.GetValues<double>(DicomTag.ImagePositionPatient);
                         projection = ipp[0] * normal[0] + ipp[1] * normal[1] + ipp[2] * normal[2];
@@ -626,7 +776,7 @@ namespace DicomRtNifti.Core.Services
                 if (double.IsNaN(projection) || double.IsInfinity(projection))
                     unplaceable.Add(Path.GetFileName(path));
                 else
-                    filePositions.Add(Tuple.Create(path, projection));
+                    filePositions.Add(Tuple.Create(path, projection, z));
             }
 
             if (unplaceable.Count > 0)
@@ -637,7 +787,9 @@ namespace DicomRtNifti.Core.Services
                     string.Join(", ", unplaceable) + ".");
             }
 
-            return filePositions.OrderBy(t => t.Item2).Select(t => t.Item1).ToList();
+            var sorted = filePositions.OrderBy(t => t.Item2).ToList();
+            sliceZsMm = sorted.Select(t => t.Item3).ToArray();
+            return sorted.Select(t => t.Item1).ToList();
         }
 
         /// <summary>
