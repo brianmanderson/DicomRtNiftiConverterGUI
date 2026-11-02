@@ -45,25 +45,43 @@ namespace DicomRtNifti.Core.Services
             // Sort files by ImagePositionPatient z-coordinate
             var sortedFiles = SortFilesBySlicePosition(series.FilePaths);
 
-            Image image = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
-
-            if (targetSpacing != null)
+            using (Image image = DicomImageSeriesLoader.LoadCorrected(sortedFiles))
             {
-                var resampled = ResampleToSpacing(image, targetSpacing, InterpolatorEnum.sitkLinear);
-                image.Dispose();
-                image = resampled;
-                progress?.Report($"  Resampled image to {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
+                return WriteImageNifti(image, outputDir, progress, targetSpacing);
             }
+        }
 
-            var spacing = image.GetSpacing();
-            double[] result = new double[] { spacing[0], spacing[1], spacing[2] };
+        /// <summary>
+        /// Writes <paramref name="image"/>, or its resample onto <paramref name="targetSpacing"/>, to
+        /// <paramref name="outputDir"/>/image.nii.gz and returns the written spacing. Leaves
+        /// <paramref name="image"/> as it was, so a caller can rasterize on it afterwards.
+        /// </summary>
+        private double[] WriteImageNifti(
+            Image image, string outputDir, IProgress<string> progress, double[] targetSpacing)
+        {
+            Image toWrite = image;
+            try
+            {
+                if (targetSpacing != null)
+                {
+                    toWrite = ResampleToSpacing(image, targetSpacing, InterpolatorEnum.sitkLinear);
+                    progress?.Report($"  Resampled image to {targetSpacing[0]}x{targetSpacing[1]}x{targetSpacing[2]} mm");
+                }
 
-            string outputPath = Path.Combine(outputDir, "image.nii.gz");
-            WriteImageSafely(image, outputPath);
-            image.Dispose();
+                var spacing = toWrite.GetSpacing();
+                double[] result = new double[] { spacing[0], spacing[1], spacing[2] };
 
-            progress?.Report($"  Wrote {outputPath}");
-            return result;
+                string outputPath = Path.Combine(outputDir, "image.nii.gz");
+                WriteImageSafely(toWrite, outputPath);
+
+                progress?.Report($"  Wrote {outputPath}");
+                return result;
+            }
+            finally
+            {
+                if (!ReferenceEquals(toWrite, image))
+                    toWrite.Dispose();
+            }
         }
 
         /// <summary>
@@ -146,6 +164,93 @@ namespace DicomRtNifti.Core.Services
                     volumeGate?.Release();
                 }
                 return survey;
+            }
+        }
+
+        /// <summary>
+        /// Converts one series: image.nii.gz when <paramref name="writeImage"/> is set and, when
+        /// <paramref name="rtStructSeries"/> is given, its masks. The same files, progress and
+        /// numbers as <see cref="ConvertImageSeriesToNifti"/> (or <see cref="GetImageSpacing"/>
+        /// when no image is written) followed by <see cref="ConvertStructToNifti"/>, on one load of
+        /// the series instead of two.
+        /// </summary>
+        /// <param name="rtStructSeries">The structure set to convert, or null for none.</param>
+        /// <returns>
+        /// The spacing written (the resample target when <paramref name="targetSpacing"/> is given
+        /// and the image is written, the series' own otherwise) and the masks' volumes, null when
+        /// no structure set was converted.
+        /// </returns>
+        public SeriesConversion ConvertSeries(
+            DicomSeriesGroup imageSeries,
+            string outputDir,
+            bool writeImage,
+            DicomSeriesGroup rtStructSeries,
+            List<RoiAssociation> associations,
+            bool exportUnmatched,
+            bool flatOutput,
+            IProgress<string> progress,
+            CancellationToken ct,
+            double[] targetSpacing = null)
+        {
+            return ConvertSeries(imageSeries, outputDir, writeImage, rtStructSeries, associations,
+                exportUnmatched, flatOutput, progress, ct, targetSpacing, volumeGate: null);
+        }
+
+        /// <param name="volumeGate">
+        /// Held, when given, while the masks are rasterized, measured and written: the part that
+        /// holds every ROI's mask in memory at once. A caller converting several series at once
+        /// shares one gate of one slot, so their CT loads and image writes overlap and their masks
+        /// do not.
+        /// </param>
+        internal SeriesConversion ConvertSeries(
+            DicomSeriesGroup imageSeries,
+            string outputDir,
+            bool writeImage,
+            DicomSeriesGroup rtStructSeries,
+            List<RoiAssociation> associations,
+            bool exportUnmatched,
+            bool flatOutput,
+            IProgress<string> progress,
+            CancellationToken ct,
+            double[] targetSpacing,
+            SemaphoreSlim volumeGate)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths, out double[] sliceZsMm);
+            using (Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles))
+            {
+                var result = new SeriesConversion();
+                if (writeImage)
+                {
+                    result.Spacing = WriteImageNifti(referenceImage, outputDir, progress, targetSpacing);
+                }
+                else
+                {
+                    var spacing = referenceImage.GetSpacing();
+                    result.Spacing = new double[] { spacing[0], spacing[1], spacing[2] };
+                }
+
+                if (rtStructSeries == null)
+                    return result;
+
+                // From here on, ConvertStructToNifti's own order of checks.
+                ct.ThrowIfCancellationRequested();
+                if (rtStructSeries.FilePaths.Count == 0 || imageSeries.FilePaths.Count == 0)
+                    return result;
+
+                volumeGate?.Wait(ct);
+                try
+                {
+                    result.RoiVolumes = WriteMasksOnReference(
+                        rtStructSeries, referenceImage, sortedFiles, sliceZsMm, outputDir,
+                        associations, exportUnmatched, flatOutput, progress, ct, targetSpacing);
+                }
+                finally
+                {
+                    volumeGate?.Release();
+                }
+                return result;
             }
         }
 
@@ -290,8 +395,37 @@ namespace DicomRtNifti.Core.Services
             if (rtStructSeries.FilePaths.Count == 0 || imageSeries.FilePaths.Count == 0) return null;
 
             // Load reference image for geometry
-            var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths);
-            Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles);
+            var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths, out double[] sliceZsMm);
+            using (Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles))
+            {
+                return WriteMasksOnReference(
+                    rtStructSeries, referenceImage, sortedFiles, sliceZsMm, outputDir,
+                    associations, exportUnmatched, flatOutput, progress, ct, targetSpacing);
+            }
+        }
+
+        /// <summary>
+        /// The body of <see cref="ConvertStructToNifti"/> on a reference image the caller has
+        /// loaded from <paramref name="sortedFiles"/>: rasterize, then resample, measure and write
+        /// each ROI's mask.
+        /// </summary>
+        /// <param name="sliceZsMm">
+        /// Per-slice IPP[2] in <paramref name="sortedFiles"/> order, as the sort read them, or null
+        /// when the sort read no positions (a single file), in which case they are read here.
+        /// </param>
+        private Dictionary<string, double> WriteMasksOnReference(
+            DicomSeriesGroup rtStructSeries,
+            Image referenceImage,
+            List<string> sortedFiles,
+            double[] sliceZsMm,
+            string outputDir,
+            List<RoiAssociation> associations,
+            bool exportUnmatched,
+            bool flatOutput,
+            IProgress<string> progress,
+            CancellationToken ct,
+            double[] targetSpacing)
+        {
             // Per-slice ImagePositionPatient[2] (mm) for the RTSTRUCT-to-slice
             // mapping. Required for correct rasterization on non-uniform-Z
             // CT acquisitions (mixed 3 mm / 6 mm slice gaps, e.g. NSCLC-Radiomics
@@ -300,7 +434,8 @@ namespace DicomRtNifti.Core.Services
             // the non-uniform region, missing 11-14 of the RTSTRUCT-stated
             // contour z-positions. The mask service does a nearest-slice
             // lookup against this array instead.
-            double[] sliceZsMm = DicomImageSeriesLoader.ReadPerSliceZ(sortedFiles);
+            if (sliceZsMm == null)
+                sliceZsMm = DicomImageSeriesLoader.ReadPerSliceZ(sortedFiles);
 
             var spacing = referenceImage.GetSpacing();
             double voxelVolume = spacing[0] * spacing[1] * spacing[2];
@@ -380,12 +515,8 @@ namespace DicomRtNifti.Core.Services
                     effectiveVoxelVolume = resampledVoxelVolume;
                 }
 
-                // Per-iteration stats filter avoids cross-thread state on the
-                // C++ filter object (StatisticsImageFilter caches a result
-                // internally between Execute() and Get*()).
-                var stats = new StatisticsImageFilter();
-                stats.Execute(maskToWrite);
-                double voxelCount = stats.GetSum(); // binary mask: sum == count of 1-voxels
+                // The sum StatisticsImageFilter would return, read from the buffer.
+                double voxelCount = SumMaskVoxels(maskToWrite); // binary mask: sum == count of 1-voxels
                 roiVolumes[kvp.Key] = voxelCount * effectiveVoxelVolume / 1000; // convert to cc
 
                 string safeName = maskFileNames[kvp.Key];
@@ -395,7 +526,6 @@ namespace DicomRtNifti.Core.Services
                 progress?.Report($"  Wrote mask: {safeName}.nii.gz");
             });
 
-            referenceImage.Dispose();
             return new Dictionary<string, double>(roiVolumes);
         }
 
