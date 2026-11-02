@@ -533,6 +533,10 @@ namespace DicomRtNifti.Core.Services
                 Directory.CreateDirectory(outputDir);
 
             double[] spacing = null;
+            Dictionary<string, double> surveyedVolumes = null;
+
+            var effectiveAssociations = options.Associations;
+            bool exportUnmatched = !options.OnlyAssociatedRois;
 
             if (writeFiles && options.ExportImages)
             {
@@ -540,6 +544,19 @@ namespace DicomRtNifti.Core.Services
                     planned.Image, outputDir, progress, ct, options.OutputSpacing), ct)
                     .ConfigureAwait(false);
                 seriesResult.Image = Join(planned.RelativeOutputDir, NiftiFileNaming.ImageNiiGz);
+            }
+
+            if (spacing == null && !writeFiles)
+            {
+                // The manifest survey reads spacing and volumes from one load of the series rather
+                // than one for GetImageSpacing and another for ComputeStructVolumes; same numbers.
+                var structureSet = options.ExportStructures && options.ComputeVolumes ? planned.RtStruct : null;
+                var survey = await Task.Run(() => _conversionService.SurveySeries(
+                    planned.Image, structureSet,
+                    effectiveAssociations, exportUnmatched,
+                    progress, ct, options.OutputSpacing), ct).ConfigureAwait(false);
+                spacing = survey.Spacing;
+                surveyedVolumes = survey.RoiVolumes;
             }
 
             if (spacing == null)
@@ -555,9 +572,6 @@ namespace DicomRtNifti.Core.Services
 
             seriesResult.Spacing = spacing;
 
-            var effectiveAssociations = options.Associations;
-            bool exportUnmatched = !options.OnlyAssociatedRois;
-
             if (options.ExportStructures && planned.RtStruct != null)
             {
                 Dictionary<string, double> roiVolumes;
@@ -571,10 +585,7 @@ namespace DicomRtNifti.Core.Services
                 }
                 else if (options.ComputeVolumes)
                 {
-                    roiVolumes = await Task.Run(() => _conversionService.ComputeStructVolumes(
-                        planned.RtStruct, planned.Image,
-                        effectiveAssociations, exportUnmatched,
-                        progress, ct, options.OutputSpacing), ct).ConfigureAwait(false);
+                    roiVolumes = surveyedVolumes;
                 }
                 else
                 {
