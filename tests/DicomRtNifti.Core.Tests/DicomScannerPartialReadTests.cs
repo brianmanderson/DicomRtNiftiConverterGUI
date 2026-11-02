@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using DicomRtNifti.Core.Models;
@@ -154,18 +153,7 @@ namespace DicomRtNifti.Core.Tests
                 string study = DicomTestData.NewUid(), rtSeries = DicomTestData.NewUid(), frame = DicomTestData.NewUid();
                 string path = DicomTestData.WriteRtStruct(dir, "rt.dcm", "P1", study, rtSeries, frame, "SET", new[] { "GTV" });
 
-                // A top-level ROIContourSequence of undefined length whose first element is not an
-                // item: fo-dicom's full read throws on it.
-                var tail = new List<byte>();
-                tail.AddRange(new byte[] { 0x06, 0x30, 0x39, 0x00 });
-                tail.AddRange(Encoding.ASCII.GetBytes("SQ"));
-                tail.AddRange(new byte[] { 0, 0, 0xFF, 0xFF, 0xFF, 0xFF });
-                tail.AddRange(new byte[] { 0x08, 0x00, 0x16, 0x00 });
-                tail.AddRange(Encoding.ASCII.GetBytes("UI"));
-                tail.AddRange(new byte[] { 4, 0 });
-                tail.AddRange(Encoding.ASCII.GetBytes("1.2\0"));
-                using (var stream = new FileStream(path, FileMode.Append))
-                    stream.Write(tail.ToArray(), 0, tail.Count);
+                DicomTestData.AppendMalformedRoiContourSequence(path);
                 Assert.ThrowsAny<DicomException>(() => DicomFile.Open(path, FileReadOption.SkipLargeTags));
 
                 var result = await Scan(dir);

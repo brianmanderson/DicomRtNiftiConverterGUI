@@ -584,130 +584,152 @@ namespace DicomRtNifti.App.ViewModels
                 var spacingPerSeries = new Dictionary<string, double[]>();
                 var roiVolumesPerSeries = new Dictionary<string, Dictionary<string, double>>();
 
+                int failed = 0;
+                var exported = new List<SeriesGroupViewModel>();
+
                 foreach (var seriesVm in selectedSeries)
                 {
                     _cts.Token.ThrowIfCancellationRequested();
                     var model = seriesVm.Model;
-
-                    var (patientId, studyUid) = ResolveIds(seriesVm);
                     string seriesUid = model.SeriesInstanceUID;
+                    string displayLabel = $"series {completed + failed + 1} of {total}";
 
-                    string outputDir;
-                    string displayLabel;
-                    if (AnonymizeExport && anonService != null)
+                    // A series that cannot be converted (a structure set whose contours do not parse,
+                    // an unreadable slice) is reported and skipped, and the rest of the selection still
+                    // exports. The CLI's cohort export has always done this; here one bad file used to
+                    // end the whole run before the manifest was written.
+                    try
                     {
-                        // Per-identifier hashes: a patient's datasets all nest under one patient-hash
-                        // folder; each study/series gets its own hash. Hashes are already safe, but
-                        // sanitize defensively so every exported segment is valid on Windows.
-                        string pHash = WindowsPathSanitizer.SanitizeName(anonService.GetPatientHash(patientId));
-                        string stHash = WindowsPathSanitizer.SanitizeName(anonService.GetStudyHash(studyUid));
-                        string seHash = WindowsPathSanitizer.SanitizeName(anonService.GetSeriesHash(seriesUid));
-                        outputDir = Path.Combine(OutputFolder, pHash, stHash, seHash);
-                        displayLabel = $"{pHash}/{stHash}/{seHash}";
-                    }
-                    else
-                    {
-                        string seriesLabel = string.IsNullOrEmpty(model.SeriesDescription)
-                            ? model.SeriesInstanceUID.Substring(0, Math.Min(8, model.SeriesInstanceUID.Length))
-                            : model.SeriesDescription;
-                        string dateLabel = string.IsNullOrEmpty(model.SeriesDate) ? "" : model.SeriesDate + "_";
-                        outputDir = Path.Combine(OutputFolder,
-                            WindowsPathSanitizer.SanitizeName(patientId),
-                            WindowsPathSanitizer.SanitizeName(dateLabel + seriesLabel));
-                        displayLabel = patientId + "/" + seriesLabel;
-                    }
+                        var (patientId, studyUid) = ResolveIds(seriesVm);
 
-                    Directory.CreateDirectory(outputDir);
-
-                    // Mixed slice gaps are flattened to one spacing on the way into NIfTI. The CLI
-                    // has said so on its single-series modes for a while; the GUI — where nobody is
-                    // reading stderr — said nothing on any path. Log it and carry on: the export is
-                    // still the best available answer and the geometry written is untouched.
-                    LogGeometryWarnings(model, targetSpacing);
-
-                    double[] seriesSpacing = null;
-                    if (ExportImages)
-                    {
-                        progress.Report($"Converting images: {displayLabel}");
-                        seriesSpacing = await Task.Run(() =>
-                            _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
-                    }
-
-                    if (seriesSpacing == null)
-                        seriesSpacing = await Task.Run(() => _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
-
-                    if (targetSpacing != null)
-                        seriesSpacing = (double[])targetSpacing.Clone();
-
-                    spacingPerSeries[seriesUid] = seriesSpacing;
-
-                    Dictionary<string, double> roiVolumes = null;
-
-                    if (IncludeStructures && model.LinkedRtStruct != null)
-                    {
-                        progress.Report($"Rasterizing structures: {displayLabel}");
-
-                        roiVolumes = await Task.Run(() =>
-                            _conversionService.ConvertStructToNifti(
-                                model.LinkedRtStruct, model, outputDir,
-                                effectiveAssociations, effectiveExportUnmatched,
-                                false, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
-                    }
-
-                    // The conversion returns volumes keyed by the exported (canonical-or-raw) mask name,
-                    // so the manifest columns come straight from what was actually written — keeping the
-                    // CSV in lock-step with the masks and with the forgiving association matching.
-                    if (roiVolumes != null)
-                        roiVolumesPerSeries[seriesUid] = roiVolumes;
-
-                    if (IncludeDose && model.LinkedRtDose != null)
-                    {
-                        progress.Report($"Converting dose: {displayLabel}");
-                        await Task.Run(() =>
-                            _conversionService.ConvertDoseToNifti(model.LinkedRtDose, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
-                    }
-
-                    // Sidecar metadata.json: a section per modality (image tags from the series' first
-                    // slice, structure tags from the linked RTSTRUCT, dose tags from the linked RTDOSE).
-                    // Independent of the per-modality export toggles (outputDir always exists) and of
-                    // ExportImages. An anonymized export de-identifies it: PatientID / StudyInstanceUID /
-                    // SeriesInstanceUID carry this export's hashes, so the sidecar still joins to the
-                    // folders and manifest, and identifying values are written as null.
-                    if (ExportDicomMetadata &&
-                        (_metadataImageTagKeywords.Count > 0 || _metadataStructureTagKeywords.Count > 0 ||
-                         _metadataDoseTagKeywords.Count > 0))
-                    {
-                        try
+                        string outputDir;
+                        if (AnonymizeExport && anonService != null)
                         {
-                            var request = new MetadataExportRequest
-                            {
-                                ImageFilePaths = model.FilePaths,
-                                StructureFilePath = (model.LinkedRtStruct != null && model.LinkedRtStruct.FilePaths.Count > 0)
-                                    ? model.LinkedRtStruct.FilePaths[0] : null,
-                                DoseFilePath = (model.LinkedRtDose != null && model.LinkedRtDose.FilePaths.Count > 0)
-                                    ? model.LinkedRtDose.FilePaths[0] : null,
-                                ImageKeywords = _metadataImageTagKeywords,
-                                StructureKeywords = _metadataStructureTagKeywords,
-                                DoseKeywords = _metadataDoseTagKeywords,
-                                ImageVoxelSpacing = seriesSpacing
-                            };
-                            string metaPath = Path.Combine(outputDir, "metadata.json");
+                            // Per-identifier hashes: a patient's datasets all nest under one patient-hash
+                            // folder; each study/series gets its own hash. Hashes are already safe, but
+                            // sanitize defensively so every exported segment is valid on Windows.
+                            string pHash = WindowsPathSanitizer.SanitizeName(anonService.GetPatientHash(patientId));
+                            string stHash = WindowsPathSanitizer.SanitizeName(anonService.GetStudyHash(studyUid));
+                            string seHash = WindowsPathSanitizer.SanitizeName(anonService.GetSeriesHash(seriesUid));
+                            outputDir = Path.Combine(OutputFolder, pHash, stHash, seHash);
+                            displayLabel = $"{pHash}/{stHash}/{seHash}";
+                        }
+                        else
+                        {
+                            string seriesLabel = string.IsNullOrEmpty(model.SeriesDescription)
+                                ? model.SeriesInstanceUID.Substring(0, Math.Min(8, model.SeriesInstanceUID.Length))
+                                : model.SeriesDescription;
+                            string dateLabel = string.IsNullOrEmpty(model.SeriesDate) ? "" : model.SeriesDate + "_";
+                            outputDir = Path.Combine(OutputFolder,
+                                WindowsPathSanitizer.SanitizeName(patientId),
+                                WindowsPathSanitizer.SanitizeName(dateLabel + seriesLabel));
+                            displayLabel = patientId + "/" + seriesLabel;
+                        }
+
+                        Directory.CreateDirectory(outputDir);
+
+                        // Mixed slice gaps are flattened to one spacing on the way into NIfTI. The CLI
+                        // has said so on its single-series modes for a while; the GUI — where nobody is
+                        // reading stderr — said nothing on any path. Log it and carry on: the export is
+                        // still the best available answer and the geometry written is untouched.
+                        LogGeometryWarnings(model, targetSpacing);
+
+                        double[] seriesSpacing = null;
+                        if (ExportImages)
+                        {
+                            progress.Report($"Converting images: {displayLabel}");
+                            seriesSpacing = await Task.Run(() =>
+                                _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
+                        }
+
+                        if (seriesSpacing == null)
+                            seriesSpacing = await Task.Run(() => _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
+
+                        if (targetSpacing != null)
+                            seriesSpacing = (double[])targetSpacing.Clone();
+
+                        spacingPerSeries[seriesUid] = seriesSpacing;
+
+                        Dictionary<string, double> roiVolumes = null;
+
+                        if (IncludeStructures && model.LinkedRtStruct != null)
+                        {
+                            progress.Report($"Rasterizing structures: {displayLabel}");
+
+                            roiVolumes = await Task.Run(() =>
+                                _conversionService.ConvertStructToNifti(
+                                    model.LinkedRtStruct, model, outputDir,
+                                    effectiveAssociations, effectiveExportUnmatched,
+                                    false, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
+                        }
+
+                        // The conversion returns volumes keyed by the exported (canonical-or-raw) mask name,
+                        // so the manifest columns come straight from what was actually written — keeping the
+                        // CSV in lock-step with the masks and with the forgiving association matching.
+                        if (roiVolumes != null)
+                            roiVolumesPerSeries[seriesUid] = roiVolumes;
+
+                        if (IncludeDose && model.LinkedRtDose != null)
+                        {
+                            progress.Report($"Converting dose: {displayLabel}");
                             await Task.Run(() =>
-                                DicomMetadataExtractor.WriteMetadataJson(request, metaPath, metadataDeidentifier), _cts.Token).ConfigureAwait(true);
-                            progress.Report($"Wrote metadata.json: {displayLabel}");
+                                _conversionService.ConvertDoseToNifti(model.LinkedRtDose, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
                         }
-                        catch (Exception ex)
-                        {
-                            AppendLog($"  metadata.json failed for {displayLabel}: {ex.Message}");
-                        }
-                    }
 
-                    completed++;
-                    ProgressValue = (double)completed / total * 100;
+                        // Sidecar metadata.json: a section per modality (image tags from the series' first
+                        // slice, structure tags from the linked RTSTRUCT, dose tags from the linked RTDOSE).
+                        // Independent of the per-modality export toggles (outputDir always exists) and of
+                        // ExportImages. An anonymized export de-identifies it: PatientID / StudyInstanceUID /
+                        // SeriesInstanceUID carry this export's hashes, so the sidecar still joins to the
+                        // folders and manifest, and identifying values are written as null.
+                        if (ExportDicomMetadata &&
+                            (_metadataImageTagKeywords.Count > 0 || _metadataStructureTagKeywords.Count > 0 ||
+                             _metadataDoseTagKeywords.Count > 0))
+                        {
+                            try
+                            {
+                                var request = new MetadataExportRequest
+                                {
+                                    ImageFilePaths = model.FilePaths,
+                                    StructureFilePath = (model.LinkedRtStruct != null && model.LinkedRtStruct.FilePaths.Count > 0)
+                                        ? model.LinkedRtStruct.FilePaths[0] : null,
+                                    DoseFilePath = (model.LinkedRtDose != null && model.LinkedRtDose.FilePaths.Count > 0)
+                                        ? model.LinkedRtDose.FilePaths[0] : null,
+                                    ImageKeywords = _metadataImageTagKeywords,
+                                    StructureKeywords = _metadataStructureTagKeywords,
+                                    DoseKeywords = _metadataDoseTagKeywords,
+                                    ImageVoxelSpacing = seriesSpacing
+                                };
+                                string metaPath = Path.Combine(outputDir, "metadata.json");
+                                await Task.Run(() =>
+                                    DicomMetadataExtractor.WriteMetadataJson(request, metaPath, metadataDeidentifier), _cts.Token).ConfigureAwait(true);
+                                progress.Report($"Wrote metadata.json: {displayLabel}");
+                            }
+                            catch (Exception ex)
+                            {
+                                AppendLog($"  metadata.json failed for {displayLabel}: {ex.Message}");
+                            }
+                        }
+
+                        exported.Add(seriesVm);
+                        completed++;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        spacingPerSeries.Remove(seriesUid);
+                        roiVolumesPerSeries.Remove(seriesUid);
+                        AppendLog($"  FAILED {displayLabel}: {ex.Message}");
+                    }
+                    ProgressValue = (double)(completed + failed) / total * 100;
                 }
 
                 var manifestRows = BuildManifestRows(
-                    selectedSeries,
+                    exported,
                     AnonymizeExport ? anonService : null,
                     spacingPerSeries,
                     roiVolumesPerSeries);
@@ -727,10 +749,11 @@ namespace DicomRtNifti.App.ViewModels
 
                 WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames);
 
-                AppendLog($"Conversion complete. {completed} series exported to {OutputFolder}");
+                AppendLog($"Conversion complete. {completed} series exported to {OutputFolder}" +
+                          (failed > 0 ? $"; {failed} failed and are not in the manifest (see FAILED above)." : ""));
                 if (anonService != null)
                     AppendLog($"Anonymization key (outside the export; keep it, do not share it): {anonService.KeyFilePath}");
-                StatusText = "Conversion complete.";
+                StatusText = failed > 0 ? $"Conversion complete; {failed} series failed." : "Conversion complete.";
 
                 if (_settings.AutoOpenAfterConversion)
                     RevealFolder(OutputFolder);
@@ -818,6 +841,9 @@ namespace DicomRtNifti.App.ViewModels
                 var spacingPerSeries = new Dictionary<string, double[]>();
                 var roiVolumesPerSeries = new Dictionary<string, Dictionary<string, double>>();
 
+                int failed = 0;
+                var processed = new List<SeriesGroupViewModel>();
+
                 foreach (var seriesVm in selectedSeries)
                 {
                     _cts.Token.ThrowIfCancellationRequested();
@@ -827,34 +853,50 @@ namespace DicomRtNifti.App.ViewModels
 
                     string displayLabel = $"{patientId}/{seriesUid.Substring(0, Math.Min(8, seriesUid.Length))}";
 
-                    // The manifest's spacing columns and ROI volumes come from the same flattened
-                    // grid a conversion would write, so this survey earns the same warning.
-                    LogGeometryWarnings(model, targetSpacing);
-
-                    progress.Report($"Reading spacing: {displayLabel}");
-                    double[] seriesSpacing = await Task.Run(() => _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
-                    if (targetSpacing != null)
-                        seriesSpacing = (double[])targetSpacing.Clone();
-                    spacingPerSeries[seriesUid] = seriesSpacing;
-
-                    if (IncludeStructures && model.LinkedRtStruct != null)
+                    // As in Convert Selected: a series that cannot be read is reported and skipped.
+                    try
                     {
-                        progress.Report($"Computing volumes: {displayLabel}");
-                        var roiVolumes = await Task.Run(() =>
-                            _conversionService.ComputeStructVolumes(
-                                model.LinkedRtStruct, model,
-                                effectiveAssociations, effectiveExportUnmatched,
-                                progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
+                        // The manifest's spacing columns and ROI volumes come from the same flattened
+                        // grid a conversion would write, so this survey earns the same warning.
+                        LogGeometryWarnings(model, targetSpacing);
 
-                        if (roiVolumes != null && roiVolumes.Count > 0)
+                        progress.Report($"Reading spacing: {displayLabel}");
+                        double[] seriesSpacing = await Task.Run(() => _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
+                        if (targetSpacing != null)
+                            seriesSpacing = (double[])targetSpacing.Clone();
+                        spacingPerSeries[seriesUid] = seriesSpacing;
+
+                        if (IncludeStructures && model.LinkedRtStruct != null)
                         {
-                            roiVolumesPerSeries[seriesUid] = roiVolumes;
-                            AppendLog($"  Found {roiVolumes.Count} ROI(s) for {displayLabel}: {string.Join(", ", roiVolumes.Keys)}");
-                        }
-                    }
+                            progress.Report($"Computing volumes: {displayLabel}");
+                            var roiVolumes = await Task.Run(() =>
+                                _conversionService.ComputeStructVolumes(
+                                    model.LinkedRtStruct, model,
+                                    effectiveAssociations, effectiveExportUnmatched,
+                                    progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
 
-                    completed++;
-                    ProgressValue = (int)(100.0 * completed / total);
+                            if (roiVolumes != null && roiVolumes.Count > 0)
+                            {
+                                roiVolumesPerSeries[seriesUid] = roiVolumes;
+                                AppendLog($"  Found {roiVolumes.Count} ROI(s) for {displayLabel}: {string.Join(", ", roiVolumes.Keys)}");
+                            }
+                        }
+
+                        processed.Add(seriesVm);
+                        completed++;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        spacingPerSeries.Remove(seriesUid);
+                        roiVolumesPerSeries.Remove(seriesUid);
+                        AppendLog($"  FAILED {displayLabel}: {ex.Message}");
+                    }
+                    ProgressValue = (int)(100.0 * (completed + failed) / total);
                 }
 
                 // Honor the Anonymize toggle for metadata export too: when on, the manifest's
@@ -863,7 +905,7 @@ namespace DicomRtNifti.App.ViewModels
                 if (AnonymizeExport)
                     anonService = OpenAnonymizationKey();
 
-                var manifestRows = BuildManifestRows(selectedSeries, anonService, spacingPerSeries, roiVolumesPerSeries);
+                var manifestRows = BuildManifestRows(processed, anonService, spacingPerSeries, roiVolumesPerSeries);
 
                 if (anonService != null)
                     anonService.Save();
@@ -877,10 +919,11 @@ namespace DicomRtNifti.App.ViewModels
 
                 WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames, "export_manifest_meta.csv");
 
-                AppendLog($"Metadata export complete. {completed} series processed.");
+                AppendLog($"Metadata export complete. {completed} series processed." +
+                          (failed > 0 ? $" {failed} failed and are not in the manifest (see FAILED above)." : ""));
                 if (anonService != null)
                     AppendLog($"Anonymization key (outside the export; keep it, do not share it): {anonService.KeyFilePath}");
-                StatusText = "Metadata export complete.";
+                StatusText = failed > 0 ? $"Metadata export complete; {failed} series failed." : "Metadata export complete.";
             }
             catch (OperationCanceledException)
             {
