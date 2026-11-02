@@ -258,7 +258,9 @@ namespace DicomRtNifti.Core.Services
                 // and returns an already-completed task, so the one-task-per-file scan that used it
                 // ran every file inline on a single thread; the parallelism is in ScanFolderAsync.
                 // The two parse identically and wrap failures the same way.
-                dcmFile = DicomFile.Open(filePath, FileReadOption.SkipLargeTags);
+                dcmFile = DicomFile.Open(filePath, DicomEncoding.Default, StopAtBulkSequences, FileReadOption.SkipLargeTags);
+                if (dcmFile.IsPartial && !CanUsePartialRead(GetStringTag(dcmFile.Dataset, DicomTag.Modality, "")))
+                    dcmFile = DicomFile.Open(filePath, FileReadOption.SkipLargeTags);
             }
             // System-level errors that should NOT be silently swallowed — propagate to the
             // outer counter so the GUI can warn the user. PathTooLong in particular is the
@@ -439,6 +441,32 @@ namespace DicomRtNifti.Core.Services
                 series.ReferencedSeriesUID = header.ReferencedSeriesUid;
             }
         }
+
+        /// <summary>
+        /// Stops a read at the top-level sequences that make up most of the bytes of the objects
+        /// that carry them: a structure set's contour points (ROIContourSequence) and an enhanced or
+        /// segmentation object's per-frame description (the functional group sequences). On the
+        /// NSCLC-Radiomics cohort these were half the scan's parse time; the scanner reads nothing
+        /// in them, or after them, except on the objects <see cref="CanUsePartialRead"/> sends back
+        /// for a full read.
+        /// </summary>
+        private static readonly Func<ParseState, bool> StopAtBulkSequences = state =>
+            state.SequenceDepth == 0 &&
+            (state.Tag == DicomTag.ROIContourSequence ||
+             state.Tag == DicomTag.SharedFunctionalGroupsSequence ||
+             state.Tag == DicomTag.PerFrameFunctionalGroupsSequence);
+
+        /// <summary>
+        /// Whether a read that ended early (at <see cref="StopAtBulkSequences"/>, or at a truncation)
+        /// holds every tag ReadHeader reads for this modality. Every tag it reads sorts before
+        /// ROIContourSequence (3006,0039) with two exceptions, and those modalities get a full read:
+        /// an image's PerFrameFunctionalGroupsSequence (5200,9230), which decides whether a slice
+        /// without a position is a multi-frame object, and a dose's ReferencedStructureSetSequence
+        /// (300C,0060), which may follow a dose's own ROI contours.
+        /// </summary>
+        private static bool CanUsePartialRead(string modality) =>
+            !ImageModalities.Contains(modality) &&
+            !string.Equals(modality, "RTDOSE", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Non-empty ROI names from StructureSetROISequence in an RTSTRUCT dataset, in file order.
