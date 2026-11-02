@@ -860,20 +860,25 @@ namespace DicomRtNifti.App.ViewModels
                         // grid a conversion would write, so this survey earns the same warning.
                         LogGeometryWarnings(model, targetSpacing);
 
-                        progress.Report($"Reading spacing: {displayLabel}");
-                        double[] seriesSpacing = await Task.Run(() => _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
+                        // Spacing and, with structures, the ROI volumes from one load of the series.
+                        var structureSet = IncludeStructures ? model.LinkedRtStruct : null;
+                        progress.Report(structureSet != null
+                            ? $"Reading spacing and computing volumes: {displayLabel}"
+                            : $"Reading spacing: {displayLabel}");
+                        var survey = await Task.Run(() =>
+                            _conversionService.SurveySeries(
+                                model, structureSet,
+                                effectiveAssociations, effectiveExportUnmatched,
+                                progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
+
+                        double[] seriesSpacing = survey.Spacing;
                         if (targetSpacing != null)
                             seriesSpacing = (double[])targetSpacing.Clone();
                         spacingPerSeries[seriesUid] = seriesSpacing;
 
-                        if (IncludeStructures && model.LinkedRtStruct != null)
+                        if (structureSet != null)
                         {
-                            progress.Report($"Computing volumes: {displayLabel}");
-                            var roiVolumes = await Task.Run(() =>
-                                _conversionService.ComputeStructVolumes(
-                                    model.LinkedRtStruct, model,
-                                    effectiveAssociations, effectiveExportUnmatched,
-                                    progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
+                            var roiVolumes = survey.RoiVolumes;
 
                             if (roiVolumes != null && roiVolumes.Count > 0)
                             {
