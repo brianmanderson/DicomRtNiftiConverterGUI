@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DicomRtNifti.Core.Models;
@@ -303,7 +305,9 @@ namespace DicomRtNifti.Core.Services
         /// manifest is written.
         ///
         /// This still rasterizes when volumes are requested — there is no analytic contour-area
-        /// path — so it saves the disk writes, not the compute.
+        /// path — so it saves the disk writes, not the compute. What it can save it does: each
+        /// series is loaded once for spacing and volumes together, and
+        /// <see cref="SurveyParallelism"/> series are surveyed at once, recorded in plan order.
         /// </summary>
         public async Task<CohortExportResult> ComputeManifestAsync(
             CohortExportPlan plan,
@@ -358,76 +362,128 @@ namespace DicomRtNifti.Core.Services
                 progress?.Report(OnlyAssociatedWithoutAssociationsWarning);
             }
 
-            int index = 0;
-            foreach (var planned in plan.Series)
+            void Record(PlannedSeries planned, SeriesExportResult seriesResult)
             {
-                ct.ThrowIfCancellationRequested();
-                index++;
+                result.Series.Add(seriesResult);
+                result.SucceededCount++;
 
-                string label = $"{planned.ExportPatientId}/{Truncate(planned.ExportSeriesUid, 8)}";
-                progress?.Report($"[{index}/{plan.Series.Count}] {label}");
-
-                // The non-uniform-Z diagnostic belonged here from the start and was not: the
-                // single-series CLI modes warned, where a human is watching one conversion, and
-                // the cohort modes — 400 patients, output read months later — did not. A mixed-gap
-                // series converts at exit 0 either way; this is the only thing that says so.
-                // Non-fatal, and it changes nothing about the geometry written.
-                string missingWarning;
-                if (SeriesGeometryProbe.TryBuildMissingPositionWarning(planned.Image, out missingWarning))
-                    progress?.Report("  " + missingWarning);
-
-                string spacingWarning;
-                if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
-                        planned.Image, options.OutputSpacing, out spacingWarning))
+                var row = new ManifestRow
                 {
-                    progress?.Report("  " + spacingWarning);
+                    PatientID = planned.ExportPatientId,
+                    StudyUID = planned.ExportStudyUid,
+                    SeriesUID = planned.ExportSeriesUid,
+                };
+                if (seriesResult.Spacing != null && seriesResult.Spacing.Length == 3)
+                {
+                    row.SpacingX = seriesResult.Spacing[0];
+                    row.SpacingY = seriesResult.Spacing[1];
+                    row.SpacingZ = seriesResult.Spacing[2];
                 }
-
-                try
+                foreach (var mask in seriesResult.Masks)
                 {
-                    var seriesResult = await ConvertSeriesAsync(
-                        planned, options, anon, outputRoot, progress, ct, writeFiles).ConfigureAwait(false);
+                    row.RoiVolumes[mask.Name] = mask.VolumeCc;
+                    if (roiColumnSet.Add(mask.Name))
+                        roiColumns.Add(mask.Name);
+                }
+                manifestRows.Add(row);
+            }
 
-                    result.Series.Add(seriesResult);
-                    result.SucceededCount++;
+            void RecordFailure(PlannedSeries planned, Exception ex)
+            {
+                result.FailedCount++;
+                result.Errors.Add(new CohortError
+                {
+                    PatientId = planned.ExportPatientId,
+                    SeriesUid = planned.ExportSeriesUid,
+                    Message = ex.Message,
+                });
+                progress?.Report($"  failed: {ex.Message}");
+            }
 
-                    var row = new ManifestRow
+            if (writeFiles || SurveyParallelism < 2 || plan.Series.Count < 2)
+            {
+                int index = 0;
+                foreach (var planned in plan.Series)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    index++;
+
+                    ReportSeriesStart(planned, index, plan.Series.Count, options, progress);
+
+                    try
                     {
-                        PatientID = planned.ExportPatientId,
-                        StudyUID = planned.ExportStudyUid,
-                        SeriesUID = planned.ExportSeriesUid,
-                    };
-                    if (seriesResult.Spacing != null && seriesResult.Spacing.Length == 3)
-                    {
-                        row.SpacingX = seriesResult.Spacing[0];
-                        row.SpacingY = seriesResult.Spacing[1];
-                        row.SpacingZ = seriesResult.Spacing[2];
+                        var seriesResult = await ConvertSeriesAsync(
+                            planned, options, anon, outputRoot, progress, ct, writeFiles).ConfigureAwait(false);
+                        Record(planned, seriesResult);
                     }
-                    foreach (var mask in seriesResult.Masks)
+                    catch (OperationCanceledException)
                     {
-                        row.RoiVolumes[mask.Name] = mask.VolumeCc;
-                        if (roiColumnSet.Add(mask.Name))
-                            roiColumns.Add(mask.Name);
-                    }
-                    manifestRows.Add(row);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    result.FailedCount++;
-                    result.Errors.Add(new CohortError
-                    {
-                        PatientId = planned.ExportPatientId,
-                        SeriesUid = planned.ExportSeriesUid,
-                        Message = ex.Message,
-                    });
-                    progress?.Report($"  failed: {ex.Message}");
-
-                    if (options.FailFast)
                         throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        RecordFailure(planned, ex);
+
+                        if (options.FailFast)
+                            throw;
+                    }
+                }
+            }
+            else
+            {
+                // The survey writes nothing per series, so several run at once: most of a series'
+                // time is the single-threaded decode of its CT. Only the loads overlap; the
+                // rasterize-and-measure step, which holds all of a series' masks at once and is
+                // already parallel per ROI, takes one series at a time through volumeGate, so the
+                // peak is a one-at-a-time run's plus one more CT. Results are recorded, and each
+                // series' held progress replayed, in plan order, so the manifest, the result and
+                // the log are what a one-at-a-time run produces. Only --fail-fast differs, and
+                // only in work done: series after the failing one may already have been surveyed,
+                // and their results are dropped as before.
+                using (var gate = new SemaphoreSlim(SurveyParallelism))
+                using (var volumeGate = new SemaphoreSlim(1))
+                using (var stop = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    var surveys = new Task<HeldSurvey>[plan.Series.Count];
+                    for (int i = 0; i < surveys.Length; i++)
+                        surveys[i] = SurveyHeldAsync(plan.Series[i], i + 1, surveys.Length,
+                            options, anon, outputRoot, gate, volumeGate, stop.Token);
+
+                    try
+                    {
+                        for (int i = 0; i < surveys.Length; i++)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            var planned = plan.Series[i];
+                            var held = await surveys[i].ConfigureAwait(false);
+                            held.Progress.ReplayTo(progress);
+
+                            try
+                            {
+                                if (held.Error != null)
+                                    ExceptionDispatchInfo.Capture(held.Error).Throw();
+                                Record(planned, held.Result);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                throw;
+                            }
+                            catch (Exception ex)
+                            {
+                                RecordFailure(planned, ex);
+
+                                if (options.FailFast)
+                                    throw;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        // On the way out early, stop the series still running or waiting for a
+                        // slot, and let them finish before the gate they hold is disposed.
+                        stop.Cancel();
+                        await Task.WhenAll(surveys).ConfigureAwait(false);
+                    }
                 }
             }
 
@@ -451,6 +507,104 @@ namespace DicomRtNifti.Core.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// How many series the manifest survey works on at once. Each one in flight holds its
+        /// decoded CT, so this stays small: on a 10-patient survey a second series in flight took
+        /// off most of what any number of them could, and a third added little.
+        /// </summary>
+        internal static readonly int DefaultSurveyParallelism = Math.Min(2, Environment.ProcessorCount);
+
+        /// <summary>
+        /// Series surveyed at once by <see cref="ComputeManifestAsync"/>; 1 runs them one at a
+        /// time. Settable so a test can compare the two schedules.
+        /// </summary>
+        internal int SurveyParallelism { get; set; } = DefaultSurveyParallelism;
+
+        /// <summary>
+        /// The per-series header of the cohort log: position, label, and the geometry warnings.
+        /// </summary>
+        private static void ReportSeriesStart(
+            PlannedSeries planned, int index, int count, CohortExportOptions options, IProgress<string> progress)
+        {
+            string label = $"{planned.ExportPatientId}/{Truncate(planned.ExportSeriesUid, 8)}";
+            progress?.Report($"[{index}/{count}] {label}");
+
+            // The non-uniform-Z diagnostic belonged here from the start and was not: the
+            // single-series CLI modes warned, where a human is watching one conversion, and
+            // the cohort modes — 400 patients, output read months later — did not. A mixed-gap
+            // series converts at exit 0 either way; this is the only thing that says so.
+            // Non-fatal, and it changes nothing about the geometry written.
+            string missingWarning;
+            if (SeriesGeometryProbe.TryBuildMissingPositionWarning(planned.Image, out missingWarning))
+                progress?.Report("  " + missingWarning);
+
+            string spacingWarning;
+            if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(
+                    planned.Image, options.OutputSpacing, out spacingWarning))
+            {
+                progress?.Report("  " + spacingWarning);
+            }
+        }
+
+        /// <summary>
+        /// Surveys one series once a slot in <paramref name="gate"/> is free, holding its progress
+        /// for the caller to replay. Never faults: the outcome, error or cancellation included, is
+        /// returned for the caller to record in plan order.
+        /// </summary>
+        private async Task<HeldSurvey> SurveyHeldAsync(
+            PlannedSeries planned, int index, int count,
+            CohortExportOptions options, AnonymizationService anon, string outputRoot,
+            SemaphoreSlim gate, SemaphoreSlim volumeGate, CancellationToken ct)
+        {
+            var held = new HeldSurvey();
+            try
+            {
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    ct.ThrowIfCancellationRequested();
+                    ReportSeriesStart(planned, index, count, options, held.Progress);
+                    held.Result = await ConvertSeriesAsync(
+                        planned, options, anon, outputRoot, held.Progress, ct,
+                        writeFiles: false, volumeGate: volumeGate).ConfigureAwait(false);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }
+            catch (Exception ex)
+            {
+                held.Error = ex;
+            }
+            return held;
+        }
+
+        private sealed class HeldSurvey
+        {
+            public HeldProgress Progress { get; } = new HeldProgress();
+            public SeriesExportResult Result { get; set; }
+            public Exception Error { get; set; }
+        }
+
+        /// <summary>
+        /// Progress kept back while a series runs alongside others, then replayed as one block.
+        /// Thread-safe: the rasterizer reports from its per-ROI workers.
+        /// </summary>
+        private sealed class HeldProgress : IProgress<string>
+        {
+            private readonly ConcurrentQueue<string> _messages = new ConcurrentQueue<string>();
+
+            public void Report(string value) => _messages.Enqueue(value);
+
+            public void ReplayTo(IProgress<string> target)
+            {
+                if (target == null) return;
+                foreach (var message in _messages)
+                    target.Report(message);
+            }
         }
 
         internal const string OnlyAssociatedWithoutAssociationsWarning =
@@ -515,7 +669,8 @@ namespace DicomRtNifti.Core.Services
             string outputRoot,
             IProgress<string> progress,
             CancellationToken ct,
-            bool writeFiles)
+            bool writeFiles,
+            SemaphoreSlim volumeGate = null)
         {
             string outputDir = Path.Combine(outputRoot,
                 planned.RelativeOutputDir.Replace('/', Path.DirectorySeparatorChar));
@@ -554,7 +709,7 @@ namespace DicomRtNifti.Core.Services
                 var survey = await Task.Run(() => _conversionService.SurveySeries(
                     planned.Image, structureSet,
                     effectiveAssociations, exportUnmatched,
-                    progress, ct, options.OutputSpacing), ct).ConfigureAwait(false);
+                    progress, ct, options.OutputSpacing, volumeGate), ct).ConfigureAwait(false);
                 spacing = survey.Spacing;
                 surveyedVolumes = survey.RoiVolumes;
             }

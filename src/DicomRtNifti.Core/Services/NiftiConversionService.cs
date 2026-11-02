@@ -100,6 +100,26 @@ namespace DicomRtNifti.Core.Services
             CancellationToken ct,
             double[] targetSpacing = null)
         {
+            return SurveySeries(imageSeries, rtStructSeries, associations, exportUnmatched,
+                progress, ct, targetSpacing, volumeGate: null);
+        }
+
+        /// <param name="volumeGate">
+        /// Held, when given, while the ROIs are rasterized and measured: the part of a survey that
+        /// holds every ROI's mask in memory at once, and that already runs in parallel per ROI. A
+        /// caller surveying several series at once shares one gate of one slot, so their CT loads
+        /// overlap and their masks do not.
+        /// </param>
+        internal SeriesSurvey SurveySeries(
+            DicomSeriesGroup imageSeries,
+            DicomSeriesGroup rtStructSeries,
+            List<RoiAssociation> associations,
+            bool exportUnmatched,
+            IProgress<string> progress,
+            CancellationToken ct,
+            double[] targetSpacing,
+            SemaphoreSlim volumeGate)
+        {
             var sortedFiles = SortFilesBySlicePosition(imageSeries.FilePaths, out double[] sliceZsMm);
             using (Image referenceImage = DicomImageSeriesLoader.LoadCorrected(sortedFiles))
             {
@@ -114,9 +134,17 @@ namespace DicomRtNifti.Core.Services
                 if (rtStructSeries.FilePaths.Count == 0 || imageSeries.FilePaths.Count == 0)
                     return survey;
 
-                survey.RoiVolumes = ComputeVolumesOnReference(
-                    rtStructSeries, referenceImage, sortedFiles, sliceZsMm,
-                    associations, exportUnmatched, progress, ct, targetSpacing);
+                volumeGate?.Wait(ct);
+                try
+                {
+                    survey.RoiVolumes = ComputeVolumesOnReference(
+                        rtStructSeries, referenceImage, sortedFiles, sliceZsMm,
+                        associations, exportUnmatched, progress, ct, targetSpacing);
+                }
+                finally
+                {
+                    volumeGate?.Release();
+                }
                 return survey;
             }
         }
@@ -707,7 +735,7 @@ namespace DicomRtNifti.Core.Services
         /// <see cref="DicomImageSeriesLoader.ReadPerSliceZ"/> would read back from the same headers,
         /// saved from this pass. Null when no position was read (fewer than two files).
         /// </param>
-        private List<string> SortFilesBySlicePosition(List<string> filePaths, out double[] sliceZsMm)
+        internal List<string> SortFilesBySlicePosition(List<string> filePaths, out double[] sliceZsMm)
         {
             sliceZsMm = null;
             if (filePaths == null || filePaths.Count == 0)
