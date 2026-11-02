@@ -286,7 +286,9 @@ namespace DicomRtNifti.Core.Services
 
         /// <summary>
         /// Converts every planned series: image, per-ROI masks, dose volumes and the metadata
-        /// sidecar, then writes (merging into) the cohort manifest.
+        /// sidecar, then writes (merging into) the cohort manifest. Each series' CT is loaded once
+        /// for its image and its masks, and <see cref="SeriesParallelism"/> series are converted at
+        /// once (see <see cref="RunsSeriesAtOnce"/>), recorded in plan order.
         /// </summary>
         public async Task<CohortExportResult> ExecuteAsync(
             CohortExportPlan plan,
@@ -307,7 +309,7 @@ namespace DicomRtNifti.Core.Services
         /// This still rasterizes when volumes are requested — there is no analytic contour-area
         /// path — so it saves the disk writes, not the compute. What it can save it does: each
         /// series is loaded once for spacing and volumes together, and
-        /// <see cref="SurveyParallelism"/> series are surveyed at once, recorded in plan order.
+        /// <see cref="SeriesParallelism"/> series are surveyed at once, recorded in plan order.
         /// </summary>
         public async Task<CohortExportResult> ComputeManifestAsync(
             CohortExportPlan plan,
@@ -400,7 +402,7 @@ namespace DicomRtNifti.Core.Services
                 progress?.Report($"  failed: {ex.Message}");
             }
 
-            if (writeFiles || SurveyParallelism < 2 || plan.Series.Count < 2)
+            if (!RunsSeriesAtOnce(plan, options, writeFiles))
             {
                 int index = 0;
                 foreach (var planned in plan.Series)
@@ -431,31 +433,32 @@ namespace DicomRtNifti.Core.Services
             }
             else
             {
-                // The survey writes nothing per series, so several run at once: most of a series'
-                // time is the single-threaded decode of its CT. Only the loads overlap; the
-                // rasterize-and-measure step, which holds all of a series' masks at once and is
-                // already parallel per ROI, takes one series at a time through volumeGate, so the
-                // peak is a one-at-a-time run's plus one more CT. Results are recorded, and each
-                // series' held progress replayed, in plan order, so the manifest, the result and
-                // the log are what a one-at-a-time run produces. Only --fail-fast differs, and
-                // only in work done: series after the failing one may already have been surveyed,
-                // and their results are dropped as before.
-                using (var gate = new SemaphoreSlim(SurveyParallelism))
+                // Several series at once: most of a series' time runs on one thread, the decode of
+                // its CT and, when converting, the gzip of image.nii.gz. Those overlap; the step
+                // that rasterizes, measures and writes the masks, which holds all of a series'
+                // masks at once and is already parallel per ROI, takes one series at a time through
+                // volumeGate, so the peak is a one-at-a-time run's plus one more CT. Results are
+                // recorded, and each series' held progress replayed, in plan order, so the
+                // manifest, the result, the files and the log are what a one-at-a-time run
+                // produces. A survey under --fail-fast differs only in work done: series after the
+                // failing one may already have been surveyed, and their results are dropped as
+                // before. See RunsSeriesAtOnce for when a conversion stays one at a time.
+                using (var gate = new SemaphoreSlim(SeriesParallelism))
                 using (var volumeGate = new SemaphoreSlim(1))
                 using (var stop = CancellationTokenSource.CreateLinkedTokenSource(ct))
                 {
-                    var surveys = new Task<HeldSurvey>[plan.Series.Count];
-                    for (int i = 0; i < surveys.Length; i++)
-                        surveys[i] = SurveyHeldAsync(plan.Series[i], i + 1, surveys.Length,
-                            options, anon, outputRoot, gate, volumeGate, stop.Token);
+                    var running = new Task<HeldSeries>[plan.Series.Count];
+                    for (int i = 0; i < running.Length; i++)
+                        running[i] = RunHeldAsync(plan.Series[i], i + 1, running.Length,
+                            options, anon, outputRoot, writeFiles, gate, volumeGate, stop.Token);
 
                     try
                     {
-                        for (int i = 0; i < surveys.Length; i++)
+                        for (int i = 0; i < running.Length; i++)
                         {
                             ct.ThrowIfCancellationRequested();
                             var planned = plan.Series[i];
-                            var held = await surveys[i].ConfigureAwait(false);
+                            var held = await running[i].ConfigureAwait(false);
                             held.Progress.ReplayTo(progress);
 
                             try
@@ -482,7 +485,7 @@ namespace DicomRtNifti.Core.Services
                         // On the way out early, stop the series still running or waiting for a
                         // slot, and let them finish before the gate they hold is disposed.
                         stop.Cancel();
-                        await Task.WhenAll(surveys).ConfigureAwait(false);
+                        await Task.WhenAll(running).ConfigureAwait(false);
                     }
                 }
             }
@@ -510,17 +513,35 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
-        /// How many series the manifest survey works on at once. Each one in flight holds its
-        /// decoded CT, so this stays small: on a 10-patient survey a second series in flight took
-        /// off most of what any number of them could, and a third added little.
+        /// How many series a cohort run works on at once. Each one in flight holds its decoded CT,
+        /// so this stays small: on 10 patients a second series in flight took off most of what
+        /// any number of them could, for the survey and the conversion alike.
         /// </summary>
-        internal static readonly int DefaultSurveyParallelism = Math.Min(2, Environment.ProcessorCount);
+        internal static readonly int DefaultSeriesParallelism = Math.Min(2, Environment.ProcessorCount);
 
         /// <summary>
-        /// Series surveyed at once by <see cref="ComputeManifestAsync"/>; 1 runs them one at a
+        /// Series run at once by <see cref="ComputeManifestAsync"/> and, where
+        /// <see cref="RunsSeriesAtOnce"/> allows, <see cref="ExecuteAsync"/>; 1 runs them one at a
         /// time. Settable so a test can compare the two schedules.
         /// </summary>
-        internal int SurveyParallelism { get; set; } = DefaultSurveyParallelism;
+        internal int SeriesParallelism { get; set; } = DefaultSeriesParallelism;
+
+        /// <summary>
+        /// Whether this run takes several series at once. A survey writes nothing per series, so it
+        /// always may. A conversion does too, with two exceptions that stay one at a time:
+        /// --fail-fast, where a series after the failing one could already have written its files;
+        /// and anonymized metadata sidecars, whose de-identifier hashes UIDs outside the plan (the
+        /// structure set's and the dose's) into the shared key as it meets them, which is neither
+        /// thread-safe nor, run out of order, the same key file.
+        /// </summary>
+        internal bool RunsSeriesAtOnce(CohortExportPlan plan, CohortExportOptions options, bool writeFiles)
+        {
+            if (SeriesParallelism < 2 || plan.Series.Count < 2)
+                return false;
+            if (!writeFiles)
+                return true;
+            return !options.FailFast && !(options.Anonymize && options.HasMetadataSelections);
+        }
 
         /// <summary>
         /// The per-series header of the cohort log: position, label, and the geometry warnings.
@@ -549,16 +570,16 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
-        /// Surveys one series once a slot in <paramref name="gate"/> is free, holding its progress
+        /// Runs one series once a slot in <paramref name="gate"/> is free, holding its progress
         /// for the caller to replay. Never faults: the outcome, error or cancellation included, is
         /// returned for the caller to record in plan order.
         /// </summary>
-        private async Task<HeldSurvey> SurveyHeldAsync(
+        private async Task<HeldSeries> RunHeldAsync(
             PlannedSeries planned, int index, int count,
-            CohortExportOptions options, AnonymizationService anon, string outputRoot,
+            CohortExportOptions options, AnonymizationService anon, string outputRoot, bool writeFiles,
             SemaphoreSlim gate, SemaphoreSlim volumeGate, CancellationToken ct)
         {
-            var held = new HeldSurvey();
+            var held = new HeldSeries();
             try
             {
                 await gate.WaitAsync(ct).ConfigureAwait(false);
@@ -568,7 +589,7 @@ namespace DicomRtNifti.Core.Services
                     ReportSeriesStart(planned, index, count, options, held.Progress);
                     held.Result = await ConvertSeriesAsync(
                         planned, options, anon, outputRoot, held.Progress, ct,
-                        writeFiles: false, volumeGate: volumeGate).ConfigureAwait(false);
+                        writeFiles, volumeGate).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -582,7 +603,7 @@ namespace DicomRtNifti.Core.Services
             return held;
         }
 
-        private sealed class HeldSurvey
+        private sealed class HeldSeries
         {
             public HeldProgress Progress { get; } = new HeldProgress();
             public SeriesExportResult Result { get; set; }
@@ -688,20 +709,30 @@ namespace DicomRtNifti.Core.Services
                 Directory.CreateDirectory(outputDir);
 
             double[] spacing = null;
-            Dictionary<string, double> surveyedVolumes = null;
+            Dictionary<string, double> computedVolumes = null;
 
             var effectiveAssociations = options.Associations;
             bool exportUnmatched = !options.OnlyAssociatedRois;
 
-            if (writeFiles && options.ExportImages)
+            if (writeFiles)
             {
-                spacing = await Task.Run(() => _conversionService.ConvertImageSeriesToNifti(
-                    planned.Image, outputDir, progress, ct, options.OutputSpacing), ct)
-                    .ConfigureAwait(false);
-                seriesResult.Image = Join(planned.RelativeOutputDir, NiftiFileNaming.ImageNiiGz);
+                // The image and the masks from one load of the series rather than one for
+                // ConvertImageSeriesToNifti (or GetImageSpacing) and another for
+                // ConvertStructToNifti; same files.
+                var structureSet = options.ExportStructures ? planned.RtStruct : null;
+                if (options.ExportImages || structureSet != null)
+                {
+                    var conversion = await Task.Run(() => _conversionService.ConvertSeries(
+                        planned.Image, outputDir, options.ExportImages, structureSet,
+                        effectiveAssociations, exportUnmatched,
+                        false, progress, ct, options.OutputSpacing, volumeGate), ct).ConfigureAwait(false);
+                    spacing = conversion.Spacing;
+                    computedVolumes = conversion.RoiVolumes;
+                    if (options.ExportImages)
+                        seriesResult.Image = Join(planned.RelativeOutputDir, NiftiFileNaming.ImageNiiGz);
+                }
             }
-
-            if (spacing == null && !writeFiles)
+            else
             {
                 // The manifest survey reads spacing and volumes from one load of the series rather
                 // than one for GetImageSpacing and another for ComputeStructVolumes; same numbers.
@@ -711,7 +742,7 @@ namespace DicomRtNifti.Core.Services
                     effectiveAssociations, exportUnmatched,
                     progress, ct, options.OutputSpacing, volumeGate), ct).ConfigureAwait(false);
                 spacing = survey.Spacing;
-                surveyedVolumes = survey.RoiVolumes;
+                computedVolumes = survey.RoiVolumes;
             }
 
             if (spacing == null)
@@ -731,16 +762,9 @@ namespace DicomRtNifti.Core.Services
             {
                 Dictionary<string, double> roiVolumes;
 
-                if (writeFiles)
+                if (writeFiles || options.ComputeVolumes)
                 {
-                    roiVolumes = await Task.Run(() => _conversionService.ConvertStructToNifti(
-                        planned.RtStruct, planned.Image, outputDir,
-                        effectiveAssociations, exportUnmatched,
-                        false, progress, ct, options.OutputSpacing), ct).ConfigureAwait(false);
-                }
-                else if (options.ComputeVolumes)
-                {
-                    roiVolumes = surveyedVolumes;
+                    roiVolumes = computedVolumes;
                 }
                 else
                 {
