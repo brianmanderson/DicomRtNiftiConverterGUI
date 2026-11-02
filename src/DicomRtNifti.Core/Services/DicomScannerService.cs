@@ -3,7 +3,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using DicomRtNifti.Core.Models;
 using FellowOakDicom;
@@ -21,6 +23,13 @@ namespace DicomRtNifti.Core.Services
         private const int MaxErrorSamples = 10;
 
         /// <summary>
+        /// Files read at once. Each read is synchronous file I/O (see ReadHeader), so this is also
+        /// the depth of the disk queue. Twice the core count was within a few percent of the best of
+        /// 6 to 64 on a local SSD, warm and with the page cache purged; more did not help.
+        /// </summary>
+        private static readonly int MaxConcurrentReads = Environment.ProcessorCount * 2;
+
+        /// <summary>
         /// Scans the given root folder for DICOM files and returns grouped patient data plus
         /// a count of files that errored during open (so callers can surface silent failures
         /// like PathTooLongException on long Windows paths instead of reporting "0 patients").
@@ -30,10 +39,10 @@ namespace DicomRtNifti.Core.Services
             IProgress<string> progress,
             CancellationToken cancellationToken)
         {
-            // Collect all candidate file paths
             progress?.Report("Enumerating files...");
-            var allFiles = Directory.EnumerateFiles(rootFolder, "*", SearchOption.AllDirectories).ToList();
-            int totalFiles = allFiles.Count;
+            int foundCount = 0;
+            // -1 until the directory walk has finished; then the number of files it found.
+            int totalFiles = -1;
             int processedCount = 0;
             int skippedErrorCount = 0;
             var errorSamples = new ConcurrentQueue<string>();
@@ -52,46 +61,127 @@ namespace DicomRtNifti.Core.Services
             // badged [CT].
             var modalityCounts = new ConcurrentDictionary<string, ConcurrentDictionary<string, int>>();
 
-            // Process files in parallel with bounded concurrency
-            var semaphore = new SemaphoreSlim(Environment.ProcessorCount * 2);
+            // Files are read in parallel but applied to the hierarchy one at a time, in the order the
+            // directory walk found them. Several attributes come from a group's first file (series
+            // description and date, study description, the patient's name, in-plane spacing), and
+            // a study or series joins the hierarchy where its first file puts it; applying in walk
+            // order keeps all of that exactly as the sequential scan had it, for any input, and
+            // leaves the grouping itself single-threaded. A read that finishes early waits in
+            // readyToApply, as a few strings, until every file before it has been applied.
+            var readyToApply = new Dictionary<int, ScannedFile>();
+            int nextToApply = 0;
+            object applyLock = new object();
 
-            var tasks = allFiles.Select(async filePath =>
+            // The directory walk hands each path to the readers as it finds it, so reading starts
+            // with the first file rather than after the whole tree has been listed. The channel is
+            // unbounded because the walk outpaces reading by orders of magnitude and finishing it
+            // early is what gives the progress a total; it never holds more than the complete path
+            // list the scan used to build before reading anything.
+            var paths = Channel.CreateUnbounded<(int Index, string Path)>(new UnboundedChannelOptions { SingleWriter = true });
+            using (var abort = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                ExceptionDispatchInfo walkError = null;
+                var walk = Task.Factory.StartNew(() =>
+                {
+                    try
+                    {
+                        // SearchOption.AllDirectories, as before: hidden and system files are
+                        // included, and an inaccessible subdirectory ends the scan with its exception.
+                        foreach (var path in Directory.EnumerateFiles(rootFolder, "*", SearchOption.AllDirectories))
+                        {
+                            if (abort.IsCancellationRequested) return;
+                            int index = Interlocked.Increment(ref foundCount) - 1;
+                            paths.Writer.TryWrite((index, path));
+                        }
+                        Volatile.Write(ref totalFiles, foundCount);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Stop the readers; the scan rethrows this exception as it always has.
+                        walkError = ExceptionDispatchInfo.Capture(ex);
+                        abort.Cancel();
+                    }
+                    finally
+                    {
+                        paths.Writer.Complete();
+                    }
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
                 try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    await ProcessFileAsync(filePath, patients, studyLookup, seriesLookup, modalityCounts).ConfigureAwait(false);
+                    await Parallel.ForEachAsync(
+                        paths.Reader.ReadAllAsync(),
+                        new ParallelOptions { MaxDegreeOfParallelism = MaxConcurrentReads, CancellationToken = abort.Token },
+                        (item, _) =>
+                        {
+                            string filePath = item.Path;
+                            var scanned = new ScannedFile { Path = filePath };
+                            try
+                            {
+                                scanned.Header = ReadHeader(filePath);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                throw;
+                            }
+                            catch (Exception ex)
+                            {
+                                // Anything that escapes ReadHeader is an open/parse error worth
+                                // surfacing — PathTooLongException, UnauthorizedAccessException, IOException,
+                                // DicomDataException on truncated files, etc. Genuinely "not a DICOM file"
+                                // is filtered inside ReadHeader and never reaches here.
+                                scanned.Error = $"{filePath}: {ex.GetType().Name}: {ex.Message}";
+                            }
+                            finally
+                            {
+                                lock (applyLock)
+                                {
+                                    readyToApply.Add(item.Index, scanned);
+                                    while (readyToApply.Remove(nextToApply, out var next))
+                                    {
+                                        nextToApply++;
+                                        if (next.Error != null)
+                                        {
+                                            skippedErrorCount++;
+                                            if (errorSamples.Count < MaxErrorSamples)
+                                                errorSamples.Enqueue(next.Error);
+                                        }
+                                        else if (next.Header != null)
+                                        {
+                                            AddToHierarchy(next.Path, next.Header, patients, studyLookup, seriesLookup, modalityCounts);
+                                        }
+                                    }
+                                }
+
+                                int count = Interlocked.Increment(ref processedCount);
+                                if (count % 50 == 0)
+                                {
+                                    int total = Volatile.Read(ref totalFiles);
+                                    progress?.Report(total >= 0
+                                        ? $"Scanned {count}/{total} files..."
+                                        : $"Scanned {count} files, {Volatile.Read(ref foundCount)} found so far...");
+                                }
+                            }
+                            return default;
+                        }).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (walkError != null && !cancellationToken.IsCancellationRequested)
                 {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    // Anything that escapes ProcessFileAsync is an open/parse error worth
-                    // surfacing — PathTooLongException, UnauthorizedAccessException, IOException,
-                    // DicomDataException on truncated files, etc. Genuinely "not a DICOM file"
-                    // is filtered inside ProcessFileAsync and never reaches here.
-                    Interlocked.Increment(ref skippedErrorCount);
-                    if (errorSamples.Count < MaxErrorSamples)
-                    {
-                        errorSamples.Enqueue($"{filePath}: {ex.GetType().Name}: {ex.Message}");
-                    }
+                    // The walk failed and stopped the readers; its exception is the one to report.
                 }
                 finally
                 {
-                    semaphore.Release();
-                    int count = Interlocked.Increment(ref processedCount);
-                    if (count % 50 == 0 || count == totalFiles)
-                    {
-                        progress?.Report($"Scanned {count}/{totalFiles} files...");
-                    }
+                    await walk.ConfigureAwait(false);
                 }
-            }).ToArray();
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+                walkError?.Throw();
+            }
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (totalFiles > 0 && totalFiles % 50 != 0)
+            {
+                progress?.Report($"Scanned {totalFiles}/{totalFiles} files...");
+            }
 
             // Reconcile each series' modality to the majority across its files. Must run
             // before linking, since LinkRtDataToImageSeries filters series by modality.
@@ -118,23 +208,57 @@ namespace DicomRtNifti.Core.Services
             };
         }
 
+        /// <summary>One walked file: its header values, or the error that stopped its read.</summary>
+        private sealed class ScannedFile
+        {
+            public string Path;
+            public FileHeader Header;
+            public string Error;
+        }
+
         /// <summary>
-        /// Opens a single file as DICOM and adds it to the grouping dictionaries.
-        /// Files that are genuinely not DICOM are filtered here; all other failures (path
-        /// too long, access denied, truncated read, etc.) propagate so the caller can count
-        /// and report them rather than silently producing "0 patients".
+        /// Everything AddToHierarchy needs from one file, read while its dataset is open so the
+        /// dataset itself is not kept while the file waits for its turn.
         /// </summary>
-        private async Task ProcessFileAsync(
-            string filePath,
-            ConcurrentDictionary<string, DicomPatientGroup> patients,
-            ConcurrentDictionary<string, DicomStudyGroup> studyLookup,
-            ConcurrentDictionary<string, DicomSeriesGroup> seriesLookup,
-            ConcurrentDictionary<string, ConcurrentDictionary<string, int>> modalityCounts)
+        private sealed class FileHeader
+        {
+            public string PatientId;
+            public string PatientName;
+            public string Modality;
+            public string StudyUid;
+            public string SeriesUid;
+            public string SeriesDescription;
+            public string SeriesDate;
+            public string FrameOfReferenceUid;
+            public string StudyDescription;
+            public string StudyDate;
+            public bool Positioned;
+            public double SliceZ;
+            /// <summary>Set for an image slice with no usable position, which is recorded, not counted.</summary>
+            public string UnpositionedSlice;
+            public double[] PixelSpacing;
+            public double? SliceThickness;
+            /// <summary>Non-empty ROI names in file order (RTSTRUCT only).</summary>
+            public List<string> RoiNames;
+            public string ReferencedSeriesUid;
+        }
+
+        /// <summary>
+        /// Opens a single file as DICOM and reads the values the hierarchy is built from. Returns
+        /// null for a file that is genuinely not DICOM, or that has no study or series UID; all
+        /// other failures (path too long, access denied, truncated read, etc.) propagate so the
+        /// caller can count and report them rather than silently producing "0 patients".
+        /// </summary>
+        private static FileHeader ReadHeader(string filePath)
         {
             DicomFile dcmFile;
             try
             {
-                dcmFile = await DicomFile.OpenAsync(filePath, FileReadOption.SkipLargeTags).ConfigureAwait(false);
+                // Synchronous on purpose. fo-dicom's OpenAsync reads the same synchronous FileStream
+                // and returns an already-completed task, so the one-task-per-file scan that used it
+                // ran every file inline on a single thread; the parallelism is in ScanFolderAsync.
+                // The two parse identically and wrap failures the same way.
+                dcmFile = DicomFile.Open(filePath, FileReadOption.SkipLargeTags);
             }
             // System-level errors that should NOT be silently swallowed — propagate to the
             // outer counter so the GUI can warn the user. PathTooLong in particular is the
@@ -143,184 +267,201 @@ namespace DicomRtNifti.Core.Services
             catch (UnauthorizedAccessException) { throw; }
             catch (DirectoryNotFoundException)  { throw; }
             // Race: file vanished between enumeration and open — benign.
-            catch (FileNotFoundException) { return; }
+            catch (FileNotFoundException) { return null; }
             // Parser errors from FellowOakDicom: not a DICOM file (or corrupt). Treat as a
             // silent skip so directories that mix DICOM with .nii/.json/.txt still scan cleanly.
-            catch (DicomException) { return; }
+            catch (DicomException) { return null; }
             // Truncated reads on non-DICOM data: benign.
-            catch (System.IO.EndOfStreamException) { return; }
+            catch (System.IO.EndOfStreamException) { return null; }
 
             var ds = dcmFile.Dataset;
-            if (ds == null) return;
+            if (ds == null) return null;
 
-            string patientId = GetStringTag(ds, DicomTag.PatientID, "Unknown");
-            string patientName = GetStringTag(ds, DicomTag.PatientName, "");
-            string modality = GetStringTag(ds, DicomTag.Modality, "");
-            string studyUid = GetStringTag(ds, DicomTag.StudyInstanceUID, "");
-            string seriesUid = GetStringTag(ds, DicomTag.SeriesInstanceUID, "");
-            string seriesDesc = GetStringTag(ds, DicomTag.SeriesDescription, "");
-            string seriesDate = GetStringTag(ds, DicomTag.SeriesDate, "");
-            string frameOfRef = GetStringTag(ds, DicomTag.FrameOfReferenceUID, "");
+            var header = new FileHeader
+            {
+                PatientId = GetStringTag(ds, DicomTag.PatientID, "Unknown"),
+                PatientName = GetStringTag(ds, DicomTag.PatientName, ""),
+                Modality = GetStringTag(ds, DicomTag.Modality, ""),
+                StudyUid = GetStringTag(ds, DicomTag.StudyInstanceUID, ""),
+                SeriesUid = GetStringTag(ds, DicomTag.SeriesInstanceUID, ""),
+                SeriesDescription = GetStringTag(ds, DicomTag.SeriesDescription, ""),
+                SeriesDate = GetStringTag(ds, DicomTag.SeriesDate, ""),
+                FrameOfReferenceUid = GetStringTag(ds, DicomTag.FrameOfReferenceUID, ""),
+            };
+            string modality = header.Modality;
             // RTSTRUCT has no Frame of Reference module: the top-level tag is normally absent and
             // the frame lives in ReferencedFrameOfReferenceSequence / on each ROI. Reading only the
             // top-level tag left the frame-of-reference link rule dead for real structure sets.
-            if (string.IsNullOrEmpty(frameOfRef) && string.Equals(modality, "RTSTRUCT", StringComparison.OrdinalIgnoreCase))
-                frameOfRef = ExtractRtStructFrameOfReferenceUids(ds).FirstOrDefault() ?? "";
+            if (string.IsNullOrEmpty(header.FrameOfReferenceUid) && string.Equals(modality, "RTSTRUCT", StringComparison.OrdinalIgnoreCase))
+                header.FrameOfReferenceUid = ExtractRtStructFrameOfReferenceUids(ds).FirstOrDefault() ?? "";
 
-            if (string.IsNullOrEmpty(studyUid) || string.IsNullOrEmpty(seriesUid))
-                return;
+            if (string.IsNullOrEmpty(header.StudyUid) || string.IsNullOrEmpty(header.SeriesUid))
+                return null;
+
+            header.StudyDescription = GetStringTag(ds, DicomTag.StudyDescription, "");
+            header.StudyDate = GetStringTag(ds, DicomTag.StudyDate, "");
+
+            // Capture the per-slice geometry while this header is already open. Recording it here
+            // is what lets SeriesGeometryProbe report slice spacing and uniformity without a second
+            // pass over every file in the tree.
+            string why;
+            header.Positioned = SeriesGeometryProbe.TryReadSliceZ(ds, out header.SliceZ, out why);
+            // An image slice with no usable position is not part of the series the converter can
+            // build (the CLI's series builder skips it too), so it is recorded instead of counted.
+            // A multi-frame object (Enhanced CT/MR, NM) carries its positions per frame, so it is
+            // kept whole, as it always was, rather than reported as an unpositioned slice.
+            if (ImageModalities.Contains(modality) && !header.Positioned && !SeriesGeometryProbe.IsMultiFrame(ds))
+                header.UnpositionedSlice = SeriesGeometryProbe.DescribeUnpositionedSlice(filePath, ds, why);
+
+            if (ds.Contains(DicomTag.PixelSpacing))
+            {
+                try
+                {
+                    var ps = ds.GetValues<double>(DicomTag.PixelSpacing);
+                    if (ps != null && ps.Length >= 2)
+                        header.PixelSpacing = new[] { ps[0], ps[1] };
+                }
+                catch { /* leave null; the probe falls back to reporting no in-plane spacing */ }
+            }
+
+            if (ds.Contains(DicomTag.SliceThickness))
+            {
+                try
+                {
+                    header.SliceThickness = ds.GetSingleValue<double>(DicomTag.SliceThickness);
+                }
+                catch { /* optional; only used as the single-slice fallback */ }
+            }
+
+            if (modality == "RTSTRUCT")
+                header.RoiNames = ReadRoiNames(ds);
+
+            // Referenced image series of an RTSTRUCT, referenced structure set of an RTDOSE
+            if (modality == "RTSTRUCT" || modality == "RTDOSE")
+                header.ReferencedSeriesUid = ExtractReferencedSeriesUID(ds, modality);
+
+            return header;
+        }
+
+        /// <summary>
+        /// Adds one file to the grouping dictionaries. Runs under the scan's apply lock, one file at
+        /// a time and in directory-walk order, so a group's first file is the first one walked.
+        /// </summary>
+        private static void AddToHierarchy(
+            string filePath,
+            FileHeader header,
+            ConcurrentDictionary<string, DicomPatientGroup> patients,
+            ConcurrentDictionary<string, DicomStudyGroup> studyLookup,
+            ConcurrentDictionary<string, DicomSeriesGroup> seriesLookup,
+            ConcurrentDictionary<string, ConcurrentDictionary<string, int>> modalityCounts)
+        {
+            string modality = header.Modality;
 
             // Tally this file's modality so the series modality can be reconciled to the
             // majority after the scan (see ReconcileSeriesModalities).
             if (!string.IsNullOrEmpty(modality))
             {
                 modalityCounts
-                    .GetOrAdd(seriesUid, _ => new ConcurrentDictionary<string, int>())
+                    .GetOrAdd(header.SeriesUid, _ => new ConcurrentDictionary<string, int>())
                     .AddOrUpdate(modality, 1, (_, c) => c + 1);
             }
 
             // Get or create patient
-            var patient = patients.GetOrAdd(patientId, id => new DicomPatientGroup
+            var patient = patients.GetOrAdd(header.PatientId, id => new DicomPatientGroup
             {
                 PatientID = id,
-                PatientName = patientName
+                PatientName = header.PatientName
             });
             // Update name if previously empty
-            if (string.IsNullOrEmpty(patient.PatientName) && !string.IsNullOrEmpty(patientName))
+            if (string.IsNullOrEmpty(patient.PatientName) && !string.IsNullOrEmpty(header.PatientName))
             {
-                patient.PatientName = patientName;
+                patient.PatientName = header.PatientName;
             }
 
-            // Get or create study
-            var study = studyLookup.GetOrAdd(studyUid, uid =>
+            // Get or create study; a new study joins the patient of its first file
+            var study = studyLookup.GetOrAdd(header.StudyUid, uid =>
             {
                 var s = new DicomStudyGroup
                 {
                     StudyInstanceUID = uid,
-                    StudyDescription = GetStringTag(ds, DicomTag.StudyDescription, ""),
-                    StudyDate = GetStringTag(ds, DicomTag.StudyDate, "")
+                    StudyDescription = header.StudyDescription,
+                    StudyDate = header.StudyDate
                 };
-                lock (patient.Studies)
-                {
-                    if (!patient.Studies.Any(st => st.StudyInstanceUID == uid))
-                    {
-                        patient.Studies.Add(s);
-                    }
-                }
+                patient.Studies.Add(s);
                 return s;
             });
 
-            // Get or create series
-            var series = seriesLookup.GetOrAdd(seriesUid, uid =>
+            // Get or create series; a new series joins the study of its first file
+            var series = seriesLookup.GetOrAdd(header.SeriesUid, uid =>
             {
                 var sg = new DicomSeriesGroup
                 {
                     SeriesInstanceUID = uid,
-                    SeriesDescription = seriesDesc,
+                    SeriesDescription = header.SeriesDescription,
                     Modality = modality,
-                    SeriesDate = seriesDate,
-                    FrameOfReferenceUID = frameOfRef
+                    SeriesDate = header.SeriesDate,
+                    FrameOfReferenceUID = header.FrameOfReferenceUid
                 };
-                lock (study.Series)
-                {
-                    if (!study.Series.Any(sr => sr.SeriesInstanceUID == uid))
-                    {
-                        study.Series.Add(sg);
-                    }
-                }
+                study.Series.Add(sg);
                 return sg;
             });
 
-            // Add file path, and capture the per-slice geometry while this header is already
-            // open. Recording it here is what lets SeriesGeometryProbe report slice spacing and
-            // uniformity without a second pass over every file in the tree.
-            lock (series.FilePaths)
+            // RT objects legitimately carry no position and are kept as before; an RTDOSE's single
+            // position is still captured.
+            if (header.UnpositionedSlice != null)
             {
-                // An image slice with no usable position is not part of the series the converter
-                // can build (the CLI's series builder skips it too), so it is recorded instead of
-                // counted: SeriesGeometryProbe names it, rather than reading the hole it would
-                // leave in SlicePositions as non-uniform spacing. RT objects legitimately carry no
-                // position and are kept as before; an RTDOSE's single position is still captured.
-                double sliceZ;
-                string why;
-                bool positioned = SeriesGeometryProbe.TryReadSliceZ(ds, out sliceZ, out why);
-                // A multi-frame object (Enhanced CT/MR, NM) carries its positions per frame, so it
-                // is kept whole, as it always was, rather than reported as an unpositioned slice.
-                if (ImageModalities.Contains(modality) && !positioned && !SeriesGeometryProbe.IsMultiFrame(ds))
-                {
-                    series.UnpositionedSlices.Add(SeriesGeometryProbe.DescribeUnpositionedSlice(filePath, ds, why));
-                }
-                else
-                {
-                    series.FilePaths.Add(filePath);
-                    if (positioned)
-                        series.SlicePositions.Add(sliceZ);
-                }
+                series.UnpositionedSlices.Add(header.UnpositionedSlice);
+            }
+            else
+            {
+                series.FilePaths.Add(filePath);
+                if (header.Positioned)
+                    series.SlicePositions.Add(header.SliceZ);
+            }
 
-                if (series.PixelSpacing == null && ds.Contains(DicomTag.PixelSpacing))
-                {
-                    try
-                    {
-                        var ps = ds.GetValues<double>(DicomTag.PixelSpacing);
-                        if (ps != null && ps.Length >= 2)
-                            series.PixelSpacing = new[] { ps[0], ps[1] };
-                    }
-                    catch { /* leave null; the probe falls back to reporting no in-plane spacing */ }
-                }
+            if (series.PixelSpacing == null && header.PixelSpacing != null)
+                series.PixelSpacing = header.PixelSpacing;
 
-                if (series.SliceThickness == null && ds.Contains(DicomTag.SliceThickness))
+            if (series.SliceThickness == null && header.SliceThickness != null)
+                series.SliceThickness = header.SliceThickness;
+
+            if (header.RoiNames != null)
+            {
+                foreach (var roiName in header.RoiNames)
                 {
-                    try
-                    {
-                        series.SliceThickness = ds.GetSingleValue<double>(DicomTag.SliceThickness);
-                    }
-                    catch { /* optional; only used as the single-slice fallback */ }
+                    if (!series.RoiNames.Contains(roiName))
+                        series.RoiNames.Add(roiName);
                 }
             }
 
-            // Parse RTSTRUCT-specific data
-            if (modality == "RTSTRUCT")
+            if (!string.IsNullOrEmpty(header.ReferencedSeriesUid))
             {
-                ParseRtStructInfo(ds, series);
-            }
-
-            // Parse RTDOSE/RTSTRUCT referenced series UID
-            if (modality == "RTSTRUCT" || modality == "RTDOSE")
-            {
-                string refSeriesUid = ExtractReferencedSeriesUID(ds, modality);
-                if (!string.IsNullOrEmpty(refSeriesUid))
-                {
-                    series.ReferencedSeriesUID = refSeriesUid;
-                }
+                series.ReferencedSeriesUID = header.ReferencedSeriesUid;
             }
         }
 
         /// <summary>
-        /// Parses ROI names from StructureSetROISequence in an RTSTRUCT dataset.
+        /// Non-empty ROI names from StructureSetROISequence in an RTSTRUCT dataset, in file order.
         /// </summary>
-        private void ParseRtStructInfo(DicomDataset ds, DicomSeriesGroup series)
+        private static List<string> ReadRoiNames(DicomDataset ds)
         {
+            var names = new List<string>();
             try
             {
-                if (!ds.Contains(DicomTag.StructureSetROISequence)) return;
+                if (!ds.Contains(DicomTag.StructureSetROISequence)) return names;
 
-                var roiSeq = ds.GetSequence(DicomTag.StructureSetROISequence);
-                lock (series.RoiNames)
+                foreach (var item in ds.GetSequence(DicomTag.StructureSetROISequence))
                 {
-                    foreach (var item in roiSeq)
-                    {
-                        string roiName = GetStringTag(item, DicomTag.ROIName, "");
-                        if (!string.IsNullOrEmpty(roiName) && !series.RoiNames.Contains(roiName))
-                        {
-                            series.RoiNames.Add(roiName);
-                        }
-                    }
+                    string roiName = GetStringTag(item, DicomTag.ROIName, "");
+                    if (!string.IsNullOrEmpty(roiName))
+                        names.Add(roiName);
                 }
             }
             catch (Exception)
             {
-                // Skip if sequence parsing fails
+                // Keep the names read before the sequence failed to parse
             }
+            return names;
         }
 
         /// <summary>
