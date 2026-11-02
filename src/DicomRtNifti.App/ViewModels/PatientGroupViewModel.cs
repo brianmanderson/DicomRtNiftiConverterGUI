@@ -14,6 +14,7 @@ namespace DicomRtNifti.App.ViewModels
     {
         private bool _isExpanded;
         private bool _isSelected = true;
+        private PatientInspectorViewModel _inspector;
 
         public PatientGroupViewModel(DicomPatientGroup model)
         {
@@ -47,6 +48,9 @@ namespace DicomRtNifti.App.ViewModels
         public string GuessedLinkBadgeText => GuessedLinkSeriesCount == 1
             ? "link guessed"
             : $"{GuessedLinkSeriesCount} links guessed";
+
+        /// <summary>The inspector panel's content for this patient, built on first selection.</summary>
+        public PatientInspectorViewModel Inspector => _inspector ??= new PatientInspectorViewModel(Model);
 
         /// <summary>Whether this patient is selected for export. Propagates to all child series.</summary>
         public bool IsSelected
@@ -82,6 +86,7 @@ namespace DicomRtNifti.App.ViewModels
     public class StudyGroupViewModel : INotifyPropertyChanged
     {
         private bool _isExpanded;
+        private StudyInspectorViewModel _inspector;
 
         public StudyGroupViewModel(DicomStudyGroup model)
         {
@@ -92,12 +97,23 @@ namespace DicomRtNifti.App.ViewModels
 
             ImageSeries = new ObservableCollection<SeriesGroupViewModel>(
                 model.Series
-                    .Where(s => s.Modality == "CT" || s.Modality == "MR" || s.Modality == "PT")
+                    .Where(IsImageSeries)
                     .Select(s => new SeriesGroupViewModel(s)));
         }
 
+        /// <summary>
+        /// The series the tree lists, the scanner links RT objects to, and Convert Selected
+        /// exports. Everything else in a study (RTSTRUCT, RTDOSE, RTPLAN, any other modality) shows
+        /// only in the study inspector.
+        /// </summary>
+        internal static bool IsImageSeries(DicomSeriesGroup series)
+            => series != null && (series.Modality == "CT" || series.Modality == "MR" || series.Modality == "PT");
+
         public DicomStudyGroup Model { get; }
         public string DisplayName { get; }
+
+        /// <summary>The inspector panel's content for this study, built on first selection.</summary>
+        public StudyInspectorViewModel Inspector => _inspector ??= new StudyInspectorViewModel(Model);
 
         public bool IsExpanded
         {
@@ -135,10 +151,7 @@ namespace DicomRtNifti.App.ViewModels
             IsNonUniformZ = SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(model, out warning);
             NonUniformZWarning = warning ?? "";
 
-            HasGuessedLink = new[] { model.LinkedRtStruct, model.LinkedRtDose }
-                .Concat(model.LinkedRtStructs ?? Enumerable.Empty<DicomSeriesGroup>())
-                .Concat(model.LinkedRtDoses ?? Enumerable.Empty<DicomSeriesGroup>())
-                .Any(rt => rt != null && rt.LinkMatchRule == RtLinkMatchRule.LargestSeriesFallback);
+            HasGuessedLink = AnyLinkGuessed(model);
 
             RoiNames = new ObservableCollection<string>();
             if (model.LinkedRtStruct != null)
@@ -173,6 +186,17 @@ namespace DicomRtNifti.App.ViewModels
 
         /// <summary>The inspector panel's content for this series, built on first selection.</summary>
         public SeriesInspectorViewModel Inspector => _inspector ??= new SeriesInspectorViewModel(Model);
+
+        /// <summary>
+        /// The "link guessed" test: an RTSTRUCT or RTDOSE linked to <paramref name="series"/> was
+        /// attached by the largest-series fallback. Shared with the patient and study inspectors so
+        /// their counts are the tree's.
+        /// </summary>
+        internal static bool AnyLinkGuessed(DicomSeriesGroup series)
+            => new[] { series.LinkedRtStruct, series.LinkedRtDose }
+                .Concat(series.LinkedRtStructs ?? Enumerable.Empty<DicomSeriesGroup>())
+                .Concat(series.LinkedRtDoses ?? Enumerable.Empty<DicomSeriesGroup>())
+                .Any(rt => rt != null && rt.LinkMatchRule == RtLinkMatchRule.LargestSeriesFallback);
 
         public bool IsSelected
         {

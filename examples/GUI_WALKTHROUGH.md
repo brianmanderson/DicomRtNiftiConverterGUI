@@ -39,8 +39,8 @@ toggles to `settings.json` and the folders (plus the reverse window's Convert to
 1. Set **Input** — your DICOM archive, scanned recursively — and **Output**, where the NIfTI
    files land.
 2. Click **Scan**. The Patient / Study / Series tree fills in. Rows badged **non-uniform Z** or
-   **link guessed** deserve a look first; click a series to see it in the **Series inspector**
-   (below).
+   **link guessed** deserve a look first; click a patient, study or series to see it in the
+   **inspector** (below).
 3. Tick the patients, or individual series, you want.
 4. In the bottom action bar, tick the artifact types: **Export Images**, **Export Structures**
    (RT-STRUCT → per-ROI masks under `masks/`), **Export Dose** (RT-DOSE → one file per dose under
@@ -141,7 +141,7 @@ Main window:
 | **Scan** | Walks the input in parallel and builds the Patient → Study → Series tree | `--cohort-scan` |
 | **Stop** | Aborts an in-progress scan or conversion | — |
 | **Select all** | Ticks every patient in the tree | (the CLI converts everything it plans; narrow it with `--patients`) |
-| **Series inspector** | Geometry, RT links and curated tags of the series selected in the tree | `--cohort-scan` (per-series spacing, uniformity and link rule in the JSON) |
+| **Inspector** | What the scan found for the patient, study or series selected in the tree: a patient's studies and counts; every image series and RT object of a study, unlinked ones badged; a series' geometry, RT links and curated tags | `--cohort-scan` (per-series spacing, uniformity and link rule in the JSON) |
 | **Export Images / Structures / Dose** | Which artifact types to write | `--no-images` / `--no-structures` / `--no-doses` invert these |
 | **Export Options…** | Opens the panel below; stays open while you work | — |
 | **Convert Selected** | Run the full export | `--cohort-convert` |
@@ -176,18 +176,49 @@ the scan log counts them too:
 - **link guessed** — an RT-STRUCT or RT-DOSE was attached by the largest-series fallback: neither
   its referenced series UID nor its frame of reference matched an image series in the study.
 
-**Modality scope is fixed, not a control.** Only `CT`, `MR` and `PT` series are linked to
-RT-STRUCT and RT-DOSE during the scan. Other modalities still appear in the tree and still export
-as `image.nii.gz`, but no structures or dose are associated with them.
+**Modality scope is fixed, not a control.** Only `CT`, `MR` and `PT` series are listed in the tree,
+linked to RT-STRUCT and RT-DOSE during the scan, and exported. Other modalities are not exported;
+the study inspector lists them, so you can see they were found.
 
 **Selected tags are de-identified under Anonymize export.** Patient ID and the Study and Series
 Instance UIDs carry the export's hashes, and names, dates, times, ages, instance UIDs and
 identifying attributes are written as null. Without Anonymize export they are written as read.
 
-### The series inspector
+### The inspector
 
-Click a series row and the panel to the right of the tree describes it from the headers the scan
-already read; nothing is converted.
+Click a row and the panel to the right of the tree describes it from the headers the scan already
+read; nothing is converted. The panel's header names the level: **Patient inspector**, **Study
+inspector** or **Series inspector**. Each level has a read-only **DICOM tags** tab of curated
+attributes: the lists **Select Metadata Tags…** offers, under the names the `metadata.json` sidecar
+uses, read the first time the row is selected.
+
+#### Patient
+
+What the patient's folder holds without expanding the tree: Patient ID and name (selectable), the
+number of studies, image series by modality ("3 CT, 1 MR"), image instances, structure sets and
+doses counted as linked or **unlinked**, and other objects such as RT-PLAN. The **non-uniform Z** and
+**link guessed** badges carry the patient row's counts. One line per study gives its date,
+description, and how many image series and RT objects it holds. The tags tab reads the patient
+attributes from the first slice of the patient's first image series.
+
+#### Study
+
+Everything in the study, including what the tree does not show. The tree lists only image series
+and shows a structure set or dose under the series it is linked to, so an RT object linked to
+nothing, or an RT-PLAN, is invisible there. The study inspector gives the Study date and Study UID,
+one line per image series with its badges, and one line per RT object (every series of the study
+that is not an image series) naming the image series it is linked to and the rule that linked it.
+
+| Field | What it shows |
+|---|---|
+| **unlinked** | An RT object badged unlinked is linked to no image series in its study, so Convert Selected and Export Manifest Only never export it: structures and doses are exported only with the image series they are linked to. The scan leaves an RT-STRUCT or RT-DOSE unlinked when its study holds no CT, MR or PT series, which happens when its images are in another study or were not in the input folder |
+| **Frames of reference** | Distinct frames among the study's image series. With more than one, each series line names its frame and a note says series in different frames do not share a patient coordinate system |
+| **RT-PLAN** | Listed only: the scan links only RT-STRUCT and RT-DOSE, and nothing exports a plan |
+
+The tags tab reads the study attributes (date, description, Study Instance UID) from the first slice
+of the study's first image series, or, in a study with none, from its first RT object.
+
+#### Series
 
 ![The forward window after scanning a synthetic phantom CT with ten slices removed: the patient and
 series rows carry the non-uniform Z badge, and the series inspector shows gaps of 1 and 2 mm, the
@@ -199,13 +230,12 @@ RTSTRUCT linked by referenced series UID, and the conversion warning](images/gui
 | **Distinct gaps** | Every different slice gap. One value is a regular grid; two values without a badge differ only by rounding (0.62 / 0.63 mm on a 0.625 mm grid), under the 5% volume effect the warning starts at |
 | **Pixel spacing**, **Z extent** | In-plane spacing; first-to-last slice distance with its z range |
 | **Frame of reference**, **Series UID** | Selectable, for copying |
+| **Series date** | SeriesDate, as year-month-day |
 | **RTSTRUCT**, **RTDOSE** | How many are linked, and by which rule: referenced series UID (authoritative), frame of reference UID (ties go to the series with most slices), or largest-series fallback (a guess) |
 
 Amber notes repeat, word for word, the warnings a conversion of the series logs. Below them, every
-linked RT object is listed with its ROI or file count and link rule. The **DICOM tags** tab is a
-read-only grid of curated attributes from the series' first slice and its first linked RT-STRUCT and
-RT-DOSE: the lists **Select Metadata Tags…** offers, under the names the `metadata.json` sidecar
-uses.
+linked RT object is listed with its ROI or file count and link rule. The **DICOM tags** tab reads the
+series' first slice and its first linked RT-STRUCT and RT-DOSE.
 
 ![The DICOM tags tab of the series inspector: section, attribute and value for the curated image
 tags of the same phantom series](images/gui-series-inspector-tags.png)

@@ -28,8 +28,9 @@ namespace DicomRtNifti.App.ViewModels
     ///
     /// Every export toggle is written to settings.json the moment it changes, and the input and
     /// output folders to gui_state.json (<see cref="GuiStateStore"/>), so a window closed without
-    /// converting still reopens as it was left. Selecting a series in the tree shows it in the
-    /// series inspector (<see cref="SeriesInspectorViewModel"/>).
+    /// converting still reopens as it was left. Selecting a patient, study or series in the tree
+    /// shows it in the inspector panel (<see cref="PatientInspectorViewModel"/>,
+    /// <see cref="StudyInspectorViewModel"/>, <see cref="SeriesInspectorViewModel"/>).
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
@@ -41,7 +42,7 @@ namespace DicomRtNifti.App.ViewModels
         private readonly GuiStateStore _guiState;
         private bool _guiStateErrorLogged;
         private object _selectedTreeItem;
-        private SeriesInspectorViewModel _selectedInspector;
+        private InspectorViewModel _selectedInspector;
 
         private string _inputFolder = "";
         private string _outputFolder = "";
@@ -170,16 +171,16 @@ namespace DicomRtNifti.App.ViewModels
             {
                 _selectedTreeItem = value;
                 OnPropertyChanged();
-                SelectedInspector = (value as SeriesGroupViewModel)?.Inspector;
+                SelectedInspector = InspectorFor(value);
             }
         }
 
         /// <summary>
-        /// What the series inspector shows: the selected series, or null (and the inspector's hint)
-        /// when a patient or study row, or nothing, is selected. Selecting a series starts reading
-        /// its tag grid in the background.
+        /// What the inspector panel shows: the selected patient, study or series, each built on its
+        /// first selection, or null (and the panel's hint) when nothing is selected. Selecting a row
+        /// starts reading its tag grid in the background.
         /// </summary>
-        public SeriesInspectorViewModel SelectedInspector
+        public InspectorViewModel SelectedInspector
         {
             get { return _selectedInspector; }
             private set
@@ -187,12 +188,27 @@ namespace DicomRtNifti.App.ViewModels
                 _selectedInspector = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(ShowInspectorHint));
+                OnPropertyChanged(nameof(InspectorHeader));
                 if (value != null)
                     _ = value.EnsureTagsLoadedAsync();
             }
         }
 
         public bool ShowInspectorHint => SelectedInspector == null;
+
+        /// <summary>"Patient inspector", "Study inspector" or "Series inspector" for the selected level; "Inspector" with none.</summary>
+        public string InspectorHeader => SelectedInspector?.Header ?? "Inspector";
+
+        private static InspectorViewModel InspectorFor(object treeItem)
+        {
+            switch (treeItem)
+            {
+                case PatientGroupViewModel patient: return patient.Inspector;
+                case StudyGroupViewModel study: return study.Inspector;
+                case SeriesGroupViewModel series: return series.Inspector;
+                default: return null;
+            }
+        }
 
         public bool IsScanning { get { return _isScanning; } set { _isScanning = value; OnPropertyChanged(); RefreshCommands(); } }
         public bool IsConverting { get { return _isConverting; } set { _isConverting = value; OnPropertyChanged(); RefreshCommands(); } }

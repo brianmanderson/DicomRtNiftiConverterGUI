@@ -53,7 +53,7 @@
             </Border>
           </WrapPanel>
 
-          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
             <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Instances"/>
             <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" Text="{Binding InstanceCount}"/>
 
@@ -75,11 +75,14 @@
             <TextBlock Grid.Row="6" Grid.Column="0" Classes="label" Text="Series UID"/>
             <SelectableTextBlock Grid.Row="6" Grid.Column="1" Classes="value" Text="{Binding SeriesInstanceUid}"/>
 
-            <TextBlock Grid.Row="7" Grid.Column="0" Classes="label" Text="RTSTRUCT"/>
-            <TextBlock Grid.Row="7" Grid.Column="1" Classes="value" Text="{Binding RtStructLinkText}"/>
+            <TextBlock Grid.Row="7" Grid.Column="0" Classes="label" Text="Series date"/>
+            <TextBlock Grid.Row="7" Grid.Column="1" Classes="value" Text="{Binding SeriesDateText}"/>
 
-            <TextBlock Grid.Row="8" Grid.Column="0" Classes="label" Text="RTDOSE"/>
-            <TextBlock Grid.Row="8" Grid.Column="1" Classes="value" Text="{Binding RtDoseLinkText}"/>
+            <TextBlock Grid.Row="8" Grid.Column="0" Classes="label" Text="RTSTRUCT"/>
+            <TextBlock Grid.Row="8" Grid.Column="1" Classes="value" Text="{Binding RtStructLinkText}"/>
+
+            <TextBlock Grid.Row="9" Grid.Column="0" Classes="label" Text="RTDOSE"/>
+            <TextBlock Grid.Row="9" Grid.Column="1" Classes="value" Text="{Binding RtDoseLinkText}"/>
           </Grid>
 
           <Border Classes="warningNote" Margin="0,6,0,0" IsVisible="{Binding IsNonUniformZ}">

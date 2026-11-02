@@ -59,9 +59,9 @@ namespace DicomRtNifti.App.Tests
                 // Select the series, as a click on its row does: the inspector fills in.
                 vm.SelectedTreeItem = series;
                 Dispatcher.UIThread.RunJobs();
-                var inspector = vm.SelectedInspector;
-                Assert.NotNull(inspector);
+                var inspector = Assert.IsType<SeriesInspectorViewModel>(vm.SelectedInspector);
                 Assert.False(vm.ShowInspectorHint);
+                Assert.Equal("Series inspector", vm.InspectorHeader);
                 Assert.True(inspector.IsNonUniformZ);
                 Assert.Equal("1, 3 mm", inspector.DistinctGapsText);
                 Assert.Equal("1 mm", inspector.SliceSpacingText);
