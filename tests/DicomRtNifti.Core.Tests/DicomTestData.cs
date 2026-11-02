@@ -438,6 +438,50 @@ namespace DicomRtNifti.Core.Tests
             };
         }
 
+        /// <summary>
+        /// Appends a top-level ROIContourSequence of undefined length whose first element is not an
+        /// item, to a structure set written without one. fo-dicom's full read throws on it; the
+        /// scanner, which stops at ROIContourSequence, still lists the structure set. Models a
+        /// structure set damaged in its contour data.
+        /// </summary>
+        public static void AppendMalformedRoiContourSequence(string rtStructPath)
+        {
+            var tail = new List<byte>();
+            tail.AddRange(new byte[] { 0x06, 0x30, 0x39, 0x00 });
+            tail.AddRange(System.Text.Encoding.ASCII.GetBytes("SQ"));
+            tail.AddRange(new byte[] { 0, 0, 0xFF, 0xFF, 0xFF, 0xFF });
+            tail.AddRange(new byte[] { 0x08, 0x00, 0x16, 0x00 });
+            tail.AddRange(System.Text.Encoding.ASCII.GetBytes("UI"));
+            tail.AddRange(new byte[] { 4, 0 });
+            tail.AddRange(System.Text.Encoding.ASCII.GetBytes("1.2\0"));
+            using (var stream = new FileStream(rtStructPath, FileMode.Append))
+                stream.Write(tail.ToArray(), 0, tail.Count);
+        }
+
+        /// <summary>
+        /// Under <paramref name="root"/>/<paramref name="patientId"/>: a 16x16x4 CT at 1 mm and a
+        /// structure set with one ROI, "Target", linked to it by frame of reference. With
+        /// <paramref name="damagedContours"/> the structure set's contour data is malformed (see
+        /// <see cref="AppendMalformedRoiContourSequence"/>): it scans, and fails to convert.
+        /// </summary>
+        public static void WritePatientWithStructureSet(string root, string patientId, bool damagedContours)
+        {
+            string dir = Path.Combine(root, patientId);
+            string study = NewUid(), ctSeries = NewUid(), frame = NewUid();
+            WriteCtSeriesWithPixels(dir, ctSeries, frame, sliceCount: 4, size: 16, studyUid: study, patientId: patientId);
+            if (damagedContours)
+            {
+                string rt = WriteRtStruct(dir, "rtstruct.dcm", patientId, study, NewUid(), frame, "SET", new[] { "Target" });
+                AppendMalformedRoiContourSequence(rt);
+            }
+            else
+            {
+                WriteRtStructWithContours(dir, "rtstruct.dcm", study, NewUid(), frame,
+                    new[] { new KeyValuePair<string, double[]>("Target", SquareContour(3, 10, 1)) },
+                    patientId: patientId);
+            }
+        }
+
         public static string NewUid() => DicomUIDGenerator.GenerateDerivedFromUUID().UID;
     }
 }
