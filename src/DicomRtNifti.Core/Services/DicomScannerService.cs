@@ -265,6 +265,14 @@ namespace DicomRtNifti.Core.Services
             // System-level errors that should NOT be silently swallowed — propagate to the
             // outer counter so the GUI can warn the user. PathTooLong in particular is the
             // canary for missing Windows long-path support on nested-UID datasets.
+            // fo-dicom wraps every failure to open or read the file in DicomFileException, so a
+            // locked, access-denied or over-long path arrives as its InnerException; rethrow
+            // that, with its own type and message, ahead of the DicomException skip below.
+            catch (DicomFileException ex) when (IsFileAccessFailure(ex.InnerException))
+            {
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
             catch (PathTooLongException)        { throw; }
             catch (UnauthorizedAccessException) { throw; }
             catch (DirectoryNotFoundException)  { throw; }
@@ -441,6 +449,16 @@ namespace DicomRtNifti.Core.Services
                 series.ReferencedSeriesUID = header.ReferencedSeriesUid;
             }
         }
+
+        /// <summary>
+        /// Whether the cause fo-dicom wrapped in a DicomFileException means the file could not be
+        /// opened or read (access denied, a sharing violation, a path too long), as opposed to read
+        /// and found not to be DICOM. A truncated read and a file that vanished after enumeration
+        /// stay silent skips, as their unwrapped catches in ReadHeader have them.
+        /// </summary>
+        private static bool IsFileAccessFailure(Exception cause) =>
+            cause is UnauthorizedAccessException ||
+            (cause is IOException && !(cause is EndOfStreamException) && !(cause is FileNotFoundException));
 
         /// <summary>
         /// Stops a read at the top-level sequences that make up most of the bytes of the objects
