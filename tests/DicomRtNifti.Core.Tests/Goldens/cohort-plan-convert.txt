@@ -1,0 +1,142 @@
+{
+  "schema": "dicomrtnifti.cohort-plan/1",
+  "mode": "cohort-convert",
+  "input_root": "<ROOT>/in",
+  "output_root": "<ROOT>/plan-convert",
+  "manifest_csv": "export_manifest.csv",
+  "anonymized": false,
+  "anonymization_key": null,
+  "output_spacing": null,
+  "series_count": 5,
+  "series": [
+    {
+      "patient_id": "PAT_A",
+      "study_uid": "1.2.3.100.1",
+      "series_uid": "1.2.3.100.2",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 4,
+      "output_dir": "PAT_A/CT series_05fdb5075f9a",
+      "structure_set": {
+        "series_uid": "1.2.3.100.3",
+        "series_description": "structures",
+        "match_rule": "ReferencedSeriesUid",
+        "roi_names": [
+          "Target",
+          "Ring"
+        ]
+      },
+      "rois": [
+        "Ring",
+        "Target"
+      ],
+      "doses": [
+        {
+          "series_uid": "1.2.3.100.4",
+          "series_description": "Plan dose",
+          "match_rule": "FrameOfReferenceUid"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "patient_id": "PAT_A",
+      "study_uid": "1.2.3.100.1",
+      "series_uid": "1.2.3.100.5",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 3,
+      "output_dir": "PAT_A/CT series_20aa7c82e65e",
+      "structure_set": null,
+      "rois": [],
+      "doses": [
+        {
+          "series_uid": "1.2.3.100.4",
+          "series_description": "Plan dose",
+          "match_rule": "FrameOfReferenceUid"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "patient_id": "PAT_B",
+      "study_uid": "1.2.3.200.1",
+      "series_uid": "1.2.3.200.2",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 6,
+      "output_dir": "PAT_B/CT series",
+      "structure_set": {
+        "series_uid": "1.2.3.200.3",
+        "series_description": "structures",
+        "match_rule": "FrameOfReferenceUid",
+        "roi_names": [
+          "Target"
+        ]
+      },
+      "rois": [
+        "Target"
+      ],
+      "doses": [],
+      "warnings": [
+        "WARNING: series 1.2.3.200.2: 1 of 7 image slice(s) carry no usable ImagePositionPatient and were skipped — ct_006.dcm (InstanceNumber 7): ImagePositionPatient missing. The remaining 6 slice(s) are converted as a series with a gap where each skipped slice was; any slice-spacing warning that follows judges that reduced series.",
+        "WARNING: series 1.2.3.200.2 has non-uniform slice spacing — 6 slices with gaps from 2 mm to 8 mm. NIfTI carries one spacing per axis, so the output will be written at 4 mm throughout and any volume computed from it will be off by up to 2x. Resample the source series to a uniform grid before converting if the geometry matters. Note: 1 slice(s) of this series were skipped for lacking a usable ImagePositionPatient, and the gaps above include the holes they left."
+      ]
+    },
+    {
+      "patient_id": "PAT_D",
+      "study_uid": "1.2.3.400.1",
+      "series_uid": "1.2.3.400.2",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 4,
+      "output_dir": "PAT_D/CT series",
+      "structure_set": {
+        "series_uid": "1.2.3.400.3",
+        "series_description": "structures",
+        "match_rule": "LargestSeriesFallback",
+        "roi_names": [
+          "Body"
+        ]
+      },
+      "rois": [
+        "Body"
+      ],
+      "doses": [],
+      "warnings": []
+    },
+    {
+      "patient_id": "PAT_E",
+      "study_uid": "1.2.3.500.1",
+      "series_uid": "1.2.3.500.2",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 4,
+      "output_dir": "PAT_E/CT series",
+      "structure_set": {
+        "series_uid": "1.2.3.500.3",
+        "series_description": "structures",
+        "match_rule": "FrameOfReferenceUid",
+        "roi_names": [
+          "Target"
+        ]
+      },
+      "rois": [
+        "Target"
+      ],
+      "doses": [],
+      "warnings": []
+    }
+  ],
+  "skipped": [],
+  "unlinked": [
+    {
+      "patient_id": "PAT_C",
+      "series_instance_uid": "1.2.3.300.3",
+      "modality": "RTSTRUCT",
+      "series_description": "orphan structures",
+      "reason": "no image series in study"
+    }
+  ],
+  "warnings": []
+}

@@ -12,10 +12,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Used directly by HeadlessRunner (fo-dicom types). -->
+    <!-- The tests check the mode discovery (Modes/) directly. -->
+    <InternalsVisibleTo Include="DicomRtNifti.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Used directly by HeadlessRunner and Modes/ForwardMode (fo-dicom types). -->
     <PackageReference Include="fo-dicom" Version="5.2.5" />
-    <!-- Used directly by CohortRunner to serialize the cohort JSON documents. -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 
 </Project>

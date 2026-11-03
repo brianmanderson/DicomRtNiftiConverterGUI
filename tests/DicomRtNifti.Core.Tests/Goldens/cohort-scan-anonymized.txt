@@ -1,0 +1,229 @@
+{
+  "schema": "dicomrtnifti.cohort-scan/1",
+  "input_root": null,
+  "scanned_files": 28,
+  "unreadable_files": 0,
+  "unreadable_samples": [],
+  "roi_names": [
+    "Body",
+    "Orphan",
+    "Ring",
+    "Target"
+  ],
+  "patients": [
+    {
+      "patient_id": "P68b3036251",
+      "studies": [
+        {
+          "study_instance_uid": "ST6c5c77fc798b",
+          "series": [
+            {
+              "series_instance_uid": "SE382b342ccc28",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": null,
+              "frame_of_reference_uid": null,
+              "instance_count": 4,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 1.0,
+              "slice_spacing_uniform": true,
+              "slice_spacing_values": [
+                1.0
+              ],
+              "unpositioned_slices": [],
+              "linked_rtstructs": [
+                {
+                  "series_instance_uid": "SE21ec74998204",
+                  "series_description": "structures",
+                  "match_rule": "ReferencedSeriesUid",
+                  "roi_names": [
+                    "Target",
+                    "Ring"
+                  ]
+                }
+              ],
+              "linked_rtdoses": [
+                {
+                  "series_instance_uid": "SE5a78ba2b68da",
+                  "series_description": "Plan dose",
+                  "match_rule": "FrameOfReferenceUid"
+                }
+              ]
+            },
+            {
+              "series_instance_uid": "SE3c275f56e19e",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": null,
+              "frame_of_reference_uid": null,
+              "instance_count": 3,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 1.0,
+              "slice_spacing_uniform": true,
+              "slice_spacing_values": [
+                1.0
+              ],
+              "unpositioned_slices": [],
+              "linked_rtstructs": [],
+              "linked_rtdoses": [
+                {
+                  "series_instance_uid": "SE5a78ba2b68da",
+                  "series_description": "Plan dose",
+                  "match_rule": "FrameOfReferenceUid"
+                }
+              ]
+            }
+          ],
+          "unlinked": []
+        }
+      ]
+    },
+    {
+      "patient_id": "P917eb7105e",
+      "studies": [
+        {
+          "study_instance_uid": "STd0e4b6b4ad3d",
+          "series": [
+            {
+              "series_instance_uid": "SE1748c1329004",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": null,
+              "frame_of_reference_uid": null,
+              "instance_count": 6,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 2.0,
+              "slice_spacing_uniform": false,
+              "slice_spacing_values": [
+                2.0,
+                6.0,
+                8.0
+              ],
+              "unpositioned_slices": [
+                "(InstanceNumber 7): ImagePositionPatient missing"
+              ],
+              "linked_rtstructs": [
+                {
+                  "series_instance_uid": "SE942477dba31b",
+                  "series_description": "structures",
+                  "match_rule": "FrameOfReferenceUid",
+                  "roi_names": [
+                    "Target"
+                  ]
+                }
+              ],
+              "linked_rtdoses": []
+            }
+          ],
+          "unlinked": []
+        }
+      ]
+    },
+    {
+      "patient_id": "P983513a2fd",
+      "studies": [
+        {
+          "study_instance_uid": "ST238f8ae9af1c",
+          "series": [],
+          "unlinked": [
+            {
+              "series_instance_uid": "SE924353ebcd18",
+              "modality": "RTSTRUCT",
+              "series_description": "orphan structures",
+              "reason": "did not match any image series in the study"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "patient_id": "P357df91dfe",
+      "studies": [
+        {
+          "study_instance_uid": "ST8593a329e86a",
+          "series": [
+            {
+              "series_instance_uid": "SEfb5023009c92",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": null,
+              "frame_of_reference_uid": null,
+              "instance_count": 4,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 1.0,
+              "slice_spacing_uniform": true,
+              "slice_spacing_values": [
+                1.0
+              ],
+              "unpositioned_slices": [],
+              "linked_rtstructs": [
+                {
+                  "series_instance_uid": "SEe56e6b671198",
+                  "series_description": "structures",
+                  "match_rule": "LargestSeriesFallback",
+                  "roi_names": [
+                    "Body"
+                  ]
+                }
+              ],
+              "linked_rtdoses": []
+            }
+          ],
+          "unlinked": []
+        }
+      ]
+    },
+    {
+      "patient_id": "P8520363cd1",
+      "studies": [
+        {
+          "study_instance_uid": "ST96cc1ae51343",
+          "series": [
+            {
+              "series_instance_uid": "SE1bb05f0666d1",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": null,
+              "frame_of_reference_uid": null,
+              "instance_count": 4,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 1.0,
+              "slice_spacing_uniform": true,
+              "slice_spacing_values": [
+                1.0
+              ],
+              "unpositioned_slices": [],
+              "linked_rtstructs": [
+                {
+                  "series_instance_uid": "SEa2ca7ecc2d23",
+                  "series_description": "structures",
+                  "match_rule": "FrameOfReferenceUid",
+                  "roi_names": [
+                    "Target"
+                  ]
+                }
+              ],
+              "linked_rtdoses": []
+            }
+          ],
+          "unlinked": []
+        }
+      ]
+    }
+  ]
+}

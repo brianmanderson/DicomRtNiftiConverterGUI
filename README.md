@@ -149,7 +149,7 @@ DicomRtNifti.Cli --version
 > leaves them untouched - delete them yourself if this run's manifest is meant to describe the
 > whole folder.
 
-The CLI reuses the same services the GUI uses. See [src/DicomRtNifti.Cli/HeadlessRunner.cs](src/DicomRtNifti.Cli/HeadlessRunner.cs) (run `--help` for the full option list).
+The CLI reuses the same services the GUI uses. Each mode is one file under [src/DicomRtNifti.Cli/Modes/](src/DicomRtNifti.Cli/Modes/) (run `--help` for the full option list).
 
 **No DICOM handy?** No test data is committed, but the conformance package generates a complete
 synthetic CT + RTSTRUCT, which makes the fastest end-to-end smoke test of a fresh build:
@@ -205,7 +205,10 @@ the output is wrong. It fires only when that factor exceeds 1.05x, so two-decima
 does not rescue it** — resampling from an already-flattened grid cannot recover the true slice
 positions. Resample the source series onto a uniform grid before converting if the geometry
 matters. `--cohort-scan` reports the same fact structurally, as `slice_spacing_uniform` plus the
-observed gaps, which is the cheapest way to find these series before converting anything.
+observed gaps, which is the cheapest way to find these series before converting anything. Its
+`unpositioned_slices` lists, per series, the slices left out for lacking a usable
+`ImagePositionPatient` (`<file> (InstanceNumber n): <reason>`, empty on a clean series): the
+spacing beside it judges the series without them, so a hole one of them left reads as a wider gap.
 
 **The NIfTI-only `--reverse` path writes a `metadata.json` back into `--masks-folder`**, so that
 repeat runs reuse the same UIDs rather than minting a new series each time. That is a write into
@@ -241,6 +244,12 @@ DicomRtNifti.Cli --cohort-convert --input ARCHIVE --output OUT \
     --anonymize --salt "my-cohort-salt" \
     --metadata-tags PatientAge,KVP,@VoxelSize \
     --metadata-dose-tags DoseUnits,@MaxDose
+
+# Plan: the same command with --dry-run prints what it would write, and writes nothing
+DicomRtNifti.Cli --cohort-convert --input ARCHIVE --output OUT --struct-description planning --dry-run
+
+# Inventory without identifiers: hashes as an anonymized export would write them
+DicomRtNifti.Cli --cohort-scan --input ARCHIVE --anonymize --salt "my-cohort-salt"
 ```
 
 Key points:
@@ -257,6 +266,22 @@ Key points:
   resampled-sibling case — an equal slice count then breaks on SeriesInstanceUID, so the choice
   is *repeatable* but not *meaningful*. `--require-structures` / `--require-dose`
   skip series lacking what you need. Everything excluded is reported with a reason.
+- **`--dry-run` shows the plan before anything runs.** On `--cohort-manifest` and
+  `--cohort-convert` it scans and plans exactly as the run would, then prints a
+  `dicomrtnifti.cohort-plan/1` document instead of converting: every series that would be
+  exported with the folder it would be written to (collision suffixes included), the structure
+  set chosen for it and the ROI names its masks would carry, every dose, and the geometry warnings
+  the run would log; then every skipped series with its reason and the RT objects nothing would
+  consume. An `--only-associated-rois` list that matches no ROI is flagged there, before a run
+  that would export no mask. Nothing is written — no output folder, no manifest, no key — and the
+  exit code is 0 unless the command line itself is refused (2). Under `--anonymize` the key is read
+  where the run would write it, so manual overrides show, and never saved. `--json-out` still
+  writes the plan, unless it lies inside `--output` (refused, exit 2).
+- **`--cohort-scan --anonymize [--salt S] [--key-path K]`** prints the inventory with the hashes an
+  anonymized export with the same salt writes, structure sets and doses included, so the two can be
+  joined. What has no hash is withheld: the input root, unreadable files' paths, series dates,
+  frames of reference, and the file names in `unpositioned_slices`. The key at `--key-path`, if
+  any, is read and never written; without one the hashes come from the salt alone.
 - **Link confidence is reported.** `--cohort-scan` records how each RTSTRUCT and RTDOSE was
   matched to its image series — `ReferencedSeriesUid` (authoritative), `FrameOfReferenceUid`, or
   `LargestSeriesFallback` (a guess). A cohort resolved entirely by fallback deserves a look.

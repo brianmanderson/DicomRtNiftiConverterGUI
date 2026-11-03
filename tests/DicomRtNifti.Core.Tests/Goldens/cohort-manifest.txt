@@ -1,0 +1,75 @@
+{
+  "schema": "dicomrtnifti.cohort-manifest/1",
+  "manifest_csv": "<ROOT>/manifest/export_manifest.csv",
+  "anonymized": false,
+  "anonymization_key": null,
+  "output_spacing": null,
+  "volumes_computed": true,
+  "roi_columns": [
+    "Ring",
+    "Target",
+    "Body"
+  ],
+  "series_count": 4,
+  "skipped": [],
+  "rows": [
+    {
+      "patient_id": "PAT_A",
+      "study_uid": "1.2.3.100.1",
+      "series_uid": "1.2.3.100.2",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "roi_volumes_cc": {
+        "Ring": 0.056,
+        "Target": 0.056
+      }
+    },
+    {
+      "patient_id": "PAT_A",
+      "study_uid": "1.2.3.100.1",
+      "series_uid": "1.2.3.100.5",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "roi_volumes_cc": {}
+    },
+    {
+      "patient_id": "PAT_B",
+      "study_uid": "1.2.3.200.1",
+      "series_uid": "1.2.3.200.2",
+      "spacing": [
+        1.0,
+        1.0,
+        4.0
+      ],
+      "roi_volumes_cc": {
+        "Target": 0.224
+      }
+    },
+    {
+      "patient_id": "PAT_D",
+      "study_uid": "1.2.3.400.1",
+      "series_uid": "1.2.3.400.2",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "roi_volumes_cc": {
+        "Body": 0.132
+      }
+    }
+  ],
+  "errors": [
+    {
+      "patient_id": "PAT_E",
+      "series_uid": "1.2.3.500.2",
+      "message": "Unexpected VR found for DICOM fragment sequence: SQ"
+    }
+  ]
+}

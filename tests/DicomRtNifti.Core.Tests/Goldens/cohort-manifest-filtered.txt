@@ -1,0 +1,52 @@
+{
+  "schema": "dicomrtnifti.cohort-manifest/1",
+  "manifest_csv": "<ROOT>/manifest-filtered/export_manifest.csv",
+  "anonymized": false,
+  "anonymization_key": null,
+  "output_spacing": null,
+  "volumes_computed": false,
+  "roi_columns": [
+    "Ring",
+    "Target"
+  ],
+  "series_count": 2,
+  "skipped": [
+    {
+      "patient_id": "PAT_A",
+      "series_instance_uid": "1.2.3.100.5",
+      "modality": "CT",
+      "series_description": "CT series",
+      "reason": "no linked RTSTRUCT"
+    }
+  ],
+  "rows": [
+    {
+      "patient_id": "PAT_A",
+      "study_uid": "1.2.3.100.1",
+      "series_uid": "1.2.3.100.2",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "roi_volumes_cc": {
+        "Ring": -1.0,
+        "Target": -1.0
+      }
+    },
+    {
+      "patient_id": "PAT_B",
+      "study_uid": "1.2.3.200.1",
+      "series_uid": "1.2.3.200.2",
+      "spacing": [
+        1.0,
+        1.0,
+        4.0
+      ],
+      "roi_volumes_cc": {
+        "Target": -1.0
+      }
+    }
+  ],
+  "errors": []
+}

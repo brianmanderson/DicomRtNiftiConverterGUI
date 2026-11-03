@@ -1,0 +1,142 @@
+{
+  "schema": "dicomrtnifti.cohort-plan/1",
+  "mode": "cohort-convert",
+  "input_root": null,
+  "output_root": "<ROOT>/plan-convert-anon",
+  "manifest_csv": "export_manifest.csv",
+  "anonymized": true,
+  "anonymization_key": "<ROOT>/plan-convert-anon.key/AnonymizationKey.json",
+  "output_spacing": null,
+  "series_count": 5,
+  "series": [
+    {
+      "patient_id": "P68b3036251",
+      "study_uid": "ST6c5c77fc798b",
+      "series_uid": "SE382b342ccc28",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 4,
+      "output_dir": "P68b3036251/ST6c5c77fc798b/SE382b342ccc28",
+      "structure_set": {
+        "series_uid": "SE21ec74998204",
+        "series_description": "structures",
+        "match_rule": "ReferencedSeriesUid",
+        "roi_names": [
+          "Target",
+          "Ring"
+        ]
+      },
+      "rois": [
+        "Ring",
+        "Target"
+      ],
+      "doses": [
+        {
+          "series_uid": "SE5a78ba2b68da",
+          "series_description": "Plan dose",
+          "match_rule": "FrameOfReferenceUid"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "patient_id": "P68b3036251",
+      "study_uid": "ST6c5c77fc798b",
+      "series_uid": "SE3c275f56e19e",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 3,
+      "output_dir": "P68b3036251/ST6c5c77fc798b/SE3c275f56e19e",
+      "structure_set": null,
+      "rois": [],
+      "doses": [
+        {
+          "series_uid": "SE5a78ba2b68da",
+          "series_description": "Plan dose",
+          "match_rule": "FrameOfReferenceUid"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "patient_id": "P917eb7105e",
+      "study_uid": "STd0e4b6b4ad3d",
+      "series_uid": "SE1748c1329004",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 6,
+      "output_dir": "P917eb7105e/STd0e4b6b4ad3d/SE1748c1329004",
+      "structure_set": {
+        "series_uid": "SE942477dba31b",
+        "series_description": "structures",
+        "match_rule": "FrameOfReferenceUid",
+        "roi_names": [
+          "Target"
+        ]
+      },
+      "rois": [
+        "Target"
+      ],
+      "doses": [],
+      "warnings": [
+        "WARNING: series SE1748c1329004: 1 of 7 image slice(s) carry no usable ImagePositionPatient and were skipped — (InstanceNumber 7): ImagePositionPatient missing. The remaining 6 slice(s) are converted as a series with a gap where each skipped slice was; any slice-spacing warning that follows judges that reduced series.",
+        "WARNING: series SE1748c1329004 has non-uniform slice spacing — 6 slices with gaps from 2 mm to 8 mm. NIfTI carries one spacing per axis, so the output will be written at 4 mm throughout and any volume computed from it will be off by up to 2x. Resample the source series to a uniform grid before converting if the geometry matters. Note: 1 slice(s) of this series were skipped for lacking a usable ImagePositionPatient, and the gaps above include the holes they left."
+      ]
+    },
+    {
+      "patient_id": "P357df91dfe",
+      "study_uid": "ST8593a329e86a",
+      "series_uid": "SEfb5023009c92",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 4,
+      "output_dir": "P357df91dfe/ST8593a329e86a/SEfb5023009c92",
+      "structure_set": {
+        "series_uid": "SEe56e6b671198",
+        "series_description": "structures",
+        "match_rule": "LargestSeriesFallback",
+        "roi_names": [
+          "Body"
+        ]
+      },
+      "rois": [
+        "Body"
+      ],
+      "doses": [],
+      "warnings": []
+    },
+    {
+      "patient_id": "P8520363cd1",
+      "study_uid": "ST96cc1ae51343",
+      "series_uid": "SE1bb05f0666d1",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 4,
+      "output_dir": "P8520363cd1/ST96cc1ae51343/SE1bb05f0666d1",
+      "structure_set": {
+        "series_uid": "SEa2ca7ecc2d23",
+        "series_description": "structures",
+        "match_rule": "FrameOfReferenceUid",
+        "roi_names": [
+          "Target"
+        ]
+      },
+      "rois": [
+        "Target"
+      ],
+      "doses": [],
+      "warnings": []
+    }
+  ],
+  "skipped": [],
+  "unlinked": [
+    {
+      "patient_id": "P983513a2fd",
+      "series_instance_uid": "SE924353ebcd18",
+      "modality": "RTSTRUCT",
+      "series_description": "orphan structures",
+      "reason": "no image series in study"
+    }
+  ],
+  "warnings": []
+}
