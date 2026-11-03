@@ -14,7 +14,7 @@ namespace DicomRtNifti.Cli
         private static int Main(string[] args)
         {
             // fo-dicom needs the legacy code-page encodings for some DICOM
-            // SpecificCharacterSet values; unlike .NET Framework, .NET 8 does not
+            // SpecificCharacterSet values; unlike .NET Framework, .NET (Core) does not
             // register them by default.
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             return HeadlessRunner.Run(args);
