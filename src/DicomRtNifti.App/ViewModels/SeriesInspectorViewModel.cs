@@ -1,16 +1,9 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Globalization;
-using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using DicomRtNifti.Core.Models;
 using DicomRtNifti.Core.Services;
-using FellowOakDicom;
 
 namespace DicomRtNifti.App.ViewModels
 {
@@ -26,14 +19,8 @@ namespace DicomRtNifti.App.ViewModels
     /// to warn (<see cref="SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(DicomSeriesGroup, out string)"/>),
     /// so the inspector, Convert Selected and Export Manifest Only can never disagree about a series.
     /// </summary>
-    public class SeriesInspectorViewModel : INotifyPropertyChanged
+    public class SeriesInspectorViewModel : InspectorViewModel
     {
-        /// <summary>Shown in place of a value the headers did not carry.</summary>
-        public const string Missing = "—";
-
-        private Task _tagsLoad;
-        private string _tagStatus = "";
-
         public SeriesInspectorViewModel(DicomSeriesGroup model)
         {
             Model = model ?? throw new ArgumentNullException(nameof(model));
@@ -43,6 +30,7 @@ namespace DicomRtNifti.App.ViewModels
                 ? "(no series description)"
                 : model.SeriesDescription.Trim();
             SeriesInstanceUid = string.IsNullOrEmpty(model.SeriesInstanceUID) ? Missing : model.SeriesInstanceUID;
+            SeriesDateText = FormatDicomDate(model.SeriesDate);
             FrameOfReferenceUid = string.IsNullOrEmpty(model.FrameOfReferenceUID) ? Missing : model.FrameOfReferenceUID;
             InstanceCount = model.FilePaths?.Count ?? 0;
 
@@ -104,15 +92,19 @@ namespace DicomRtNifti.App.ViewModels
                     string.Format(CultureInfo.InvariantCulture, "{0} file(s)", d.FilePaths?.Count ?? 0),
                     LinkRuleLabel(d.LinkMatchRule), d.LinkMatchRule == RtLinkMatchRule.LargestSeriesFallback)))
                 .ToList();
-
-            Tags = new ObservableCollection<InspectorTagRow>();
         }
 
         public DicomSeriesGroup Model { get; }
 
+        public override string Header => "Series inspector";
+
         public string Title { get; }
         public string Modality { get; }
         public string SeriesInstanceUid { get; }
+
+        /// <summary>SeriesDate as "2024-03-05", or <see cref="InspectorViewModel.Missing"/>.</summary>
+        public string SeriesDateText { get; }
+
         public int InstanceCount { get; }
 
         /// <summary>False for a series whose slices carried no usable position.</summary>
@@ -162,116 +154,18 @@ namespace DicomRtNifti.App.ViewModels
         public IReadOnlyList<InspectorLinkRow> LinkedObjects { get; }
         public bool HasLinkedObjects => LinkedObjects.Count > 0;
 
-        /// <summary>Curated tags (<see cref="MetadataTagCatalog"/>) read from the series and its RT objects.</summary>
-        public ObservableCollection<InspectorTagRow> Tags { get; }
+        protected override string NoTagsText => "No curated tags present in this series' files.";
 
-        /// <summary>"Reading tags..." while loading; an error or "no tags" note afterwards; empty when rows are shown.</summary>
-        public string TagStatus
+        protected override IReadOnlyList<InspectorTagSource> TagSources() => new[]
         {
-            get { return _tagStatus; }
-            private set { _tagStatus = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasTagStatus)); }
-        }
-        public bool HasTagStatus => !string.IsNullOrEmpty(TagStatus);
-
-        /// <summary>
-        /// Reads the tag grid once; later calls return the same task. The file reads run on the
-        /// thread pool and the rows are added on the caller's (UI) context.
-        /// </summary>
-        public Task EnsureTagsLoadedAsync()
-        {
-            if (_tagsLoad == null)
-                _tagsLoad = LoadTagsAsync();
-            return _tagsLoad;
-        }
-
-        private async Task LoadTagsAsync()
-        {
-            TagStatus = "Reading tags...";
-            List<InspectorTagRow> rows;
-            try
-            {
-                string imagePath = FirstFile(Model);
-                string structPath = FirstFile(LinkedOrSingle(Model.LinkedRtStructs, Model.LinkedRtStruct).FirstOrDefault());
-                string dosePath = FirstFile(LinkedOrSingle(Model.LinkedRtDoses, Model.LinkedRtDose).FirstOrDefault());
-
-                rows = await Task.Run(() =>
-                {
-                    var all = new List<InspectorTagRow>();
-                    all.AddRange(ReadSection("Image", imagePath, MetadataTagCatalog.CuratedImageKeywords));
-                    all.AddRange(ReadSection("Structure set", structPath, MetadataTagCatalog.CuratedStructureKeywords));
-                    all.AddRange(ReadSection("Dose", dosePath, MetadataTagCatalog.CuratedDoseKeywords));
-                    return all;
-                }).ConfigureAwait(true);
-            }
-            catch (Exception ex)
-            {
-                TagStatus = "Could not read tags: " + ex.Message;
-                return;
-            }
-
-            foreach (var row in rows)
-                Tags.Add(row);
-            TagStatus = rows.Count == 0 ? "No curated tags present in this series' files." : "";
-        }
-
-        private static IEnumerable<InspectorTagRow> ReadSection(string section, string path, IReadOnlyList<string> keywords)
-        {
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
-                return Enumerable.Empty<InspectorTagRow>();
-
-            DicomDataset dataset;
-            try
-            {
-                dataset = DicomFile.Open(path, FileReadOption.SkipLargeTags).Dataset;
-            }
-            catch (Exception ex)
-            {
-                return new[] { new InspectorTagRow(section, "(unreadable)", "", Path.GetFileName(path) + ": " + ex.Message) };
-            }
-            return BuildTagRows(section, keywords, DicomMetadataExtractor.Extract(dataset, keywords));
-        }
-
-        /// <summary>
-        /// One row per keyword that has a value, in catalog order, labelled with the same friendly
-        /// name the metadata.json sidecar writes. Absent tags are left out rather than listed empty,
-        /// so the grid shows what the file carries.
-        /// </summary>
-        internal static List<InspectorTagRow> BuildTagRows(
-            string section, IReadOnlyList<string> keywords, IReadOnlyDictionary<string, object> values)
-        {
-            var rows = new List<InspectorTagRow>();
-            if (keywords == null || values == null)
-                return rows;
-
-            foreach (var keyword in keywords)
-            {
-                object value;
-                if (!values.TryGetValue(keyword, out value))
-                    continue;
-                string text = FormatTagValue(value);
-                if (text.Length == 0)
-                    continue;
-                rows.Add(new InspectorTagRow(section, MetadataTagCatalog.FriendlyName(keyword), keyword, text));
-            }
-            return rows;
-        }
-
-        /// <summary>
-        /// Renders an extracted value: numbers invariantly, multi-valued tags joined with DICOM's
-        /// backslash separator, null as empty.
-        /// </summary>
-        internal static string FormatTagValue(object value)
-        {
-            if (value == null)
-                return "";
-            if (value is string s)
-                return s.Trim();
-            if (value is IEnumerable sequence)
-                return string.Join("\\", sequence.Cast<object>().Select(FormatTagValue));
-            if (value is IFormattable formattable)
-                return formattable.ToString(null, CultureInfo.InvariantCulture);
-            return value.ToString() ?? "";
-        }
+            new InspectorTagSource("Image", FirstFile(Model), MetadataTagCatalog.CuratedImageKeywords),
+            new InspectorTagSource("Structure set",
+                FirstFile(LinkedOrSingle(Model.LinkedRtStructs, Model.LinkedRtStruct).FirstOrDefault()),
+                MetadataTagCatalog.CuratedStructureKeywords),
+            new InspectorTagSource("Dose",
+                FirstFile(LinkedOrSingle(Model.LinkedRtDoses, Model.LinkedRtDose).FirstOrDefault()),
+                MetadataTagCatalog.CuratedDoseKeywords),
+        };
 
         /// <summary>
         /// "none", "1 linked, by referenced series UID", or, when the linked objects were matched by
@@ -297,63 +191,8 @@ namespace DicomRtNifti.App.ViewModels
                     "{0} by {1}", g.Count(), LinkRuleLabel(g.Key)))));
         }
 
-        /// <summary>How the scanner matched an RT object to this series, in the words the help uses.</summary>
-        internal static string LinkRuleLabel(RtLinkMatchRule rule)
-        {
-            switch (rule)
-            {
-                case RtLinkMatchRule.ReferencedSeriesUid: return "referenced series UID";
-                case RtLinkMatchRule.FrameOfReferenceUid: return "frame of reference UID";
-                case RtLinkMatchRule.LargestSeriesFallback: return "largest-series fallback (a guess)";
-                default: return "an unrecorded rule";
-            }
-        }
-
-        // The scanner fills the list; the singular property survives for older consumers. Prefer
-        // the list, and fall back to the singular one so an in-memory model built either way maps.
-        private static IReadOnlyList<DicomSeriesGroup> LinkedOrSingle(List<DicomSeriesGroup> list, DicomSeriesGroup single)
-        {
-            if (list != null && list.Count > 0)
-                return list;
-            return single != null ? new[] { single } : new DicomSeriesGroup[0];
-        }
-
-        private static string DescribeObject(DicomSeriesGroup series)
-        {
-            if (series == null)
-                return Missing;
-            return string.IsNullOrWhiteSpace(series.SeriesDescription) ? "(no description)" : series.SeriesDescription.Trim();
-        }
-
-        private static string FirstFile(DicomSeriesGroup series)
-            => series?.FilePaths != null && series.FilePaths.Count > 0 ? series.FilePaths[0] : null;
-
         private static string FormatMm(double? value)
             => value.HasValue ? FormatNumber(value.Value) + " mm" : Missing;
-
-        private static string FormatNumber(double value)
-            => value.ToString("0.###", CultureInfo.InvariantCulture);
-
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
-            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-    }
-
-    /// <summary>One row of the inspector's tag grid.</summary>
-    public class InspectorTagRow
-    {
-        public InspectorTagRow(string section, string attribute, string keyword, string value)
-        {
-            Section = section;
-            Attribute = attribute;
-            Keyword = keyword;
-            Value = value;
-        }
-
-        public string Section { get; }
-        public string Attribute { get; }
-        public string Keyword { get; }
-        public string Value { get; }
     }
 
     /// <summary>One RT object linked to the inspected series, and the rule that linked it.</summary>

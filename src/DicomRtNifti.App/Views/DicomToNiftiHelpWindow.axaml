@@ -56,8 +56,8 @@
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">2.</Run> Click <Run FontWeight="SemiBold">Scan</Run>. The
             Patient / Study / Series tree fills in. Tick the patients (or individual
-            series) you want to export. Click a series to see its geometry, links and tags in the
-            <Run FontWeight="SemiBold">Series inspector</Run> beside the tree; look at any row
+            series) you want to export. Click a patient, study or series to see what the scan found
+            for it in the <Run FontWeight="SemiBold">inspector</Run> beside the tree; look at any row
             badged <Run FontWeight="SemiBold">non-uniform Z</Run> or
             <Run FontWeight="SemiBold">link guessed</Run> before exporting it.
           </TextBlock>
@@ -180,10 +180,12 @@
           <TextBlock Classes="h1" Text="Reference: Patient / Study / Series tree"/>
           <TextBlock Classes="body">
             Three-level hierarchy with a checkbox at the patient and the series level (studies are
-            a structural grouping only). Each series row shows a modality badge in brackets:
-            <Run FontFamily="Consolas">[CT]</Run>, <Run FontFamily="Consolas">[MR]</Run>,
-            <Run FontFamily="Consolas">[PT]</Run>, <Run FontFamily="Consolas">[RTSTRUCT]</Run>,
-            <Run FontFamily="Consolas">[RTDOSE]</Run> (and any other modality found in the archive).
+            a structural grouping only). The series rows are the image series, each with a modality
+            badge in brackets: <Run FontFamily="Consolas">[CT]</Run>, <Run FontFamily="Consolas">[MR]</Run>
+            or <Run FontFamily="Consolas">[PT]</Run>. RT-STRUCT and RT-DOSE are not rows of their own:
+            they show under the image series they are linked to. Every other series of a study
+            (RT-PLAN, and any RT object linked to no image series) shows only in the
+            <Run FontWeight="SemiBold">Study inspector</Run>.
           </TextBlock>
           <TextBlock Classes="body">
             The <Run FontWeight="SemiBold">Select all</Run> checkbox at the tree header toggles
@@ -206,16 +208,64 @@
               frame of reference matched an image series, so the series with the most slices was
               assumed.
             <LineBreak/>
-            The scan log also counts the badged series. Clicking any series row shows it in the
-            <Run FontWeight="SemiBold">Series inspector</Run>.
+            The scan log also counts the badged series. Clicking any row shows it in the
+            <Run FontWeight="SemiBold">inspector</Run>.
           </TextBlock>
 
-          <TextBlock Classes="h1" Text="Reference: Series inspector"/>
+          <TextBlock Classes="h1" Text="Reference: Inspector"/>
           <TextBlock Classes="body">
-            The panel right of the tree describes the selected series from the headers the scan
-            already read; nothing is converted. Drag the divider between the panels to resize them.
+            The panel right of the tree describes the selected patient, study or series from the
+            headers the scan already read; nothing is converted. Its header names the level shown:
+            <Run FontWeight="SemiBold">Patient inspector</Run>, <Run FontWeight="SemiBold">Study inspector</Run>
+            or <Run FontWeight="SemiBold">Series inspector</Run>. Drag the divider between the panels
+            to resize them. Each level has a <Run FontWeight="SemiBold">DICOM tags</Run> tab: a
+            read-only grid of curated attributes, the same lists, under the same names, that
+            <Run FontWeight="SemiBold">Select Metadata Tags...</Run> offers for the
+            <Run FontFamily="Consolas">metadata.json</Run> sidecar. Attributes absent from the file
+            are left out, and the files are read the first time the row is selected.
           </TextBlock>
-          <TextBlock Classes="h2" Text="Geometry &amp; links"/>
+
+          <TextBlock Classes="h2" Text="Patient inspector"/>
+          <TextBlock Classes="body">
+            What the patient's folder holds, without expanding the tree: Patient ID and name
+            (selectable, for copying), the number of studies, image series by modality (for example
+            "3 CT, 1 MR"), image instances, structure sets and doses counted as linked or
+            <Run FontWeight="SemiBold">unlinked</Run>, and any other objects (RT-PLAN). The
+            <Run FontWeight="SemiBold">non-uniform Z</Run> and <Run FontWeight="SemiBold">link guessed</Run>
+            badges carry the patient row's counts. One line per study follows: its date, description,
+            and how many image series and RT objects it holds. The DICOM tags tab reads the patient
+            attributes (name, ID, birth date, sex, age, weight) from the first slice of the patient's
+            first image series.
+          </TextBlock>
+
+          <TextBlock Classes="h2" Text="Study inspector"/>
+          <TextBlock Classes="body">
+            Everything in the study, including what the tree does not show: Study date and Study UID
+            (selectable), then one line per image series (modality, description, instance count and
+            its badges) and one line per RT object: every series of the study that is not an image
+            series, so RT-STRUCT, RT-DOSE and RT-PLAN, plus any other modality the scan found. Each
+            RT-STRUCT and RT-DOSE line names the image series it is linked to and the rule that
+            linked it, in the words the Series inspector uses. An RT-PLAN is listed only: the scan
+            links only RT-STRUCT and RT-DOSE, and nothing exports a plan.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">unlinked</Run> — an RT object badged unlinked is linked to
+              no image series in its study, so Convert Selected and Export Manifest Only never export
+              it: structures and doses are exported only with the image series they are linked to.
+              The scan leaves an RT-STRUCT or RT-DOSE unlinked when its study holds no CT, MR or PT
+              series, which happens when its images are in another study or were not in the input
+              folder. The same badge, counted, shows on the Patient inspector.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Frames of reference</Run> — how many distinct frames the
+              study's image series carry. With more than one, each series line names its frame and a
+              note says why it matters: series in different frames do not share a patient coordinate
+              system, so a structure set or dose applies to the series of its own frame.
+            <LineBreak/>
+            The DICOM tags tab reads the study attributes (date, description, Study Instance UID)
+            from the first slice of the study's first image series; a study with none reads them from
+            its first RT object, which carries the study module too.
+          </TextBlock>
+
+          <TextBlock Classes="h2" Text="Series inspector: geometry &amp; links"/>
           <TextBlock Classes="body">
             • <Run FontWeight="SemiBold">Instances</Run> — files in the series.
             <LineBreak/>
@@ -234,6 +284,8 @@
             • <Run FontWeight="SemiBold">Frame of reference</Run> and
               <Run FontWeight="SemiBold">Series UID</Run> — selectable for copying.
             <LineBreak/>
+            • <Run FontWeight="SemiBold">Series date</Run> — SeriesDate, as year-month-day.
+            <LineBreak/>
             • <Run FontWeight="SemiBold">RTSTRUCT</Run> / <Run FontWeight="SemiBold">RTDOSE</Run> — how
               many structure sets and doses are linked to the series, and by which rule:
               <Run FontWeight="SemiBold">referenced series UID</Run> (the RT object names this series;
@@ -245,13 +297,10 @@
             slice gaps, and slices skipped for lacking a usable ImagePositionPatient. A list of the
             linked RT objects follows, each with its ROI or file count and its link rule.
           </TextBlock>
-          <TextBlock Classes="h2" Text="DICOM tags"/>
+          <TextBlock Classes="h2" Text="Series inspector: DICOM tags"/>
           <TextBlock Classes="body">
-            A read-only grid of curated attributes from the series' first slice and its first linked
-            RT-STRUCT and RT-DOSE — the same lists, under the same names, that
-            <Run FontWeight="SemiBold">Select Metadata Tags...</Run> offers for the
-            <Run FontFamily="Consolas">metadata.json</Run> sidecar. Attributes absent from the file
-            are left out. The files are read the first time the series is selected.
+            The curated image attributes from the series' first slice, and the structure-set and
+            dose attributes from its first linked RT-STRUCT and RT-DOSE.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Reference: export options"/>
@@ -286,10 +335,9 @@
           <TextBlock Classes="h2" Text="Modality scope"/>
           <TextBlock Classes="body">
             Only <Run FontFamily="Consolas">CT</Run>, <Run FontFamily="Consolas">MR</Run>, and
-            <Run FontFamily="Consolas">PT</Run> image series are linked to RT-STRUCT and RT-DOSE
-            files during the scan. Other modalities (US, NM, etc.) appear in the tree and can be
-            exported as <Run FontFamily="Consolas">image.nii.gz</Run>, but no structures or dose
-            will be associated with them.
+            <Run FontFamily="Consolas">PT</Run> image series are listed in the tree, linked to
+            RT-STRUCT and RT-DOSE files during the scan, and exported. Other modalities (US, NM,
+            etc.) are not exported; the Study inspector lists them so you can see they were found.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Multi-RT-STRUCT / multi-RT-DOSE per series"/>

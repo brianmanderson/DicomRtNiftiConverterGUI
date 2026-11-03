@@ -27,6 +27,13 @@ namespace DicomRtNifti.App.Tests
                 var help = launcher.OpenedBy<DicomToNiftiHelpWindow>(() => vm.OpenHelpCommand.Execute(null), "the forward Help command");
                 Assert.True(help.IsVisible);
                 AssertStatesResearchUse(help);
+
+                // The inspector reference covers each level the panel shows.
+                var headings = help.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+                Assert.Contains("Reference: Inspector", headings);
+                Assert.Contains("Patient inspector", headings);
+                Assert.Contains("Study inspector", headings);
+                Assert.Contains("Series inspector: geometry & links", headings);
                 Screenshots.Capture(help, "04_help_dicom_to_nifti");
             }
         }
