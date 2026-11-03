@@ -12,6 +12,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The tests check the mode discovery (Modes/) directly. -->
+    <InternalsVisibleTo Include="DicomRtNifti.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Used directly by HeadlessRunner (fo-dicom types, code-page registration). -->
     <PackageReference Include="fo-dicom" Version="5.2.5" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />

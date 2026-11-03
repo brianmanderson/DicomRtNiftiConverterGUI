@@ -26,80 +26,16 @@ namespace DicomRtNifti.Cli
     ///   * The command line is parsed by Core's grammar (<see cref="CohortCommandLine"/>); what is
     ///     left here is the file-system checks, the stderr progress and the exit codes.
     /// Exit codes match the other modes: 0 ok, 1 conversion failure, 2 bad arguments.
+    ///
+    /// Each mode's entry point is its file under Modes/; this class is what they share.
     /// </summary>
     internal static class CohortRunner
     {
         // -----------------------------------------------------------------------------------
-        //  --cohort-scan
+        //  Shared by the three cohort modes (Modes/Cohort*Mode.cs)
         // -----------------------------------------------------------------------------------
 
-        public static int RunScan(string[] args)
-        {
-            var command = CohortCommandLine.Parse(CohortMode.Scan, args, new StderrProgress("  "));
-            var options = command.Options;
-            string input = options.InputRoot;
-            if (!Directory.Exists(input))
-                throw new CliUsageException($"Input folder not found: {input}");
-
-            // Opened before the scan for the same reason as the export's key: a damaged key or a
-            // salt it disagrees with refuses the run, and should not wait out a full tree walk.
-            // There is no output folder to place a key beside, so only --key-path is read.
-            AnonymizationService anon = null;
-            if (options.Anonymize)
-            {
-                anon = ReadOnlyAnonymizationKey.OpenFile(options.KeyPath, options.Salt);
-                Console.Error.WriteLine(anon.KeyFilePath == null
-                    ? "  Anonymized with the salt alone (no --key-path; no key read or written)"
-                    : File.Exists(anon.KeyFilePath)
-                        ? $"  Anonymization key: {anon.KeyFilePath} (read only)"
-                        : $"  Anonymization key: {anon.KeyFilePath} not found; hashes from the salt alone");
-            }
-
-            var scan = ScanTree(input);
-
-            Emit(command, CohortScanDocument.Build(scan, input, CohortDocuments.Identity, anon));
-            return 0;
-        }
-
-        // -----------------------------------------------------------------------------------
-        //  --cohort-manifest / --cohort-convert
-        // -----------------------------------------------------------------------------------
-
-        public static int RunManifest(string[] args)
-        {
-            var command = CohortCommandLine.Parse(CohortMode.Manifest, args, new StderrProgress("  "));
-            if (command.DryRun)
-                return RunPlan(command);
-            var options = command.Options;
-            var (result, plan) = RunCohort(options, convert: false);
-
-            Emit(command, CohortManifestDocument.Build(result, CohortDocuments.Identity));
-
-            // --only-associated-rois that matched nothing anywhere is a failed run, reported after
-            // the JSON (whose errors list carries the explanation) rather than instead of it.
-            if (CohortExportService.DescribeNothingAssociated(plan, options, result) != null)
-                return 1;
-            return result.FailedCount > 0 && result.SucceededCount == 0 ? 1 : 0;
-        }
-
-        public static int RunConvert(string[] args)
-        {
-            var command = CohortCommandLine.Parse(CohortMode.Convert, args, new StderrProgress("  "));
-            if (command.DryRun)
-                return RunPlan(command);
-            var options = command.Options;
-            var (result, plan) = RunCohort(options, convert: true);
-
-            Emit(command, CohortConvertDocument.Build(result, CohortDocuments.Identity));
-
-            // --only-associated-rois that matched nothing anywhere is a failed run, reported after
-            // the JSON (whose errors list carries the explanation) rather than instead of it.
-            if (CohortExportService.DescribeNothingAssociated(plan, options, result) != null)
-                return 1;
-            return result.FailedCount > 0 && result.SucceededCount == 0 ? 1 : 0;
-        }
-
-        private static (CohortExportResult, CohortExportPlan) RunCohort(
+        internal static (CohortExportResult, CohortExportPlan) RunCohort(
             CohortExportOptions options, bool convert)
         {
             if (!Directory.Exists(options.InputRoot))
@@ -158,7 +94,7 @@ namespace DicomRtNifti.Cli
         /// would write it, so manual overrides show, and never saved. --json-out is still honoured,
         /// as long as it does not lie inside the output folder the dry run must not create.
         /// </summary>
-        private static int RunPlan(CohortCommand command)
+        internal static int RunPlan(CohortCommand command)
         {
             var options = command.Options;
             if (!Directory.Exists(options.InputRoot))
@@ -207,7 +143,7 @@ namespace DicomRtNifti.Cli
         //  Helpers
         // -----------------------------------------------------------------------------------
 
-        private static DicomScanResult ScanTree(string input)
+        internal static DicomScanResult ScanTree(string input)
         {
             Console.Error.WriteLine($"  Scanning {Path.GetFullPath(input)} ...");
             var progress = new StderrProgress("  ");
@@ -224,7 +160,7 @@ namespace DicomRtNifti.Cli
         }
 
         /// <summary>Writes the document to stdout, and to --json-out as well when given.</summary>
-        private static void Emit(CohortCommand command, object document)
+        internal static void Emit(CohortCommand command, object document)
         {
             string json = CohortDocuments.Serialize(document);
             Console.Out.WriteLine(json);
@@ -239,5 +175,54 @@ namespace DicomRtNifti.Cli
                 Console.Error.WriteLine($"  Wrote {jsonOut}");
             }
         }
+    }
+
+    /// <summary>The parts of the cohort section of --help that belong to no single cohort mode.</summary>
+    internal static class CohortUsage
+    {
+        /// <summary>The line that opens the cohort section of --help, before the first cohort mode.</summary>
+        public static readonly string[] Preamble =
+        {
+            "Cohort modes scan a tree recursively and emit one JSON document on stdout.",
+        };
+
+        /// <summary>
+        /// The options the survey and the conversion share, then the conversion's own: printed
+        /// after the last cohort mode, since they describe both.
+        /// </summary>
+        public static readonly string[] SharedOptions =
+        {
+            "Options common to --cohort-manifest and --cohort-convert:",
+            "  --associations FILE.json          canonical-name / alias mappings",
+            "  --only-associated-rois            drop ROIs that match no association",
+            "                                    (warns without --associations; exit 1 if nothing matches)",
+            "  --output-spacing X,Y,Z            resample to a fixed grid, mm",
+            "                                    (--target-spacing is accepted as an alias)",
+            "  --anonymize [--salt STRING]       hash identifiers; writes AnonymizationKey.json outside",
+            "                                    the output, in <output>.key/ beside it by default",
+            "  --key-path FILE|FOLDER            with --anonymize: where to write the key instead",
+            "                                    (refused inside --output)",
+            "  --patients ID,ID                  restrict to these PatientIDs",
+            "  --series-description SUBSTR       keep image series whose description matches",
+            "  --struct-description SUBSTR       keep image series whose linked RTSTRUCT",
+            "                                    description matches, and export that one",
+            "  --prefer-largest-series           keep only the largest image series per study",
+            "                                    (equal slice counts break on SeriesInstanceUID, so",
+            "                                    repeated runs pick the same series; prefer the",
+            "                                    filters above when the choice matters)",
+            "  --require-structures              skip series with no linked RTSTRUCT",
+            "  --require-dose                    skip series with no linked RTDOSE",
+            "  --fail-fast                       abort on the first failing series",
+            "  --manifest-name NAME              default: export_manifest.csv",
+            "  --json-out PATH                   also write the JSON document to a file",
+            "",
+            "Options for --cohort-convert only:",
+            "  --metadata-tags KW,...            metadata.json image section",
+            "  --metadata-structure-tags KW,...  metadata.json structure section",
+            "  --metadata-dose-tags KW,...       metadata.json dose section",
+            "      Keywords are fo-dicom names (PatientAge, KVP, DoseUnits) plus computed",
+            "      values (@VoxelSize, @RoiNames, @MaxDose, @DoseVoxelSize).",
+            "  --no-images | --no-structures | --no-doses   skip that output",
+        };
     }
 }
