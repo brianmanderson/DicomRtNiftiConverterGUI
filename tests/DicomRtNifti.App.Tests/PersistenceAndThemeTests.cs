@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -172,7 +174,14 @@ namespace DicomRtNifti.App.Tests
 
                     Assert.NotEqual(light, dark);
                     Assert.True(light.R > 0xC0 && dark.R < 0x40, $"light {light}, dark {dark}");
-                    Screenshots.Capture(window, "12_dicom_to_nifti_dark");
+
+                    // The saved image, not only the brush, is dark: the window background shows in the
+                    // margin around the series tree. Until #93 was fixed, two of three runs saved a light frame.
+                    var frame = Screenshots.CaptureFrame(window, "12_dicom_to_nifti_dark");
+                    var content = ((Grid)window.Content).Children.OfType<Grid>().Single(g => Grid.GetRow(g) == 2);
+                    Assert.True(content.Margin.Left >= 4, $"the series tree's margin {content.Margin} leaves no window background to sample");
+                    var background = frame.PixelAt(content, new Point(-content.Margin.Left / 2, content.Bounds.Height / 2));
+                    Assert.True(background == dark, $"the window background is {background} in the frame, not the dark {dark}");
                 }
                 finally
                 {
