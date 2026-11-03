@@ -33,6 +33,7 @@
               "slice_spacing_values": [
                 1.0
               ],
+              "unpositioned_slices": [],
               "linked_rtstructs": [
                 {
                   "series_instance_uid": "1.2.3.100.3",
@@ -68,6 +69,7 @@
               "slice_spacing_values": [
                 1.0
               ],
+              "unpositioned_slices": [],
               "linked_rtstructs": [],
               "linked_rtdoses": [
                 {
@@ -105,6 +107,9 @@
                 2.0,
                 6.0,
                 8.0
+              ],
+              "unpositioned_slices": [
+                "ct_006.dcm (InstanceNumber 7): ImagePositionPatient missing"
               ],
               "linked_rtstructs": [
                 {
@@ -162,6 +167,7 @@
               "slice_spacing_values": [
                 1.0
               ],
+              "unpositioned_slices": [],
               "linked_rtstructs": [
                 {
                   "series_instance_uid": "1.2.3.400.3",
@@ -201,6 +207,7 @@
               "slice_spacing_values": [
                 1.0
               ],
+              "unpositioned_slices": [],
               "linked_rtstructs": [
                 {
                   "series_instance_uid": "1.2.3.500.3",

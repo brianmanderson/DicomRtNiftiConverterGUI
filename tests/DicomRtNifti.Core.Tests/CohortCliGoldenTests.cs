@@ -46,6 +46,14 @@ namespace DicomRtNifti.Core.Tests
             AssertDocument("cohort-scan.txt", "--cohort-scan", "--input", _cohort.Input);
         }
 
+        /// <summary>New in W4-A, recorded with it: hashes only, and nothing that has no hash.</summary>
+        [Fact]
+        public void CohortScanAnonymized_PrintsTheGoldenDocument()
+        {
+            AssertDocument("cohort-scan-anonymized.txt",
+                "--cohort-scan", "--input", _cohort.Input, "--anonymize", "--salt", GoldenCohort.Salt);
+        }
+
         [Fact]
         public void CohortManifest_PrintsTheGoldenDocument()
         {

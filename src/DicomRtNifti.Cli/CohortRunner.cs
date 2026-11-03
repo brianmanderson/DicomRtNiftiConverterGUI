@@ -36,13 +36,28 @@ namespace DicomRtNifti.Cli
         public static int RunScan(string[] args)
         {
             var command = CohortCommandLine.Parse(CohortMode.Scan, args, new StderrProgress("  "));
-            string input = command.Options.InputRoot;
+            var options = command.Options;
+            string input = options.InputRoot;
             if (!Directory.Exists(input))
                 throw new CliUsageException($"Input folder not found: {input}");
 
+            // Opened before the scan for the same reason as the export's key: a damaged key or a
+            // salt it disagrees with refuses the run, and should not wait out a full tree walk.
+            // There is no output folder to place a key beside, so only --key-path is read.
+            AnonymizationService anon = null;
+            if (options.Anonymize)
+            {
+                anon = ReadOnlyAnonymizationKey.OpenFile(options.KeyPath, options.Salt);
+                Console.Error.WriteLine(anon.KeyFilePath == null
+                    ? "  Anonymized with the salt alone (no --key-path; no key read or written)"
+                    : File.Exists(anon.KeyFilePath)
+                        ? $"  Anonymization key: {anon.KeyFilePath} (read only)"
+                        : $"  Anonymization key: {anon.KeyFilePath} not found; hashes from the salt alone");
+            }
+
             var scan = ScanTree(input);
 
-            Emit(command, CohortScanDocument.Build(scan, input, CohortDocuments.Identity));
+            Emit(command, CohortScanDocument.Build(scan, input, CohortDocuments.Identity, anon));
             return 0;
         }
 

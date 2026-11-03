@@ -64,12 +64,18 @@ namespace DicomRtNifti.Core.Tests
         }
 
         [Fact]
-        public void Scan_RoundTripsItsInputAndJsonOut()
+        public void Scan_RoundTripsItsInputAnonymizationAndJsonOut()
         {
             var command = new CohortCommand
             {
                 Mode = CohortMode.Scan,
-                Options = new CohortExportOptions { InputRoot = Path.Combine(_dir, "in") },
+                Options = new CohortExportOptions
+                {
+                    InputRoot = Path.Combine(_dir, "in"),
+                    Anonymize = true,
+                    Salt = "scan salt",
+                    KeyPath = Path.Combine(_dir, "key.json"),
+                },
                 JsonOutPath = Path.Combine(_dir, "scan.json"),
             };
 
@@ -111,7 +117,7 @@ namespace DicomRtNifti.Core.Tests
             var survey = new CohortExportOptions { InputRoot = "in", OutputRoot = "out", ExportImages = false };
             var convert = new CohortExportOptions { InputRoot = "in", OutputRoot = "out", ComputeVolumes = false };
             var keywords = new CohortExportOptions { InputRoot = "in", OutputRoot = "out", ImageKeywords = { "KVP" } };
-            var scan = new CohortExportOptions { InputRoot = "in", Anonymize = true };
+            var scan = new CohortExportOptions { InputRoot = "in", RequireStructures = true };
             var associations = new CohortExportOptions
             {
                 InputRoot = "in", OutputRoot = "out",
@@ -161,6 +167,8 @@ namespace DicomRtNifti.Core.Tests
         [InlineData("Required argument '--output' is missing.", "--cohort-manifest", "--input", "in", "--output-spacing", "x")]
         [InlineData("--key-path places the anonymization key, so it needs --anonymize.",
             "--cohort-convert", "--input", "in", "--output", "out", "--key-path", "k", "--output-spacing", "x")]
+        [InlineData("--key-path places the anonymization key, so it needs --anonymize.",
+            "--cohort-scan", "--input", "in", "--key-path", "k")]
         [InlineData("--output-spacing: spacing component 'x' is not a number",
             "--cohort-convert", "--input", "in", "--output", "out", "--output-spacing", "1,x,1")]
         [InlineData("--output-spacing: spacing component '0' must be greater than zero",

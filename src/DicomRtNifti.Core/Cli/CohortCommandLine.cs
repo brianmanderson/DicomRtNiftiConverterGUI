@@ -165,10 +165,15 @@ namespace DicomRtNifti.Core.CommandLine
 
             if (mode == CohortMode.Scan)
             {
+                // The inventory converts nothing, so of the export options it takes only the
+                // anonymization ones: --anonymize hashes its identifiers as the other documents do,
+                // with the key at --key-path read, never written.
                 command.Options = new CohortExportOptions
                 {
                     InputRoot = CommandLineArgs.RequireArg(args, "--input"),
+                    Anonymize = CommandLineArgs.HasFlag(args, "--anonymize"),
                 };
+                ParseAnonymization(args, command.Options);
                 command.JsonOutPath = CommandLineArgs.OptionalArg(args, "--json-out");
                 return command;
             }
@@ -188,17 +193,7 @@ namespace DicomRtNifti.Core.CommandLine
             };
             command.Options = options;
 
-            string salt = CommandLineArgs.OptionalArg(args, "--salt");
-            if (!string.IsNullOrEmpty(salt))
-                options.Salt = salt;
-
-            string keyPath = CommandLineArgs.OptionalArg(args, "--key-path");
-            if (!string.IsNullOrEmpty(keyPath))
-            {
-                if (!options.Anonymize)
-                    throw new CommandLineUsageException("--key-path places the anonymization key, so it needs --anonymize.");
-                options.KeyPath = keyPath;
-            }
+            ParseAnonymization(args, options);
 
             string manifestName = CommandLineArgs.OptionalArg(args, "--manifest-name");
             if (!string.IsNullOrEmpty(manifestName))
@@ -248,6 +243,22 @@ namespace DicomRtNifti.Core.CommandLine
             command.JsonOutPath = CommandLineArgs.OptionalArg(args, "--json-out");
             command.DryRun = CommandLineArgs.HasFlag(args, DryRunFlag);
             return command;
+        }
+
+        /// <summary>--salt and --key-path; the latter only with --anonymize.</summary>
+        private static void ParseAnonymization(string[] args, CohortExportOptions options)
+        {
+            string salt = CommandLineArgs.OptionalArg(args, "--salt");
+            if (!string.IsNullOrEmpty(salt))
+                options.Salt = salt;
+
+            string keyPath = CommandLineArgs.OptionalArg(args, "--key-path");
+            if (!string.IsNullOrEmpty(keyPath))
+            {
+                if (!options.Anonymize)
+                    throw new CommandLineUsageException("--key-path places the anonymization key, so it needs --anonymize.");
+                options.KeyPath = keyPath;
+            }
         }
 
         private static List<string> ParseKeywords(
@@ -301,9 +312,7 @@ namespace DicomRtNifti.Core.CommandLine
                 RequireDefault(mode, command.AssociationsPath == null && IsEmpty(o.Associations), "ROI associations");
                 RequireDefault(mode, !o.OnlyAssociatedRois, "--only-associated-rois");
                 RequireDefault(mode, o.OutputSpacing == null, "an output spacing");
-                RequireDefault(mode, !o.Anonymize, "--anonymize");
-                RequireDefault(mode, o.Salt == Defaults.Salt, "a salt");
-                RequireDefault(mode, string.IsNullOrEmpty(o.KeyPath), "a key path");
+                AddAnonymization(args, o, presenter);
                 RequireDefault(mode, IsEmpty(o.PatientIds), "a patient filter");
                 RequireDefault(mode, o.SeriesDescriptionFilter == null, "a series-description filter");
                 RequireDefault(mode, o.StructDescriptionFilter == null, "a structure-set-description filter");
@@ -334,16 +343,7 @@ namespace DicomRtNifti.Core.CommandLine
                 args.Add("--output-spacing");
                 args.Add(FormatSpacing(o.OutputSpacing));
             }
-            AddFlag(args, "--anonymize", o.Anonymize);
-            if (o.Salt != Defaults.Salt)
-            {
-                if (string.IsNullOrEmpty(o.Salt))
-                    throw new ArgumentException("An empty salt cannot be given on the command line.", nameof(command));
-                args.Add("--salt");
-                args.Add(o.Salt);
-            }
-            if (!string.IsNullOrEmpty(o.KeyPath))
-                AddPath(args, "--key-path", o.KeyPath, presenter);
+            AddAnonymization(args, o, presenter);
             if (!IsEmpty(o.PatientIds))
             {
                 args.Add("--patients");
@@ -382,6 +382,20 @@ namespace DicomRtNifti.Core.CommandLine
             AddFlag(args, DryRunFlag, command.DryRun);
             AddPath(args, "--json-out", command.JsonOutPath, presenter);
             return args.ToArray();
+        }
+
+        private static void AddAnonymization(List<string> args, CohortExportOptions o, PathPresenter presenter)
+        {
+            AddFlag(args, "--anonymize", o.Anonymize);
+            if (o.Salt != Defaults.Salt)
+            {
+                if (string.IsNullOrEmpty(o.Salt))
+                    throw new ArgumentException("An empty salt cannot be given on the command line.", "command");
+                args.Add("--salt");
+                args.Add(o.Salt);
+            }
+            if (!string.IsNullOrEmpty(o.KeyPath))
+                AddPath(args, "--key-path", o.KeyPath, presenter);
         }
 
         private static void RequireSurveyAndExportDefaults(CohortMode mode, CohortExportOptions o)
