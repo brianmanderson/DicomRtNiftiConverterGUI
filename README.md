@@ -248,6 +248,11 @@ DicomRtNifti.Cli --cohort-convert --input ARCHIVE --output OUT \
 # Plan: the same command with --dry-run prints what it would write, and writes nothing
 DicomRtNifti.Cli --cohort-convert --input ARCHIVE --output OUT --struct-description planning --dry-run
 
+# Pick by identity: these series, this structure set where a series has several, these ROIs
+DicomRtNifti.Cli --cohort-convert --input ARCHIVE --output OUT \
+    --series SERIES_UID,SERIES_UID --struct-series RTSTRUCT_SERIES_UID \
+    --associations associations.json --rois Pancreas,SpinalCord
+
 # Inventory without identifiers: hashes as an anonymized export would write them
 DicomRtNifti.Cli --cohort-scan --input ARCHIVE --anonymize --salt "my-cohort-salt"
 ```
@@ -266,6 +271,20 @@ Key points:
   resampled-sibling case — an equal slice count then breaks on SeriesInstanceUID, so the choice
   is *repeatable* but not *meaningful*. `--require-structures` / `--require-dose`
   skip series lacking what you need. Everything excluded is reported with a reason.
+- **Or select by identity: `--series`, `--struct-series`, `--rois`.** These take what the GUI's
+  tree and its *Select ROIs* dialog pick, as comma-separated lists. `--series UID,...` exports only
+  those image series (SeriesInstanceUIDs, matched exactly, before any anonymization). It applies
+  after `--patients` and before the description filters, and every other image series of a kept
+  patient is reported in `skipped` as `SeriesInstanceUID is not in the series selection`.
+  `--struct-series UID,...` names the structure set to export where a series has several linked:
+  a listed one wins, then `--struct-description`'s match, then the first. It chooses; it does not
+  filter, so one list can name a set for each of many series. `--rois NAME,...` exports only the
+  ROIs those canonical names cover. A name with an association in `--associations` keeps its
+  aliases; a name without one matches itself (as forgivingly as an alias); every other ROI is
+  dropped, with or without `--only-associated-rois`. A `--rois` list that matches no ROI fails the
+  run as `--only-associated-rois` does (exit 1, the reason in `errors`), and `--dry-run` flags it
+  first. A list flag given with nothing in it (`--rois ","`) is refused (exit 2) rather than read
+  as no selection.
 - **`--dry-run` shows the plan before anything runs.** On `--cohort-manifest` and
   `--cohort-convert` it scans and plans exactly as the run would, then prints a
   `dicomrtnifti.cohort-plan/1` document instead of converting: every series that would be
@@ -339,10 +358,12 @@ and hand the file to an unattended run:
 Both keys are required and case-sensitive *as key names*; alias **matching** against the DICOM ROI
 names is case-insensitive. A matched ROI is renamed to its `CanonicalName` on disk and in the
 manifest column header. Unmatched ROIs are exported under their original names unless
-`--only-associated-rois` is given, which drops them. [`examples/associations_pancreas.json`](examples/associations_pancreas.json)
+`--only-associated-rois` is given, which drops them, or `--rois` narrows the export to named
+canonical names. [`examples/associations_pancreas.json`](examples/associations_pancreas.json)
 is a full worked example.
 
-Run `--help` for the full option list.
+Run `--help` for the option list. It does not yet list `--dry-run`, `--series`, `--struct-series`
+or `--rois`, which are described above.
 
 ## Dependencies
 

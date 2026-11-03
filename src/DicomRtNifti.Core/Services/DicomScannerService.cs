@@ -34,10 +34,16 @@ namespace DicomRtNifti.Core.Services
         /// a count of files that errored during open (so callers can surface silent failures
         /// like PathTooLongException on long Windows paths instead of reporting "0 patients").
         /// </summary>
+        /// <param name="progress">The human log.</param>
+        /// <param name="scanProgress">
+        /// Optional structured counts for a progress bar (see <see cref="ScanProgress"/>); the log
+        /// is the same with or without it.
+        /// </param>
         public async Task<DicomScanResult> ScanFolderAsync(
             string rootFolder,
             IProgress<string> progress,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IProgress<ScanProgress> scanProgress = null)
         {
             progress?.Report("Enumerating files...");
             int foundCount = 0;
@@ -157,9 +163,11 @@ namespace DicomRtNifti.Core.Services
                                 if (count % 50 == 0)
                                 {
                                     int total = Volatile.Read(ref totalFiles);
+                                    int found = Volatile.Read(ref foundCount);
                                     progress?.Report(total >= 0
                                         ? $"Scanned {count}/{total} files..."
-                                        : $"Scanned {count} files, {Volatile.Read(ref foundCount)} found so far...");
+                                        : $"Scanned {count} files, {found} found so far...");
+                                    scanProgress?.Report(new ScanProgress(count, total >= 0 ? total : found, total >= 0));
                                 }
                             }
                             return default;
@@ -182,6 +190,9 @@ namespace DicomRtNifti.Core.Services
             {
                 progress?.Report($"Scanned {totalFiles}/{totalFiles} files...");
             }
+            // Always, even where the log already said it: the one event sent after every read, so
+            // the last a progress bar sees is the final count.
+            scanProgress?.Report(new ScanProgress(processedCount, totalFiles, walkFinished: true));
 
             // Reconcile each series' modality to the majority across its files. Must run
             // before linking, since LinkRtDataToImageSeries filters series by modality.
