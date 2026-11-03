@@ -71,7 +71,7 @@ namespace DicomRtNifti.Cli
             if (HasFlag(args, "--version"))
             {
                 Console.Out.WriteLine(GetVersionString());
-                Console.Out.WriteLine(ProbeSimpleItk());
+                Console.Out.WriteLine(SimpleItkNative.Probe());
                 return 0;
             }
             if (args == null || args.Length == 0)
@@ -955,32 +955,6 @@ namespace DicomRtNifti.Cli
                 ?? asm.GetName().Version?.ToString()
                 ?? "unknown";
             return $"DicomRtNifti CLI {ver}";
-        }
-
-        /// <summary>
-        /// Load-probe the SimpleITK native library so a user can confirm the per-platform
-        /// native (SimpleITKCSharpNative) resolved on their OS. Constructs a 1x1x1 image,
-        /// forcing the native into memory without needing any input files.
-        /// </summary>
-        private static string ProbeSimpleItk()
-        {
-            try
-            {
-                using (var img = new Image(1, 1, 1, PixelIDValueEnum.sitkUInt8))
-                {
-                    return $"SimpleITK native: OK ({img.GetNumberOfPixels()}-voxel probe)";
-                }
-            }
-            catch (Exception ex)
-            {
-                // Walk the inner-exception chain: the outer TypeInitializationException
-                // hides the real dlopen / DllNotFound detail that pins down a native load
-                // failure (missing dependency, code-signature rejection, arch mismatch).
-                string detail = "";
-                for (var e = ex; e != null; e = e.InnerException)
-                    detail += (detail.Length > 0 ? " <- " : "") + e.GetType().Name + ": " + e.Message;
-                return "SimpleITK native: FAILED TO LOAD -- " + detail;
-            }
         }
 
         private static void PrintUsage()

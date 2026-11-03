@@ -210,40 +210,14 @@ namespace DicomRtNifti.Cli
         }
 
         /// <summary>
-        /// Splits a keyword list and rejects anything this metadata section cannot express.
-        /// Failing here beats writing a metadata.json full of nulls that reads as "the tag was
-        /// absent from the DICOM" rather than "it was misspelled on the command line".
-        ///
-        /// Computed pseudo-keywords are validated against the section's own options, so asking
-        /// for "@MaxDose" under --metadata-tags is reported rather than silently ignored: the
-        /// image section has no dose to measure.
+        /// Splits a keyword list and rejects anything this metadata section cannot express
+        /// (<see cref="MetadataKeywordValidator"/>), naming the flag it came from.
         /// </summary>
         private static List<string> ValidateKeywords(
             string text, string flagName, IReadOnlyList<ComputedMetadataOption> computedOptions)
         {
-            var keywords = CohortExportOptions.ParseKeywordList(text);
-            if (keywords.Count == 0)
-                return keywords;
-
-            var knownTags = new HashSet<string>(
-                DicomMetadataExtractor.GetSelectableTags().Select(t => t.Keyword),
-                StringComparer.OrdinalIgnoreCase);
-            var knownComputed = new HashSet<string>(
-                computedOptions.Select(o => o.Key), StringComparer.OrdinalIgnoreCase);
-
-            var unknown = keywords
-                .Where(k => MetadataTagCatalog.IsComputedKey(k)
-                    ? !knownComputed.Contains(k)
-                    : !knownTags.Contains(k))
-                .ToList();
-
-            if (unknown.Count > 0)
-            {
-                throw new CliUsageException(
-                    $"{flagName}: unrecognised keyword(s) {string.Join(", ", unknown)}. "
-                    + "Expected fo-dicom tag keywords (PatientAge, KVP, DoseUnits) or one of this "
-                    + $"section's computed values ({string.Join(", ", knownComputed)}).");
-            }
+            if (!MetadataKeywordValidator.TryValidate(text, computedOptions, out var keywords, out string error))
+                throw new CliUsageException($"{flagName}: {error}");
             return keywords;
         }
 
