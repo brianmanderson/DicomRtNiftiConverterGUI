@@ -73,7 +73,10 @@ public sealed partial class DataRootResolver
 
     private static readonly bool OnWindows = OperatingSystem.IsWindows();
     private static readonly char[] Separators = { '/', '\\' };
-    private static readonly char[] SeparatorsAndColon = { '/', '\\', ':' };
+
+    // What counts as path syntax in a name: ':' is a drive or a stream only on Windows; on POSIX
+    // it is an ordinary character ("12:30:00" is a valid folder name).
+    private static readonly char[] PathSyntax = OnWindows ? new[] { '/', '\\', ':' } : Separators;
     private static readonly char[] WindowsInvalidNameChars = { '<', '>', '"', '|', '?', '*' };
 
     private readonly DataRoots _roots;
@@ -284,7 +287,7 @@ public sealed partial class DataRootResolver
             return "'.' and '..' segments are refused.";
 
         string compatible = segment.Normalize(NormalizationForm.FormKC);
-        if (IsDotsOnly(compatible) || compatible.IndexOfAny(SeparatorsAndColon) >= 0)
+        if (IsDotsOnly(compatible) || compatible.IndexOfAny(PathSyntax) >= 0)
             return "A name whose Unicode compatibility form is path syntax is refused.";
 
         if (!OnWindows)
