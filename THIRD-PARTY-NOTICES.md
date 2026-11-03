@@ -106,8 +106,6 @@ holders; per-package license URLs are given for the authoritative copy.
 | HarfBuzzSharp.NativeAssets.macOS | 8.3.1.1 | MIT (wrapper) | as above |
 | MicroCom.Runtime | 0.11.0 | MIT | https://licenses.nuget.org/MIT |
 | Tmds.DBus.Protocol | 0.21.3 | MIT | https://licenses.nuget.org/MIT — https://github.com/tmds/Tmds.DBus |
-| System.IO.Pipelines | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
-| System.Text.Encoding.CodePages | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
 | Microsoft.Bcl.AsyncInterfaces | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
 | Microsoft.Bcl.HashCode | 6.0.0 | MIT | https://licenses.nuget.org/MIT |
 | Microsoft.Extensions.Configuration.Abstractions | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
@@ -120,10 +118,15 @@ holders; per-package license URLs are given for the authoritative copy.
 | Microsoft.Extensions.Options.ConfigurationExtensions | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
 | Microsoft.Extensions.Primitives | 8.0.0 | MIT | https://licenses.nuget.org/MIT |
 
-The `Microsoft.Extensions.*`, `Microsoft.Bcl.*`, `System.IO.Pipelines` and
-`System.Text.Encoding.CodePages` packages are transitive dependencies of fo-dicom and Avalonia; they
-are part of the .NET platform (https://github.com/dotnet/runtime) and carry the same MIT license as
-the runtime itself.
+The `Microsoft.Extensions.*` and `Microsoft.Bcl.*` packages are transitive dependencies of fo-dicom
+and Avalonia; they are part of the .NET platform (https://github.com/dotnet/runtime) and carry the
+same MIT license as the runtime itself.
+
+fo-dicom also declares the `System.Text.Encoding.CodePages` 8.0.0 package, and Avalonia (through
+`Tmds.DBus.Protocol`) declares `System.IO.Pipelines` 8.0.0. On `net10.0` the shared framework
+provides both, so NuGet prunes the two packages from the dependency closure and they have no row
+here: the bundles carry the runtime's own `System.Text.Encoding.CodePages.dll` and
+`System.IO.Pipelines.dll` instead, covered under [The .NET runtime](#the-net-runtime).
 
 The MIT License text, applicable to every package in the table above with its own copyright holder
 substituted:
@@ -172,9 +175,17 @@ https://github.com/rsms/inter/blob/master/LICENSE.txt
 
 ## The .NET runtime
 
-The self-contained bundles include the **.NET 8** runtime and base class libraries
+The self-contained bundles include the **.NET 10** runtime and base class libraries
 (`System.*.dll`, `hostfxr`, `hostpolicy`, `coreclr` and the platform natives), redistributed under
-the **MIT License**, Copyright © .NET Foundation and Contributors.
+the **MIT License**, Copyright © .NET Foundation and Contributors. The runtime patch is the one
+bundled with the SDK that builds the release (the workflow installs the latest `10.0.x` SDK), so it
+moves with each servicing release; `includedFrameworks` in each bundle's
+`DicomRtNifti.*.runtimeconfig.json` names it.
+
+These libraries include `System.IO.Pipelines.dll` and `System.Text.Encoding.CodePages.dll`, which
+ship from the runtime rather than as the 8.0.0 NuGet packages that Avalonia and fo-dicom declare
+(see [MIT-licensed components](#mit-licensed-components)). In a win-x64 publish with SDK 10.0.402
+(runtime 10.0.13) both are file version 10.0.1326.50504, the same as the rest of the runtime.
 
 - Project: https://github.com/dotnet/runtime
 - License: https://github.com/dotnet/runtime/blob/main/LICENSE.TXT

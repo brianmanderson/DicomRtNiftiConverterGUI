@@ -1,8 +1,12 @@
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using DicomRtNifti.App.Tests.Support;
 using DicomRtNifti.App.ViewModels;
 using DicomRtNifti.App.Views;
@@ -88,7 +92,15 @@ namespace DicomRtNifti.App.Tests
                     testCase.RoiNames.Select(n => n.ToLowerInvariant()).OrderBy(n => n).ToList(),
                     masks.Select(m => Path.GetFileName(m).Replace(".nii.gz", "").ToLowerInvariant()).OrderBy(n => n).ToList());
 
-                Screenshots.Capture(window, "07_dicom_to_nifti_converted");
+                // The saved image, not only the view-model, shows the finished run: the progress bar is
+                // full. A frame from mid-conversion (#93) shows its track empty.
+                var progressBar = window.GetVisualDescendants().OfType<ProgressBar>().Single();
+                Assert.Equal(progressBar.Maximum, progressBar.Value);
+                var converted = Screenshots.CaptureFrame(window, "07_dicom_to_nifti_converted");
+                var indicator = Assert.IsAssignableFrom<ISolidColorBrush>(progressBar.Foreground).Color;
+                var barEnd = converted.PixelAt(progressBar, new Point(progressBar.Bounds.Width - 4, progressBar.Bounds.Height / 2));
+                Assert.True(barEnd == indicator,
+                    $"the progress bar's right end is {barEnd} in the frame, not the indicator {indicator}: the image predates the finished conversion");
                 return seriesFolder;
             }
             finally
