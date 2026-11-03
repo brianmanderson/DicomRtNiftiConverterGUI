@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using DicomRtNifti.Core.Documents;
 using DicomRtNifti.Core.Models;
 using DicomRtNifti.Core.Services;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 
 namespace DicomRtNifti.Cli
 {
@@ -20,32 +19,15 @@ namespace DicomRtNifti.Cli
     ///     straight into a parser. The "# rt_mask_validation" header the older modes emit would
     ///     make that fail, so it is not used here.
     ///   * stderr carries all human-readable progress.
-    ///   * Every document has a "schema" field so consumers can version-check.
-    ///   * Per-series paths are relative to the output root and use forward slashes; only the
-    ///     root itself is absolute.
-    ///   * Under --anonymize the document contains hashes only — never a source PatientID,
-    ///     StudyInstanceUID, or file path. Re-identification lives solely in AnonymizationKey.json,
-    ///     which is written outside the output root (beside it by default, or at --key-path) and
-    ///     whose full path is anonymization_key. Notebooks get committed, so their cell output must
-    ///     not carry PHI.
+    ///   * The documents themselves are built in Core (<see cref="CohortDocuments"/>), so every
+    ///     front-end prints the same bytes; this class prints them with absolute paths as they
+    ///     are. Under --anonymize the key is written outside the output root (beside it by
+    ///     default, or at --key-path) and its full path is anonymization_key. Notebooks get
+    ///     committed, so their cell output must not carry PHI.
     /// Exit codes match the other modes: 0 ok, 1 conversion failure, 2 bad arguments.
     /// </summary>
     internal static class CohortRunner
     {
-        public const string ScanSchema = "dicomrtnifti.cohort-scan/1";
-        public const string ManifestSchema = "dicomrtnifti.cohort-manifest/1";
-        public const string ConvertSchema = "dicomrtnifti.cohort-convert/1";
-
-        private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
-        {
-            Formatting = Formatting.Indented,
-            ContractResolver = new DefaultContractResolver
-            {
-                NamingStrategy = new SnakeCaseNamingStrategy(),
-            },
-            NullValueHandling = NullValueHandling.Include,
-        };
-
         // -----------------------------------------------------------------------------------
         //  --cohort-scan
         // -----------------------------------------------------------------------------------
@@ -58,76 +40,10 @@ namespace DicomRtNifti.Cli
 
             var scan = ScanTree(input);
 
-            var document = new
-            {
-                schema = ScanSchema,
-                input_root = Path.GetFullPath(input),
-                scanned_files = scan.TotalFileCount,
-                unreadable_files = scan.SkippedErrorCount,
-                unreadable_samples = scan.SkippedErrorSamples,
-                roi_names = CollectRoiNames(scan),
-                patients = scan.Patients.Select(DescribePatient).ToList(),
-            };
+            var document = CohortScanDocument.Build(scan, input, CohortDocuments.Identity);
 
             Emit(args, document);
             return 0;
-        }
-
-        private static object DescribePatient(DicomPatientGroup patient) => new
-        {
-            patient_id = patient.PatientID,
-            studies = patient.Studies.Select(study => new
-            {
-                study_instance_uid = study.StudyInstanceUID,
-                series = study.Series
-                    .Where(s => IsImageModality(s.Modality))
-                    .Select(DescribeImageSeries)
-                    .ToList(),
-                unlinked = study.Series
-                    .Where(s => !IsImageModality(s.Modality) && s.LinkMatchRule == RtLinkMatchRule.None)
-                    .Select(s => new
-                    {
-                        series_instance_uid = s.SeriesInstanceUID,
-                        modality = s.Modality,
-                        series_description = s.SeriesDescription,
-                        reason = "did not match any image series in the study",
-                    })
-                    .ToList(),
-            }).ToList(),
-        };
-
-        private static object DescribeImageSeries(DicomSeriesGroup series)
-        {
-            SeriesGeometryProbe.TryDescribe(series, out var geometry);
-
-            return new
-            {
-                series_instance_uid = series.SeriesInstanceUID,
-                modality = series.Modality,
-                series_description = series.SeriesDescription,
-                series_date = series.SeriesDate,
-                frame_of_reference_uid = series.FrameOfReferenceUID,
-                instance_count = series.FilePaths.Count,
-                pixel_spacing = geometry?.PixelSpacing,
-                slice_spacing = geometry?.SliceSpacing,
-                slice_spacing_uniform = geometry?.Uniform,
-                slice_spacing_values = geometry?.DistinctGaps,
-                linked_rtstructs = series.LinkedRtStructs.Select(rs => new
-                {
-                    series_instance_uid = rs.SeriesInstanceUID,
-                    series_description = rs.SeriesDescription,
-                    // How confident the link is. A study whose structure sets all resolved by
-                    // LargestSeriesFallback needs a human to look at it.
-                    match_rule = rs.LinkMatchRule.ToString(),
-                    roi_names = rs.RoiNames,
-                }).ToList(),
-                linked_rtdoses = series.LinkedRtDoses.Select(rd => new
-                {
-                    series_instance_uid = rd.SeriesInstanceUID,
-                    series_description = rd.SeriesDescription,
-                    match_rule = rd.LinkMatchRule.ToString(),
-                }).ToList(),
-            };
         }
 
         // -----------------------------------------------------------------------------------
@@ -139,27 +55,7 @@ namespace DicomRtNifti.Cli
             var options = BuildOptions(args, forConvert: false);
             var (result, plan) = RunCohort(args, options, convert: false);
 
-            Emit(args, new
-            {
-                schema = ManifestSchema,
-                manifest_csv = Path.Combine(result.OutputRoot, result.ManifestCsv),
-                anonymized = result.Anonymized,
-                anonymization_key = result.AnonymizationKey,
-                output_spacing = result.OutputSpacing,
-                volumes_computed = result.VolumesComputed,
-                roi_columns = result.RoiColumns,
-                series_count = result.Series.Count,
-                skipped = result.Skipped.Select(DescribeSkipped).ToList(),
-                rows = result.Series.Select(s => new
-                {
-                    patient_id = s.PatientId,
-                    study_uid = s.StudyUid,
-                    series_uid = s.SeriesUid,
-                    spacing = s.Spacing,
-                    roi_volumes_cc = s.Masks.ToDictionary(m => m.Name, m => m.VolumeCc),
-                }).ToList(),
-                errors = result.Errors.Select(DescribeError).ToList(),
-            });
+            Emit(args, CohortManifestDocument.Build(result, CohortDocuments.Identity));
 
             // --only-associated-rois that matched nothing anywhere is a failed run, reported after
             // the JSON (whose errors list carries the explanation) rather than instead of it.
@@ -173,37 +69,7 @@ namespace DicomRtNifti.Cli
             var options = BuildOptions(args, forConvert: true);
             var (result, plan) = RunCohort(args, options, convert: true);
 
-            Emit(args, new
-            {
-                schema = ConvertSchema,
-                output_root = result.OutputRoot,
-                manifest_csv = result.ManifestCsv,
-                anonymized = result.Anonymized,
-                anonymization_key = result.AnonymizationKey,
-                output_spacing = result.OutputSpacing,
-                succeeded = result.SucceededCount,
-                failed = result.FailedCount,
-                skipped = result.Skipped.Select(DescribeSkipped).ToList(),
-                series = result.Series.Select(s => new
-                {
-                    patient_id = s.PatientId,
-                    study_uid = s.StudyUid,
-                    series_uid = s.SeriesUid,
-                    output_dir = s.OutputDir,
-                    image = s.Image,
-                    spacing = s.Spacing,
-                    struct_link_rule = s.StructLinkRule,
-                    masks = s.Masks.Select(m => new
-                    {
-                        name = m.Name,
-                        volume_cc = m.VolumeCc,
-                        file = m.File,
-                    }).ToList(),
-                    doses = s.Doses,
-                    metadata = s.Metadata,
-                }).ToList(),
-                errors = result.Errors.Select(DescribeError).ToList(),
-            });
+            Emit(args, CohortConvertDocument.Build(result, CohortDocuments.Identity));
 
             // --only-associated-rois that matched nothing anywhere is a failed run, reported after
             // the JSON (whose errors list carries the explanation) rather than instead of it.
@@ -401,51 +267,10 @@ namespace DicomRtNifti.Cli
             return scan;
         }
 
-        private static List<string> CollectRoiNames(DicomScanResult scan)
-        {
-            var names = new List<string>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var series in scan.Patients
-                         .SelectMany(p => p.Studies)
-                         .SelectMany(s => s.Series))
-            {
-                foreach (var roi in series.RoiNames)
-                    if (seen.Add(roi))
-                        names.Add(roi);
-            }
-            names.Sort(StringComparer.OrdinalIgnoreCase);
-            return names;
-        }
-
-        private static object DescribeSkipped(SkippedSeries s) => new
-        {
-            patient_id = s.PatientId,
-            series_instance_uid = s.SeriesInstanceUid,
-            modality = s.Modality,
-            series_description = s.SeriesDescription,
-            reason = s.Reason,
-        };
-
-        private static object DescribeError(CohortError e) => new
-        {
-            patient_id = e.PatientId,
-            series_uid = e.SeriesUid,
-            message = e.Message,
-        };
-
-        private static bool IsImageModality(string modality) =>
-            string.Equals(modality, "CT", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(modality, "MR", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(modality, "PT", StringComparison.OrdinalIgnoreCase);
-
-        /// <summary>
-        /// Writes the document to stdout, and to --json-out as well when given. Anonymous types
-        /// already use snake_case member names, so the naming strategy only normalizes the
-        /// PascalCase members reached through Core model objects.
-        /// </summary>
+        /// <summary>Writes the document to stdout, and to --json-out as well when given.</summary>
         private static void Emit(string[] args, object document)
         {
-            string json = JsonConvert.SerializeObject(document, JsonSettings);
+            string json = CohortDocuments.Serialize(document);
             Console.Out.WriteLine(json);
 
             string jsonOut = CliArgs.OptionalArg(args, "--json-out");
