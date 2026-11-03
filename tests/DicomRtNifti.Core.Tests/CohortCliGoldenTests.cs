@@ -77,6 +77,37 @@ namespace DicomRtNifti.Core.Tests
                 "--anonymize", "--salt", GoldenCohort.Salt);
         }
 
+        // The plan document (dicomrtnifti.cohort-plan/1) is new in W4-A; its goldens were recorded
+        // with it, so a later change to the plan's shape is as visible as one to the older three.
+
+        [Fact]
+        public void CohortConvertDryRun_PrintsTheGoldenPlan()
+        {
+            AssertDocument("cohort-plan-convert.txt",
+                "--cohort-convert", "--input", _cohort.Input, "--output", Output("plan-convert"), "--dry-run");
+            Assert.False(Directory.Exists(Output("plan-convert")));
+        }
+
+        [Fact]
+        public void CohortConvertDryRunAnonymized_PrintsTheGoldenPlan()
+        {
+            AssertDocument("cohort-plan-convert-anonymized.txt",
+                "--cohort-convert", "--input", _cohort.Input, "--output", Output("plan-convert-anon"),
+                "--anonymize", "--salt", GoldenCohort.Salt, "--dry-run");
+            Assert.False(Directory.Exists(Output("plan-convert-anon")));
+            Assert.False(Directory.Exists(Output("plan-convert-anon") + ".key"));
+        }
+
+        /// <summary>Skipped series, a resample target (which rewords the spacing warning), a patient filter.</summary>
+        [Fact]
+        public void CohortManifestDryRunFiltered_PrintsTheGoldenPlan()
+        {
+            AssertDocument("cohort-plan-manifest-filtered.txt",
+                "--cohort-manifest", "--input", _cohort.Input, "--output", Output("plan-manifest"),
+                "--require-structures", "--patients", "PAT_A,PAT_B,PAT_C", "--output-spacing", "1,1,2", "--dry-run");
+            Assert.False(Directory.Exists(Output("plan-manifest")));
+        }
+
         [Fact]
         public void Help_PrintsTheGoldenUsage()
         {

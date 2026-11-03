@@ -42,6 +42,7 @@ namespace DicomRtNifti.Core.Tests
             Assert.Equal(Snapshot(command.Options), Snapshot(parsed.Options));
             Assert.Equal(command.AssociationsPath, parsed.AssociationsPath);
             Assert.Equal(command.JsonOutPath, parsed.JsonOutPath);
+            Assert.True(parsed.DryRun);
         }
 
         /// <summary>
@@ -124,6 +125,8 @@ namespace DicomRtNifti.Core.Tests
             Assert.Throws<ArgumentException>(() => CohortCommandLine.Render(CohortMode.Scan, scan, null));
             Assert.Throws<ArgumentException>(() => CohortCommandLine.Render(CohortMode.Convert, associations, null));
             Assert.Throws<ArgumentException>(() => CohortCommandLine.Render(CohortMode.Convert, comma, null));
+            Assert.Throws<ArgumentException>(() => CohortCommandLine.Render(
+                new CohortCommand { Mode = CohortMode.Scan, Options = { InputRoot = "in" }, DryRun = true }, null));
         }
 
         [Fact]
@@ -233,6 +236,7 @@ namespace DicomRtNifti.Core.Tests
                 Options = options,
                 AssociationsPath = Path.Combine(_dir, "associations.json"),
                 JsonOutPath = Path.Combine(_dir, "result.json"),
+                DryRun = true,
             };
         }
 

@@ -53,6 +53,8 @@ namespace DicomRtNifti.Cli
         public static int RunManifest(string[] args)
         {
             var command = CohortCommandLine.Parse(CohortMode.Manifest, args, new StderrProgress("  "));
+            if (command.DryRun)
+                return RunPlan(command);
             var options = command.Options;
             var (result, plan) = RunCohort(options, convert: false);
 
@@ -68,6 +70,8 @@ namespace DicomRtNifti.Cli
         public static int RunConvert(string[] args)
         {
             var command = CohortCommandLine.Parse(CohortMode.Convert, args, new StderrProgress("  "));
+            if (command.DryRun)
+                return RunPlan(command);
             var options = command.Options;
             var (result, plan) = RunCohort(options, convert: true);
 
@@ -127,6 +131,61 @@ namespace DicomRtNifti.Cli
                     .GetAwaiter().GetResult();
 
             return (result, plan);
+        }
+
+        // -----------------------------------------------------------------------------------
+        //  --dry-run
+        // -----------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Scans and plans exactly as the run would, prints the plan, and writes nothing: no
+        /// output folder, no manifest, no key. Under --anonymize the key is read where the run
+        /// would write it, so manual overrides show, and never saved. --json-out is still honoured,
+        /// as long as it does not lie inside the output folder the dry run must not create.
+        /// </summary>
+        private static int RunPlan(CohortCommand command)
+        {
+            var options = command.Options;
+            if (!Directory.Exists(options.InputRoot))
+                throw new CliUsageException($"Input folder not found: {options.InputRoot}");
+            if (!string.IsNullOrEmpty(command.JsonOutPath)
+                && AnonymizationKeyLocation.IsWithin(command.JsonOutPath, options.OutputRoot))
+            {
+                throw new CliUsageException(
+                    $"--json-out '{command.JsonOutPath}' lies inside --output '{options.OutputRoot}', which "
+                    + "a dry run does not create. Write the plan somewhere else, or leave --json-out off.");
+            }
+
+            AnonymizationService anon = null;
+            string keyFile = null;
+            if (options.Anonymize)
+            {
+                string legacyKeyWarning;
+                try
+                {
+                    anon = ReadOnlyAnonymizationKey.OpenForExport(
+                        options.OutputRoot, options.KeyPath, options.Salt, out keyFile, out legacyKeyWarning);
+                }
+                catch (ArgumentException ex)
+                {
+                    throw new CliUsageException(ex.Message);
+                }
+                if (legacyKeyWarning != null)
+                    Console.Error.WriteLine("  WARNING: " + legacyKeyWarning);
+                Console.Error.WriteLine($"  Anonymization key: {keyFile} (read only)");
+            }
+
+            var scan = ScanTree(options.InputRoot);
+
+            var plan = CohortExportService.BuildPlan(scan, options, anon);
+            Console.Error.WriteLine(
+                $"  Planned {plan.Series.Count} series ({plan.Skipped.Count} skipped, "
+                + $"{plan.UnlinkedRtObjects.Count} unlinked RT objects)");
+            Console.Error.WriteLine("  Dry run: nothing written.");
+
+            Emit(command, CohortPlanDocument.Build(
+                command.Mode, plan, options, anon, keyFile, CohortDocuments.Identity));
+            return 0;
         }
 
         // -----------------------------------------------------------------------------------

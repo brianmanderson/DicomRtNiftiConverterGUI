@@ -1,0 +1,91 @@
+{
+  "schema": "dicomrtnifti.cohort-plan/1",
+  "mode": "cohort-manifest",
+  "input_root": "<ROOT>/in",
+  "output_root": "<ROOT>/plan-manifest",
+  "manifest_csv": "export_manifest.csv",
+  "anonymized": false,
+  "anonymization_key": null,
+  "output_spacing": [
+    1.0,
+    1.0,
+    2.0
+  ],
+  "series_count": 2,
+  "series": [
+    {
+      "patient_id": "PAT_A",
+      "study_uid": "1.2.3.100.1",
+      "series_uid": "1.2.3.100.2",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 4,
+      "output_dir": "PAT_A/CT series",
+      "structure_set": {
+        "series_uid": "1.2.3.100.3",
+        "series_description": "structures",
+        "match_rule": "ReferencedSeriesUid",
+        "roi_names": [
+          "Target",
+          "Ring"
+        ]
+      },
+      "rois": [
+        "Ring",
+        "Target"
+      ],
+      "doses": [
+        {
+          "series_uid": "1.2.3.100.4",
+          "series_description": "Plan dose",
+          "match_rule": "FrameOfReferenceUid"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "patient_id": "PAT_B",
+      "study_uid": "1.2.3.200.1",
+      "series_uid": "1.2.3.200.2",
+      "modality": "CT",
+      "series_description": "CT series",
+      "instance_count": 6,
+      "output_dir": "PAT_B/CT series",
+      "structure_set": {
+        "series_uid": "1.2.3.200.3",
+        "series_description": "structures",
+        "match_rule": "FrameOfReferenceUid",
+        "roi_names": [
+          "Target"
+        ]
+      },
+      "rois": [
+        "Target"
+      ],
+      "doses": [],
+      "warnings": [
+        "WARNING: series 1.2.3.200.2: 1 of 7 image slice(s) carry no usable ImagePositionPatient and were skipped — ct_006.dcm (InstanceNumber 7): ImagePositionPatient missing. The remaining 6 slice(s) are converted as a series with a gap where each skipped slice was; any slice-spacing warning that follows judges that reduced series.",
+        "WARNING: series 1.2.3.200.2 has non-uniform slice spacing — 6 slices with gaps from 2 mm to 8 mm. NIfTI carries one spacing per axis, so the series is flattened to 4 mm and then resampled: the output will be written at the requested 1x1x2 mm, not at 4 mm. Resampling from a flattened grid does not recover the true slice positions, so any volume computed from the output will still be off by up to 2x. Resample the source series to a uniform grid before converting if the geometry matters. Note: 1 slice(s) of this series were skipped for lacking a usable ImagePositionPatient, and the gaps above include the holes they left."
+      ]
+    }
+  ],
+  "skipped": [
+    {
+      "patient_id": "PAT_A",
+      "series_instance_uid": "1.2.3.100.5",
+      "modality": "CT",
+      "series_description": "CT series",
+      "reason": "no linked RTSTRUCT"
+    }
+  ],
+  "unlinked": [
+    {
+      "patient_id": "PAT_C",
+      "series_instance_uid": "1.2.3.300.3",
+      "modality": "RTSTRUCT",
+      "series_description": "orphan structures",
+      "reason": "no image series in study"
+    }
+  ],
+  "warnings": []
+}

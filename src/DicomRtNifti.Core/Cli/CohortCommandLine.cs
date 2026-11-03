@@ -47,6 +47,12 @@ namespace DicomRtNifti.Core.CommandLine
 
         /// <summary>--json-out: also write the document to this file. Null when not given.</summary>
         public string JsonOutPath { get; set; }
+
+        /// <summary>
+        /// --dry-run on --cohort-manifest or --cohort-convert: scan and plan, print the plan
+        /// (<see cref="Documents.CohortPlanDocument"/>), and write nothing.
+        /// </summary>
+        public bool DryRun { get; set; }
     }
 
     /// <summary>
@@ -109,6 +115,7 @@ namespace DicomRtNifti.Core.CommandLine
         public const string ScanFlag = "--cohort-scan";
         public const string ManifestFlag = "--cohort-manifest";
         public const string ConvertFlag = "--cohort-convert";
+        public const string DryRunFlag = "--dry-run";
 
         private static readonly CohortExportOptions Defaults = new CohortExportOptions();
 
@@ -239,6 +246,7 @@ namespace DicomRtNifti.Core.CommandLine
             }
 
             command.JsonOutPath = CommandLineArgs.OptionalArg(args, "--json-out");
+            command.DryRun = CommandLineArgs.HasFlag(args, DryRunFlag);
             return command;
         }
 
@@ -304,6 +312,7 @@ namespace DicomRtNifti.Core.CommandLine
                 RequireDefault(mode, !o.RequireDose, "--require-dose");
                 RequireDefault(mode, !o.FailFast, "--fail-fast");
                 RequireDefault(mode, o.ManifestFileName == Defaults.ManifestFileName, "a manifest name");
+                RequireDefault(mode, !command.DryRun, DryRunFlag);
                 AddPath(args, "--json-out", command.JsonOutPath, presenter);
                 return args.ToArray();
             }
@@ -370,6 +379,7 @@ namespace DicomRtNifti.Core.CommandLine
                 AddFlag(args, "--no-volumes", !o.ComputeVolumes);
             }
 
+            AddFlag(args, DryRunFlag, command.DryRun);
             AddPath(args, "--json-out", command.JsonOutPath, presenter);
             return args.ToArray();
         }

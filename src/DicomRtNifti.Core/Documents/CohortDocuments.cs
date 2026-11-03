@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using DicomRtNifti.Core.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -67,6 +68,38 @@ namespace DicomRtNifti.Core.Documents
             series_uid = e.SeriesUid,
             message = e.Message,
         };
+
+        /// <summary>
+        /// An entry of <see cref="DicomSeriesGroup.UnpositionedSlices"/>, "file (InstanceNumber n):
+        /// reason", without the file name, which in an anonymized document could name the patient.
+        /// </summary>
+        internal static string WithoutFileName(string unpositionedSlice)
+        {
+            const string marker = " (InstanceNumber ";
+            int at = (unpositionedSlice ?? "").IndexOf(marker, StringComparison.Ordinal);
+            return at < 0 ? "(file name withheld)" : unpositionedSlice.Substring(at + 1);
+        }
+
+        /// <summary>
+        /// The image series as an anonymized document may describe it: the geometry the warnings
+        /// judge, under <paramref name="seriesHash"/> and with no file name. Unchanged when not
+        /// anonymizing.
+        /// </summary>
+        internal static DicomSeriesGroup ForAnonymizedText(DicomSeriesGroup image, string seriesHash, bool anonymized)
+        {
+            if (!anonymized)
+                return image;
+            return new DicomSeriesGroup
+            {
+                SeriesInstanceUID = seriesHash,
+                Modality = image.Modality,
+                FilePaths = image.FilePaths,
+                SlicePositions = image.SlicePositions,
+                UnpositionedSlices = image.UnpositionedSlices.Select(WithoutFileName).ToList(),
+                PixelSpacing = image.PixelSpacing,
+                SliceThickness = image.SliceThickness,
+            };
+        }
 
         internal static bool IsImageModality(string modality) =>
             string.Equals(modality, "CT", StringComparison.OrdinalIgnoreCase) ||
