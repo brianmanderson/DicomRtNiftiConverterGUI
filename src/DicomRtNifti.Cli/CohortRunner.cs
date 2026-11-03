@@ -1,8 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading;
+using DicomRtNifti.Core.CommandLine;
 using DicomRtNifti.Core.Documents;
 using DicomRtNifti.Core.Models;
 using DicomRtNifti.Core.Services;
@@ -24,6 +23,8 @@ namespace DicomRtNifti.Cli
     ///     are. Under --anonymize the key is written outside the output root (beside it by
     ///     default, or at --key-path) and its full path is anonymization_key. Notebooks get
     ///     committed, so their cell output must not carry PHI.
+    ///   * The command line is parsed by Core's grammar (<see cref="CohortCommandLine"/>); what is
+    ///     left here is the file-system checks, the stderr progress and the exit codes.
     /// Exit codes match the other modes: 0 ok, 1 conversion failure, 2 bad arguments.
     /// </summary>
     internal static class CohortRunner
@@ -34,15 +35,14 @@ namespace DicomRtNifti.Cli
 
         public static int RunScan(string[] args)
         {
-            string input = CliArgs.RequireArg(args, "--input");
+            var command = CohortCommandLine.Parse(CohortMode.Scan, args, new StderrProgress("  "));
+            string input = command.Options.InputRoot;
             if (!Directory.Exists(input))
                 throw new CliUsageException($"Input folder not found: {input}");
 
             var scan = ScanTree(input);
 
-            var document = CohortScanDocument.Build(scan, input, CohortDocuments.Identity);
-
-            Emit(args, document);
+            Emit(command, CohortScanDocument.Build(scan, input, CohortDocuments.Identity));
             return 0;
         }
 
@@ -52,10 +52,11 @@ namespace DicomRtNifti.Cli
 
         public static int RunManifest(string[] args)
         {
-            var options = BuildOptions(args, forConvert: false);
-            var (result, plan) = RunCohort(args, options, convert: false);
+            var command = CohortCommandLine.Parse(CohortMode.Manifest, args, new StderrProgress("  "));
+            var options = command.Options;
+            var (result, plan) = RunCohort(options, convert: false);
 
-            Emit(args, CohortManifestDocument.Build(result, CohortDocuments.Identity));
+            Emit(command, CohortManifestDocument.Build(result, CohortDocuments.Identity));
 
             // --only-associated-rois that matched nothing anywhere is a failed run, reported after
             // the JSON (whose errors list carries the explanation) rather than instead of it.
@@ -66,10 +67,11 @@ namespace DicomRtNifti.Cli
 
         public static int RunConvert(string[] args)
         {
-            var options = BuildOptions(args, forConvert: true);
-            var (result, plan) = RunCohort(args, options, convert: true);
+            var command = CohortCommandLine.Parse(CohortMode.Convert, args, new StderrProgress("  "));
+            var options = command.Options;
+            var (result, plan) = RunCohort(options, convert: true);
 
-            Emit(args, CohortConvertDocument.Build(result, CohortDocuments.Identity));
+            Emit(command, CohortConvertDocument.Build(result, CohortDocuments.Identity));
 
             // --only-associated-rois that matched nothing anywhere is a failed run, reported after
             // the JSON (whose errors list carries the explanation) rather than instead of it.
@@ -79,7 +81,7 @@ namespace DicomRtNifti.Cli
         }
 
         private static (CohortExportResult, CohortExportPlan) RunCohort(
-            string[] args, CohortExportOptions options, bool convert)
+            CohortExportOptions options, bool convert)
         {
             if (!Directory.Exists(options.InputRoot))
                 throw new CliUsageException($"Input folder not found: {options.InputRoot}");
@@ -128,100 +130,6 @@ namespace DicomRtNifti.Cli
         }
 
         // -----------------------------------------------------------------------------------
-        //  Option parsing
-        // -----------------------------------------------------------------------------------
-
-        private static CohortExportOptions BuildOptions(string[] args, bool forConvert)
-        {
-            var options = new CohortExportOptions
-            {
-                InputRoot = CliArgs.RequireArg(args, "--input"),
-                OutputRoot = CliArgs.RequireArg(args, "--output"),
-                OnlyAssociatedRois = CliArgs.HasFlag(args, "--only-associated-rois"),
-                Anonymize = CliArgs.HasFlag(args, "--anonymize"),
-                PreferLargestSeries = CliArgs.HasFlag(args, "--prefer-largest-series"),
-                RequireStructures = CliArgs.HasFlag(args, "--require-structures"),
-                RequireDose = CliArgs.HasFlag(args, "--require-dose"),
-                SeriesDescriptionFilter = CliArgs.OptionalArg(args, "--series-description"),
-                StructDescriptionFilter = CliArgs.OptionalArg(args, "--struct-description"),
-                FailFast = CliArgs.HasFlag(args, "--fail-fast"),
-            };
-
-            string salt = CliArgs.OptionalArg(args, "--salt");
-            if (!string.IsNullOrEmpty(salt))
-                options.Salt = salt;
-
-            string keyPath = CliArgs.OptionalArg(args, "--key-path");
-            if (!string.IsNullOrEmpty(keyPath))
-            {
-                if (!options.Anonymize)
-                    throw new CliUsageException("--key-path places the anonymization key, so it needs --anonymize.");
-                options.KeyPath = keyPath;
-            }
-
-            string manifestName = CliArgs.OptionalArg(args, "--manifest-name");
-            if (!string.IsNullOrEmpty(manifestName))
-                options.ManifestFileName = manifestName;
-
-            string patients = CliArgs.OptionalArg(args, "--patients");
-            if (!string.IsNullOrEmpty(patients))
-                options.PatientIds = CohortExportOptions.ParseKeywordList(patients);
-
-            // --target-spacing is accepted as an alias here for symmetry with --image-forward.
-            string spacingArg = CliArgs.OptionalArgAny(args, "--output-spacing", "--target-spacing");
-            if (!string.IsNullOrEmpty(spacingArg))
-            {
-                if (!CohortExportOptions.TryParseSpacing(spacingArg, out var spacing, out string error))
-                    throw new CliUsageException($"--output-spacing: {error}");
-                options.OutputSpacing = spacing;
-            }
-
-            string associationsPath = CliArgs.OptionalArg(args, "--associations");
-            if (!string.IsNullOrEmpty(associationsPath))
-            {
-                if (!File.Exists(associationsPath))
-                    throw new CliUsageException($"Associations file not found: {associationsPath}");
-                options.Associations = new SettingsService().ImportAssociations(associationsPath);
-                Console.Error.WriteLine($"  Loaded {options.Associations.Count} ROI association(s)");
-            }
-
-            if (forConvert)
-            {
-                options.ExportImages = !CliArgs.HasFlag(args, "--no-images");
-                options.ExportStructures = !CliArgs.HasFlag(args, "--no-structures");
-                options.ExportDoses = !CliArgs.HasFlag(args, "--no-doses");
-
-                options.ImageKeywords = ValidateKeywords(
-                    CliArgs.OptionalArg(args, "--metadata-tags"), "--metadata-tags",
-                    MetadataTagCatalog.ImageComputedOptions);
-                options.StructureKeywords = ValidateKeywords(
-                    CliArgs.OptionalArg(args, "--metadata-structure-tags"), "--metadata-structure-tags",
-                    MetadataTagCatalog.StructureComputedOptions);
-                options.DoseKeywords = ValidateKeywords(
-                    CliArgs.OptionalArg(args, "--metadata-dose-tags"), "--metadata-dose-tags",
-                    MetadataTagCatalog.DoseComputedOptions);
-            }
-            else
-            {
-                options.ComputeVolumes = !CliArgs.HasFlag(args, "--no-volumes");
-            }
-
-            return options;
-        }
-
-        /// <summary>
-        /// Splits a keyword list and rejects anything this metadata section cannot express
-        /// (<see cref="MetadataKeywordValidator"/>), naming the flag it came from.
-        /// </summary>
-        private static List<string> ValidateKeywords(
-            string text, string flagName, IReadOnlyList<ComputedMetadataOption> computedOptions)
-        {
-            if (!MetadataKeywordValidator.TryValidate(text, computedOptions, out var keywords, out string error))
-                throw new CliUsageException($"{flagName}: {error}");
-            return keywords;
-        }
-
-        // -----------------------------------------------------------------------------------
         //  Helpers
         // -----------------------------------------------------------------------------------
 
@@ -242,12 +150,12 @@ namespace DicomRtNifti.Cli
         }
 
         /// <summary>Writes the document to stdout, and to --json-out as well when given.</summary>
-        private static void Emit(string[] args, object document)
+        private static void Emit(CohortCommand command, object document)
         {
             string json = CohortDocuments.Serialize(document);
             Console.Out.WriteLine(json);
 
-            string jsonOut = CliArgs.OptionalArg(args, "--json-out");
+            string jsonOut = command.JsonOutPath;
             if (!string.IsNullOrEmpty(jsonOut))
             {
                 string directory = Path.GetDirectoryName(Path.GetFullPath(jsonOut));

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using DicomRtNifti.Core.CommandLine;
 using DicomRtNifti.Core.Models;
 using DicomRtNifti.Core.Services;
 using FellowOakDicom;
@@ -121,7 +122,7 @@ namespace DicomRtNifti.Cli
                 PrintUsage();
                 return 2;
             }
-            catch (CliUsageException ex)
+            catch (CommandLineUsageException ex)
             {
                 return UsageError(ex.Message);
             }
@@ -137,8 +138,9 @@ namespace DicomRtNifti.Cli
         /// Exit 2: the command line could not be acted on. A missing or malformed argument and an
         /// input path that does not exist are the caller's to fix, so they are reported without a
         /// stack trace and kept apart from exit 1, which means the conversion itself failed. Only
-        /// the CLI's own argument checks raise <see cref="CliUsageException"/>; every exception
-        /// from inside a conversion keeps exit 1 and its stack trace, whatever its type.
+        /// argument checks raise <see cref="CommandLineUsageException"/> (the CLI's own as
+        /// <see cref="CliUsageException"/>, and Core's cohort grammar); every exception from inside
+        /// a conversion keeps exit 1 and its stack trace, whatever its type.
         /// </summary>
         private static int UsageError(string message)
         {
