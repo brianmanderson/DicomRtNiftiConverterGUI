@@ -1,7 +1,7 @@
 <Project>
 
   <!--
-    Shared metadata for the cross-platform (.NET 8) projects under src/.
+    Shared metadata for the cross-platform (.NET 10) projects under src/.
 
     Deliberately scoped to src/ (NOT the repo root) so the legacy .NET Framework 4.8
     WPF project at ../Dicom_RT_images_Csharp is NOT affected during the migration.
@@ -17,7 +17,7 @@
     <RepositoryUrl>https://github.com/brianmanderson/DicomRtNiftiConverterGUI</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
 
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <!-- Leave Nullable/ImplicitUsings OFF: the linked legacy service files were written
          for C# 7.3 / net48 and are not annotated; enabling them would flood the build with

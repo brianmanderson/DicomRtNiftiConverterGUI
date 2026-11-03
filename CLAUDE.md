@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Cross-platform (.NET 8) toolkit that converts DICOM radiotherapy data — CT/MR/PT image series, RT Structures, and RT Dose — to NIfTI (`.nii.gz`), and performs the reverse (mask → RTSTRUCT, NIfTI → DICOM image series). Ships as a headless CLI (`DicomRtNifti.Cli`) and an Avalonia desktop GUI (`DicomRtNifti.App`) that share one Core library. The rasterizer backs a CMPB software-publication paper, so analytical accuracy is gated in CI (see Conformance below).
+Cross-platform (.NET 10) toolkit that converts DICOM radiotherapy data — CT/MR/PT image series, RT Structures, and RT Dose — to NIfTI (`.nii.gz`), and performs the reverse (mask → RTSTRUCT, NIfTI → DICOM image series). Ships as a headless CLI (`DicomRtNifti.Cli`) and an Avalonia desktop GUI (`DicomRtNifti.App`) that share one Core library. The rasterizer backs a CMPB software-publication paper, so analytical accuracy is gated in CI (see Conformance below).
 
 This repo is also mounted as a submodule of the research repo
 [Dicom_RT_Images_Csharp](https://github.com/brianmanderson/Dicom_RT_Images_Csharp), which holds the

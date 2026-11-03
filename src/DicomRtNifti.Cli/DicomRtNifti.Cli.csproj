@@ -12,9 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Used directly by HeadlessRunner (fo-dicom types, code-page registration). -->
+    <!-- Used directly by HeadlessRunner (fo-dicom types). -->
     <PackageReference Include="fo-dicom" Version="5.2.5" />
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
     <!-- Used directly by CohortRunner to serialize the cohort JSON documents. -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
