@@ -1,6 +1,6 @@
 # DicomRtNifti
 
-A cross-platform C# **.NET 8** toolkit that converts DICOM radiotherapy data - CT/MR/PT images, RT Structures, and RT Dose - to NIfTI (`.nii.gz`) format, and performs the reverse (mask -> RTSTRUCT, NIfTI -> DICOM image series). It ships as an **Avalonia desktop GUI** (`DicomRtNifti.App`) and a **headless CLI** (`DicomRtNifti.Cli`) that share one core conversion library (`DicomRtNifti.Core`), and runs on Windows, Linux, and macOS.
+A cross-platform C# **.NET 10** toolkit that converts DICOM radiotherapy data - CT/MR/PT images, RT Structures, and RT Dose - to NIfTI (`.nii.gz`) format, and performs the reverse (mask -> RTSTRUCT, NIfTI -> DICOM image series). It ships as an **Avalonia desktop GUI** (`DicomRtNifti.App`) and a **headless CLI** (`DicomRtNifti.Cli`) that share one core conversion library (`DicomRtNifti.Core`), and runs on Windows, Linux, and macOS.
 
 The rasterization core handles the five clinically-used DICOM `ContourGeometricType` values - `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT` - and exposes both forward (RTSTRUCT -> mask) and reverse (mask -> RTSTRUCT) directions through a headless CLI. The rare `CLOSED_PLANAR_XOR` type tag (DICOM 2020 supplement) is deliberately not implemented because clinical RTSTRUCTs encode hollow shapes via the multi-contour even-odd convention instead.
 
@@ -346,7 +346,7 @@ Run `--help` for the full option list.
 
 ## Dependencies
 
-- **.NET 8** - cross-platform runtime (Windows, Linux, macOS)
+- **.NET 10** - cross-platform runtime (Windows, Linux, macOS)
 - **Avalonia 11** - cross-platform desktop UI (GUI only)
 - **fo-dicom 5.2.5** - DICOM file parsing and metadata extraction
 - **SimpleITK** - image I/O and NIfTI writing (external native library, **not** a NuGet package; see Build)
@@ -360,7 +360,7 @@ Run `--help` for the full option list.
 > [releases page](https://github.com/brianmanderson/DicomRtNiftiConverterGUI/releases). The
 > [notebook](examples/Pancreatic_CT_CBCT_DICOM_RT_RoundTrip.ipynb) downloads one automatically.
 
-Requires the **.NET 8 SDK** and a git checkout: the build embeds the commit it was made from
+Requires the **.NET 10 SDK** and a git checkout: the build embeds the commit it was made from
 into the informational version (`1.0.0+<sha>`), and `src/Directory.Build.props` fails a build
 that cannot determine its commit (a source tarball) rather than produce an untraceable `1.0.0`.
 Pass `-p:AllowMissingSourceRevision=true` to build such a tree deliberately.
@@ -401,8 +401,8 @@ its input in memory unless `RTMASK_FIXTURE_DIR` names an `rtmask-conformance` fi
 what the CI lanes pass it. See [tests/fixtures/README.md](tests/fixtures/README.md) for the
 fixtures and the LCTSC subset used for the walkthrough figures.
 
-The built CLI lands at `src/DicomRtNifti.Cli/bin/Release/net8.0/DicomRtNifti.Cli` (`.exe` on
-Windows); the GUI at `src/DicomRtNifti.App/bin/Release/net8.0/DicomRtNifti.App`.
+The built CLI lands at `src/DicomRtNifti.Cli/bin/Release/net10.0/DicomRtNifti.Cli` (`.exe` on
+Windows); the GUI at `src/DicomRtNifti.App/bin/Release/net10.0/DicomRtNifti.App`.
 
 ### Step 3 — verify the native actually loaded
 
@@ -561,7 +561,7 @@ Released under the **MIT License** - see [LICENSE](LICENSE).
 
 The self-contained release bundles redistribute third-party binaries that carry their own terms -
 SimpleITK (Apache-2.0), fo-dicom (MS-PL), Avalonia / SkiaSharp / Newtonsoft.Json /
-CommunityToolkit and the .NET 8 runtime (MIT), plus ANGLE and Skia natives (BSD-3-Clause).
+CommunityToolkit and the .NET 10 runtime (MIT), plus ANGLE and Skia natives (BSD-3-Clause).
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists every one with its pinned version and
 upstream license, and reproduces the notices those licenses require.
 
