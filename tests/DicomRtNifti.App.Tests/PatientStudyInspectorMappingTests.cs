@@ -314,7 +314,14 @@ namespace DicomRtNifti.App.Tests
                 Assert.All(keywords, k => Assert.Contains(k, curated));
                 Assert.Equal(keywords.OrderBy(k => curated.IndexOf(k)), keywords);
             }
-            Assert.Equal(curated.Where(k => k.StartsWith("Study")), StudyInspectorViewModel.StudyKeywords);
+
+            // The study tab is the catalog's whole study group: every curated keyword after the
+            // patient rows and before the series group, so no study attribute is left off the
+            // tab and nothing else is on it. Every Study* keyword falls inside that group.
+            int afterPatient = curated.IndexOf(PatientInspectorViewModel.PatientKeywords.Last()) + 1;
+            var studyGroup = curated.Skip(afterPatient).TakeWhile(k => !k.StartsWith("Series")).ToList();
+            Assert.Equal(studyGroup, StudyInspectorViewModel.StudyKeywords);
+            Assert.All(curated.Where(k => k.StartsWith("Study")), k => Assert.Contains(k, studyGroup));
         }
 
         [Theory]

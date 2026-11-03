@@ -27,7 +27,10 @@ namespace DicomRtNifti.Core.Services
     ///   <item>Everything else is written as read.</item>
     /// </list>
     /// "Removed" means written as null, the value an absent tag already gets, so every export
-    /// folder keeps the same key set.
+    /// folder keeps the same key set. A VR rule applies when the VR the file declares or the
+    /// dictionary's VR for the tag matches it: fo-dicom keeps whatever VR an explicit-VR file
+    /// declares (UN aside, which it reads as the dictionary's), so a study time or a referring
+    /// physician's name a file declares LO is still removed.
     ///
     /// The scope is HIPAA's Safe Harbor identifiers as DICOM carries them, read alongside the
     /// identifying rows of PS3.15 Annex E's Basic Profile. Clinical descriptors that identify no
@@ -94,7 +97,7 @@ namespace DicomRtNifti.Core.Services
             if (tag == DicomTag.SeriesInstanceUID)
                 return _anon.GetSeriesHash(FirstString(value));
 
-            if (string.Equals(vrCode, "UI", StringComparison.Ordinal))
+            if (JudgedVrCodes(tag, vrCode).Contains("UI"))
                 return AllStandardUids(value) ? value : null;
 
             return IsIdentifying(tag, vrCode) ? null : value;
@@ -103,10 +106,21 @@ namespace DicomRtNifti.Core.Services
         /// <summary>True when the attribute is removed outright (see the class summary).</summary>
         public static bool IsIdentifying(DicomTag tag, string vrCode)
         {
-            if (vrCode != null && RemovedVrCodes.Contains(vrCode))
+            if (JudgedVrCodes(tag, vrCode).Any(RemovedVrCodes.Contains))
                 return true;
             string keyword = tag?.DictionaryEntry?.Keyword;
             return keyword != null && IdentifyingKeywords.Contains(keyword);
+        }
+
+        /// <summary>The VRs the rules judge an attribute by: the one the file declares, then the dictionary's.</summary>
+        private static IEnumerable<string> JudgedVrCodes(DicomTag tag, string vrCode)
+        {
+            if (!string.IsNullOrEmpty(vrCode))
+                yield return vrCode;
+            var vrs = tag?.DictionaryEntry?.ValueRepresentations;
+            if (vrs != null)
+                foreach (var vr in vrs)
+                    yield return vr.Code;
         }
 
         private static bool AllStandardUids(object value)

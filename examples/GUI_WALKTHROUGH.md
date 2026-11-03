@@ -215,8 +215,9 @@ that is not an image series) naming the image series it is linked to and the rul
 | **Frames of reference** | Distinct frames among the study's image series. With more than one, each series line names its frame and a note says series in different frames do not share a patient coordinate system |
 | **RT-PLAN** | Listed only: the scan links only RT-STRUCT and RT-DOSE, and nothing exports a plan |
 
-The tags tab reads the study attributes (date, description, Study Instance UID) from the first slice
-of the study's first image series, or, in a study with none, from its first RT object.
+The tags tab reads the study attributes (date, time, description, Study ID, accession number,
+referring physician, Study Instance UID) from the first slice of the study's first image series, or,
+in a study with none, from its first RT object.
 
 #### Series
 

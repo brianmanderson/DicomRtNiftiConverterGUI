@@ -13,17 +13,18 @@ namespace DicomRtNifti.App.ViewModels
     /// series they linked to, so an RTSTRUCT or RTDOSE linked to nothing, an RTPLAN, or any other
     /// non-image series is invisible there; this is where it shows. Everything above the tag grid
     /// is a pure mapping of the scanned <see cref="DicomStudyGroup"/>, with no file access. The tag
-    /// grid reads the Study* curated tags from the first slice of the study's first image series.
+    /// grid reads the study-level curated tags from the first slice of the study's first image series.
     /// </summary>
     public class StudyInspectorViewModel : InspectorViewModel
     {
         /// <summary>
         /// The study-level keywords of <see cref="MetadataTagCatalog.CuratedImageKeywords"/>, in its
-        /// order. The catalog carries no StudyTime, StudyID or AccessionNumber, so neither does this.
+        /// order: its study group, the General Study attributes it curates.
         /// </summary>
         public static IReadOnlyList<string> StudyKeywords { get; } = new[]
         {
-            "StudyDate", "StudyDescription", "StudyInstanceUID",
+            "StudyDate", "StudyTime", "StudyDescription", "StudyID", "AccessionNumber",
+            "ReferringPhysicianName", "StudyInstanceUID",
         };
 
         /// <summary>The amber note under an "unlinked" badge; the help explains the badge in the same words.</summary>

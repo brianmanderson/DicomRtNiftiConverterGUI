@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using DicomRtNifti.Core.Models;
 using DicomRtNifti.Core.Services;
 using FellowOakDicom;
+using FellowOakDicom.IO.Buffer;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Xunit;
@@ -18,7 +19,7 @@ namespace DicomRtNifti.Core.Tests
 {
     /// <summary>
     /// The PHI-leak audit (W2-E). A synthetic cohort carries a patient name, patient ID, birth
-    /// date, study date, accession number, referring physician, institution, every UID a real
+    /// date, study date, time and ID, accession number, referring physician, institution, every UID a real
     /// export has, and a private element holding the name; its input folders are named after
     /// the patient, as clinical exports usually are. It is exported anonymized through
     /// <see cref="CohortExportService"/> with identifying tags selected for metadata.json, then
@@ -52,6 +53,8 @@ namespace DicomRtNifti.Core.Tests
             public string GivenName;
             public string BirthDate;     // DA, yyyyMMdd
             public string StudyDate;     // DA, yyyyMMdd
+            public string StudyTime;     // TM, HHmmss.ffffff
+            public string StudyId;
             public string AccessionNumber;
             public string ReferringFamily;
             public string ReferringGiven;
@@ -78,6 +81,8 @@ namespace DicomRtNifti.Core.Tests
                 yield return Pair("PatientBirthDate (ISO)", Iso(BirthDate));
                 yield return Pair("StudyDate", StudyDate);
                 yield return Pair("StudyDate (ISO)", Iso(StudyDate));
+                yield return Pair("StudyTime", StudyTime);
+                yield return Pair("StudyID", StudyId);
                 yield return Pair("AccessionNumber", AccessionNumber);
                 yield return Pair("ReferringPhysicianName family", ReferringFamily);
                 yield return Pair("ReferringPhysicianName given", ReferringGiven);
@@ -106,6 +111,8 @@ namespace DicomRtNifti.Core.Tests
                 GivenName = "Ottoline",
                 BirthDate = "19370412",
                 StudyDate = "20180923",
+                StudyTime = "101112.428517",
+                StudyId = "SID8842QF",
                 AccessionNumber = "ACC5517XQV",
                 ReferringFamily = "Hollowbrook",
                 ReferringGiven = "Edmundine",
@@ -118,6 +125,8 @@ namespace DicomRtNifti.Core.Tests
                 GivenName = "Peregrine",
                 BirthDate = "19520730",
                 StudyDate = "20190611",
+                StudyTime = "143307.915264",
+                StudyId = "SID1937VK",
                 AccessionNumber = "ACC2290LMB",
                 ReferringFamily = "Fennimore",
                 ReferringGiven = "Rosalind",
@@ -130,7 +139,7 @@ namespace DicomRtNifti.Core.Tests
         private static readonly List<string> ImageKeywords = new List<string>
         {
             "PatientName", "PatientID", "PatientBirthDate", "PatientSex", "StudyDate", "SeriesDate",
-            "StudyTime", "AccessionNumber", "ReferringPhysicianName", "InstitutionName",
+            "StudyTime", "StudyID", "AccessionNumber", "ReferringPhysicianName", "InstitutionName",
             "StudyInstanceUID", "SeriesInstanceUID", "SOPInstanceUID", "FrameOfReferenceUID",
             "SOPClassUID", "Modality", "SeriesDescription", "PixelSpacing",
             MetadataTagCatalog.VoxelSizeKey, MetadataTagCatalog.ImageDimensionsKey,
@@ -147,6 +156,34 @@ namespace DicomRtNifti.Core.Tests
             "PatientName", "PatientBirthDate", "DoseUnits", "DoseType", "SOPInstanceUID",
             MetadataTagCatalog.MaxDoseKey, MetadataTagCatalog.DoseVoxelSizeKey,
         };
+
+        /// <summary>
+        /// The curated keywords an anonymized sidecar writes as read: clinical descriptors that
+        /// identify no one (see <see cref="MetadataDeidentifier"/>). Curating a keyword means
+        /// putting it here or giving it a rule; the catalog test below fails until one is done.
+        /// </summary>
+        private static readonly HashSet<string> CuratedKeptVerbatim = new HashSet<string>(StringComparer.Ordinal)
+        {
+            // Image
+            "PatientSex", "PatientWeight", "StudyDescription", "SeriesDescription", "Modality",
+            "BodyPartExamined", "PatientPosition", "ProtocolName", "SliceThickness", "PixelSpacing",
+            "Rows", "Columns", "ImageOrientationPatient", "Manufacturer", "ManufacturerModelName",
+            "KVP", "ConvolutionKernel", "ContrastBolusAgent", "RescaleSlope", "RescaleIntercept",
+            "MagneticFieldStrength", "RepetitionTime", "EchoTime", "FlipAngle", "Units", "DecayCorrection",
+            // Structure set
+            "StructureSetLabel", "StructureSetName", "StructureSetDescription", "SoftwareVersions",
+            "ApprovalStatus",
+            // Dose
+            "DoseUnits", "DoseType", "DoseSummationType", "DoseComment", "DoseGridScaling",
+            "TissueHeterogeneityCorrection", "GridFrameOffsetVector", "NumberOfFrames",
+        };
+
+        /// <summary>The identifiers an anonymized sidecar writes as the export's pseudonyms.</summary>
+        private static readonly string[] Pseudonymized = { "PatientID", "StudyInstanceUID", "SeriesInstanceUID" };
+
+        /// <summary>The study attributes the catalog curates beyond date, description and UID.</summary>
+        private static readonly string[] CuratedStudyIdentifiers =
+            { "StudyTime", "StudyID", "AccessionNumber", "ReferringPhysicianName" };
 
         [Fact]
         public async Task AnonymizedCohortExport_AndItsReverse_WriteNoSourceIdentifier()
@@ -359,6 +396,149 @@ namespace DicomRtNifti.Core.Tests
             }
         }
 
+        /// <summary>
+        /// Every keyword the picker and the inspectors curate, in all three sections, is written
+        /// as a pseudonym, removed, or is on <see cref="CuratedKeptVerbatim"/>: an identifier
+        /// curated without a rule fails here rather than in a user's export. Each is judged
+        /// declared with its dictionary VR, as UN, and as LO, a VR a file can wrongly declare
+        /// for any tag and that fo-dicom keeps as declared.
+        /// </summary>
+        [Theory]
+        [InlineData(null)]
+        [InlineData("UN")]
+        [InlineData("LO")]
+        public void Deidentifier_WritesNoCuratedKeywordThrough_ButTheClinicalOnes(string declaredVr)
+        {
+            string root = DicomTestData.NewTempDir();
+            try
+            {
+                var deid = new MetadataDeidentifier(new AnonymizationService(Path.Combine(root, "key.json"), Salt));
+                var entries = DicomDictionary.Default
+                    .Where(e => e != null && e.MaskTag == null && !string.IsNullOrEmpty(e.Keyword))
+                    .GroupBy(e => e.Keyword, StringComparer.Ordinal)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+                var curated = MetadataTagCatalog.CuratedImageKeywords
+                    .Concat(MetadataTagCatalog.CuratedStructureKeywords)
+                    .Concat(MetadataTagCatalog.CuratedDoseKeywords)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                Assert.All(CuratedKeptVerbatim, k => Assert.Contains(k, curated));
+
+                var wrong = new List<string>();
+                foreach (string keyword in curated)
+                {
+                    var entry = entries[keyword];
+                    string dictionaryVr = entry.ValueRepresentations[0].Code;
+                    string vr = declaredVr ?? dictionaryVr;
+                    // An instance UID for a UID, a sentinel for anything else: neither is standard.
+                    string source = dictionaryVr == "UI" ? DicomTestData.NewUid() : "SENTINEL-" + keyword;
+                    object written = deid.Apply(entry.Tag, vr, source);
+
+                    string expected = Pseudonymized.Contains(keyword) ? "pseudonym"
+                        : CuratedKeptVerbatim.Contains(keyword) ? "kept" : "removed";
+                    string actual = written == null ? "removed" : Equals(written, source) ? "kept" : "pseudonym";
+                    if (actual != expected)
+                        wrong.Add($"{keyword} declared {vr}: {actual}, expected {expected}");
+                }
+                Assert.True(wrong.Count == 0, "curated keywords de-identified wrongly:\n  " + string.Join("\n  ", wrong));
+            }
+            finally
+            {
+                TryDelete(root);
+            }
+        }
+
+        /// <summary>
+        /// The study attributes curated beyond date, description and UID, read from a file and
+        /// written as an anonymized export writes them. The export shifts no dates, so StudyTime,
+        /// identifying next to its date, is removed with it rather than shifted. The file declares
+        /// them with their dictionary VR, as UN, or as LO: fo-dicom reads a standard tag declared
+        /// UN back with its dictionary VR, but keeps any other VR an explicit-VR file declares,
+        /// so a time or a name declared LO must not slip past the rules that key on the VR.
+        /// </summary>
+        [Theory]
+        [InlineData(null)]
+        [InlineData("UN")]
+        [InlineData("LO")]
+        public void AnonymizedSidecar_WritesTheCuratedStudyIdentifiersAsNull(string declaredVr)
+        {
+            string root = DicomTestData.NewTempDir();
+            try
+            {
+                var source = new Dictionary<DicomTag, string>
+                {
+                    [DicomTag.StudyTime] = "101112.428517",
+                    [DicomTag.StudyID] = "SID8842QF",
+                    [DicomTag.AccessionNumber] = "ACC5517XQV",
+                    [DicomTag.ReferringPhysicianName] = "Hollowbrook^Edmundine",
+                };
+                Assert.Equal(CuratedStudyIdentifiers, source.Keys.Select(t => t.DictionaryEntry.Keyword));
+
+                DicomTestData.WriteImageSlice(root, "slice.dcm", "CT", "MRN7Q4X2KZ",
+                    DicomTestData.NewUid(), DicomTestData.NewUid(), DicomTestData.NewUid(), 0.0);
+                string slice = Path.Combine(root, "slice.dcm");
+                var file = DicomFile.Open(slice);
+                foreach (var kv in source)
+                {
+                    if (declaredVr == "UN")
+                    {
+                        string even = kv.Value.Length % 2 == 0 ? kv.Value : kv.Value + " ";
+                        file.Dataset.AddOrUpdate(new DicomUnknown(kv.Key, new MemoryByteBuffer(Encoding.ASCII.GetBytes(even))));
+                    }
+                    else if (declaredVr == "LO")
+                    {
+                        file.Dataset.AddOrUpdate(new DicomLongString(kv.Key, kv.Value));
+                    }
+                    else
+                    {
+                        file.Dataset.AddOrUpdate(kv.Key, kv.Value);
+                    }
+                }
+                file.Save(slice);
+
+                // The file declares what the case names, and fo-dicom reads it back as the summary
+                // above says: UN as the dictionary VR, any other VR as declared.
+                byte[] bytes = File.ReadAllBytes(slice);
+                var reread = DicomFile.Open(slice).Dataset;
+                foreach (var tag in source.Keys)
+                {
+                    string dictionaryVr = tag.DictionaryEntry.ValueRepresentations[0].Code;
+                    Assert.Equal(declaredVr ?? dictionaryVr, DeclaredVr(bytes, tag));
+                    Assert.Equal(declaredVr == "LO" ? "LO" : dictionaryVr,
+                        reread.GetDicomItem<DicomItem>(tag).ValueRepresentation.Code);
+                }
+
+                var request = new MetadataExportRequest
+                {
+                    ImageFilePaths = new[] { slice },
+                    ImageKeywords = CuratedStudyIdentifiers,
+                };
+                string plainPath = Path.Combine(root, "plain.json");
+                string anonymizedPath = Path.Combine(root, "anonymized.json");
+                DicomMetadataExtractor.WriteMetadataJson(request, plainPath);
+                var deid = new MetadataDeidentifier(new AnonymizationService(Path.Combine(root, "key.json"), Salt));
+                DicomMetadataExtractor.WriteMetadataJson(request, anonymizedPath, deid);
+
+                // Without the deidentifier the values are written as read: the search below can see them.
+                string plain = File.ReadAllText(plainPath);
+                foreach (string value in source.Values)
+                    Assert.Contains(value, plain);
+
+                string anonymized = File.ReadAllText(anonymizedPath);
+                var image = (JObject)JObject.Parse(anonymized)["ImageAttributes"];
+                foreach (var kv in source)
+                {
+                    string friendly = MetadataTagCatalog.FriendlyName(kv.Key.DictionaryEntry.Keyword);
+                    Assert.True(image[friendly]?.Type == JTokenType.Null, $"{friendly} is not null");
+                    Assert.DoesNotContain(kv.Value, anonymized);
+                }
+            }
+            finally
+            {
+                TryDelete(root);
+            }
+        }
+
         // ── cohort synthesis ───────────────────────────────────────────────────────────────
 
         private static void WritePatient(string input, SyntheticPatient p)
@@ -410,7 +590,8 @@ namespace DicomRtNifti.Core.Tests
             ds.AddOrUpdate(DicomTag.StudyDate, p.StudyDate);
             ds.AddOrUpdate(DicomTag.SeriesDate, p.StudyDate);
             ds.AddOrUpdate(DicomTag.ContentDate, p.StudyDate);
-            ds.AddOrUpdate(DicomTag.StudyTime, "101112");
+            ds.AddOrUpdate(DicomTag.StudyTime, p.StudyTime);
+            ds.AddOrUpdate(DicomTag.StudyID, p.StudyId);
             ds.AddOrUpdate(DicomTag.AccessionNumber, p.AccessionNumber);
             ds.AddOrUpdate(DicomTag.ReferringPhysicianName, p.ReferringPhysician);
             ds.AddOrUpdate(DicomTag.InstitutionName, p.InstitutionName);
@@ -530,6 +711,9 @@ namespace DicomRtNifti.Core.Tests
             // Identifying values are written as null, keeping the key set every folder shares.
             Assert.Equal(JTokenType.Null, image[MetadataTagCatalog.FriendlyName("PatientName")].Type);
             Assert.Equal(JTokenType.Null, image[MetadataTagCatalog.FriendlyName("StudyDate")].Type);
+            foreach (string keyword in CuratedStudyIdentifiers)
+                Assert.True(image[MetadataTagCatalog.FriendlyName(keyword)]?.Type == JTokenType.Null,
+                    $"ImageAttributes {keyword} is not null");
 
             var structure = (JObject)json["StructureAttributes"];
             Assert.Equal("TEST", (string)structure[MetadataTagCatalog.FriendlyName("StructureSetLabel")]);
@@ -549,6 +733,14 @@ namespace DicomRtNifti.Core.Tests
                 gz.CopyTo(output);
                 return output.ToArray();
             }
+        }
+
+        /// <summary>The VR an explicit-VR little-endian file declares for <paramref name="tag"/>: the two bytes after the tag.</summary>
+        private static string DeclaredVr(byte[] file, DicomTag tag)
+        {
+            var key = new[] { (byte)tag.Group, (byte)(tag.Group >> 8), (byte)tag.Element, (byte)(tag.Element >> 8) };
+            int at = IndexOf(file, key);
+            return at < 0 || at + 6 > file.Length ? null : Encoding.ASCII.GetString(file, at + 4, 2);
         }
 
         private static int IndexOf(byte[] haystack, byte[] needle)

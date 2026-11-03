@@ -121,12 +121,15 @@ namespace DicomRtNifti.Core.Services
         // --- Curated keyword lists, per tab ----------------------------------------------------
         // Every keyword here must exist in DicomMetadataExtractor.GetSelectableTags()
         // (enforced by MetadataTagCatalogTests). Ordered roughly identity -> study/series ->
-        // acquisition so the curated checklist reads sensibly.
+        // acquisition so the curated checklist reads sensibly; the patient and study inspectors
+        // show the image list's first two groups, in this order. A keyword added here must be
+        // de-identified under Anonymize or listed as kept (AnonymizedExportPhiAuditTests).
 
         public static IReadOnlyList<string> CuratedImageKeywords { get; } = new[]
         {
             "PatientName", "PatientID", "PatientBirthDate", "PatientSex", "PatientAge", "PatientWeight",
-            "StudyDate", "StudyDescription", "StudyInstanceUID",
+            "StudyDate", "StudyTime", "StudyDescription", "StudyID", "AccessionNumber",
+            "ReferringPhysicianName", "StudyInstanceUID",
             "SeriesDate", "SeriesDescription", "SeriesInstanceUID",
             "Modality", "FrameOfReferenceUID", "BodyPartExamined", "PatientPosition", "ProtocolName",
             "SliceThickness", "PixelSpacing", "Rows", "Columns", "ImageOrientationPatient",
