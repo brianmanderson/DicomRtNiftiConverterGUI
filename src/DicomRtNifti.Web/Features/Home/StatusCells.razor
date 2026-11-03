@@ -1,0 +1,32 @@
+@* The status and free-space cells of one folder row on the Home page. *@
+
+@if (Availability is null)
+{
+    <td class="status-pending">checking</td>
+    <td></td>
+}
+else
+{
+    <td class="@StatusClass">@StatusText</td>
+    <td>@FreeText</td>
+}
+
+@code {
+    [Parameter]
+    public RootAvailability? Availability { get; set; }
+
+    private string StatusClass => Availability!.Status == RootStatus.Available ? "status-ok" : "status-failed";
+
+    private string StatusText => Availability!.Status switch
+    {
+        RootStatus.Available => "available",
+        RootStatus.Missing => "missing",
+        RootStatus.Unreadable => "unreadable",
+        RootStatus.NotResponding => "not responding",
+        _ => Availability.Status.ToString(),
+    };
+
+    private string FreeText => Availability!.FreeBytes is long bytes
+        ? $"{bytes / (1024.0 * 1024 * 1024):N1} GiB"
+        : "";
+}

@@ -1,0 +1,23 @@
+@* The menu, built from the discovered features: a page that is a feature is in the menu, and
+   nothing else is. *@
+@inject FeatureCatalog Catalog
+
+<nav class="nav" aria-label="Pages">
+    @foreach (var section in Catalog.All.GroupBy(d => d.Section))
+    {
+        @if (section.Key != NavSection.Start)
+        {
+            <div class="nav-section">@section.Key.DisplayName()</div>
+        }
+        <ul>
+            @foreach (var feature in section)
+            {
+                <li>
+                    <NavLink href="@feature.Href" Match="@(feature.Route == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                        @feature.Title
+                    </NavLink>
+                </li>
+            }
+        </ul>
+    }
+</nav>

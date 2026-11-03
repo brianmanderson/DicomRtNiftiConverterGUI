@@ -1,0 +1,148 @@
+name: Web (cross-platform)
+
+# Gate for the web front-end (src/DicomRtNifti.Web, preview) on Windows, Linux and macOS: build
+# the solution, run DicomRtNifti.Web.Tests (bUnit, an in-memory host and Kestrel on loopback; no
+# browser, no display), then start the built app on loopback and require /health to report the
+# SimpleITK native probe OK, and require the app to refuse 0.0.0.0 while no authentication is
+# configured (D-33).
+#
+# SimpleITK is staged exactly as conformance-crossplatform.yml stages it. That workflow is left
+# unchanged by the web briefs (it builds the solution, web projects included, and runs the Core
+# and GUI tests); this one adds the web tests and the live loopback checks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SIMPLEITK_BASE_URL: "https://github.com/SimpleITK/SimpleITK/releases/download/v2.5.0"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  # Relative to src/DicomRtNifti.Web, where the live checks run.
+  WEB_DLL: bin/Release/net10.0/DicomRtNifti.Web.dll
+  WEB_PORT: "5180"
+  REFUSED_PORT: "5181"
+
+jobs:
+  web:
+    name: ${{ matrix.rid }} web
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report every platform independently.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            sitk_zip: SimpleITK-2.5.0-CSharp-win64-x64.zip
+          - os: ubuntu-latest
+            rid: linux-x64
+            sitk_zip: SimpleITK-2.5.0-CSharp-linux_x86_64.zip
+          # SimpleITK's macosx-11.0 C# build is arm64, as in conformance-crossplatform.yml.
+          - os: macos-latest
+            rid: osx-arm64
+            sitk_zip: SimpleITK-2.5.0-CSharp-macosx-11.0-anycpu.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Set up Python 3.12 (stages SimpleITK)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stage SimpleITK C# binaries (per-OS) one level above the workspace
+        run: python .github/scripts/stage_simpleitk.py "${{ env.SIMPLEITK_BASE_URL }}/${{ matrix.sitk_zip }}" "${{ github.workspace }}"
+
+      - name: Ad-hoc sign the SimpleITK native (macOS)
+        # macOS can refuse to dlopen an unsigned / quarantined downloaded dylib; clear
+        # quarantine and ad-hoc re-sign before the build copies it into the output.
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          dylib="$(dirname "$GITHUB_WORKSPACE")/SimpleITK/libSimpleITKCSharpNative.dylib"
+          echo "Signing $dylib"
+          xattr -cr "$dylib" || true
+          codesign --force --sign - "$dylib" || true
+          codesign -dvv "$dylib" 2>&1 | head -8 || true
+
+      - name: Build cross-platform solution (Release)
+        run: dotnet build DicomRtNifti.sln -c Release
+
+      - name: Web tests (bUnit, in-memory host, Kestrel on loopback)
+        env:
+          DICOMRTNIFTI_WEB_RENDER_DIR: ${{ github.workspace }}/web-run
+        run: dotnet test tests/DicomRtNifti.Web.Tests/DicomRtNifti.Web.Tests.csproj -c Release --no-build --verbosity normal
+
+      - name: Start on loopback; /health must report the SimpleITK native OK
+        # Run from the project folder, the content root `dotnet run` uses (appsettings.json, wwwroot).
+        shell: bash
+        working-directory: src/DicomRtNifti.Web
+        run: |
+          out="$GITHUB_WORKSPACE/web-run"
+          mkdir -p "$out"
+          dotnet "$WEB_DLL" --urls "http://127.0.0.1:$WEB_PORT" > "$out/web.log" 2>&1 &
+          pid=$!
+          status=000
+          for _ in $(seq 1 60); do
+            status="$(curl -s --max-time 5 -o "$out/health.json" -w '%{http_code}' "http://127.0.0.1:$WEB_PORT/health" || true)"
+            [ "$status" != "000" ] && break
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          curl -s --max-time 10 -o "$out/home.html" "http://127.0.0.1:$WEB_PORT/" || true
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          echo "GET /health -> HTTP $status"
+          cat "$out/health.json" 2>/dev/null; echo
+          if [ "$status" != "200" ] || ! grep -q '"probe":"SimpleITK native: OK' "$out/health.json"; then
+            echo "::error::/health did not report the SimpleITK native OK on ${{ matrix.rid }}"
+            cat "$out/web.log"
+            exit 1
+          fi
+
+      - name: Refuse 0.0.0.0 with no authentication configured (exit code 2, port never opened)
+        shell: bash
+        working-directory: src/DicomRtNifti.Web
+        run: |
+          out="$GITHUB_WORKSPACE/web-run"
+          dotnet "$WEB_DLL" --urls "http://0.0.0.0:$REFUSED_PORT" > "$out/refuse.log" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 60); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" || true
+            echo "::error::the app kept running on 0.0.0.0 on ${{ matrix.rid }}"
+            exit 1
+          fi
+          set +e
+          wait "$pid"
+          code=$?
+          set -e
+          cat "$out/refuse.log"
+          echo "exit code $code"
+          [ "$code" = "2" ] || { echo "::error::expected exit code 2, got $code"; exit 1; }
+          grep -q "Refusing to start" "$out/refuse.log" || { echo "::error::no refusal message"; exit 1; }
+          if curl -s --max-time 5 -o /dev/null "http://127.0.0.1:$REFUSED_PORT/"; then
+            echo "::error::port $REFUSED_PORT answered"
+            exit 1
+          fi
+
+      - name: Upload the web run (rendered Home, /health, logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-run-${{ matrix.rid }}
+          path: web-run/
+          retention-days: 30
+          if-no-files-found: warn

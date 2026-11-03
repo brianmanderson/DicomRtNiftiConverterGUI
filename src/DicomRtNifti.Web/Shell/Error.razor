@@ -1,0 +1,25 @@
+@page "/Error"
+@using System.Diagnostics
+
+@* Shown by the exception handler outside Development. It names the request only: exception text
+   can carry identifiers and paths, so none of it reaches the browser. *@
+
+<PageTitle>Error · DicomRtNifti</PageTitle>
+
+<h1>Error</h1>
+<p>The server could not complete this request.</p>
+
+@if (!string.IsNullOrEmpty(RequestId))
+{
+    <p>Request ID: <code>@RequestId</code> (the server log has the details).</p>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

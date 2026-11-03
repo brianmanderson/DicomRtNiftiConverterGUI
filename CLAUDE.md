@@ -24,7 +24,9 @@ The solution is **`DicomRtNifti.sln`** at the repo root. Each project owns its s
 - `src/DicomRtNifti.Core` — UI-agnostic conversion library (`Services/`, `Models/`); the heart of the toolkit, consumed by both front-ends via `<ProjectReference>`.
 - `src/DicomRtNifti.Cli` — headless CLI (assembly `DicomRtNifti.Cli`).
 - `src/DicomRtNifti.App` — Avalonia desktop GUI (assembly `DicomRtNifti.App`).
+- `src/DicomRtNifti.Web` — web front-end (preview): Blazor Server over Core, loopback only. `Hosting/` holds the data-root resolver (the only filesystem access), the path redactor and the binding guard; each page is a `Features/<Name>/` folder with an `IWebFeature` the shell discovers. `Nullable` and `ImplicitUsings` are on in this project only.
 - `tests/DicomRtNifti.Core.Tests` — xUnit tests for Core.
+- `tests/DicomRtNifti.Web.Tests` — web tests without a browser: bUnit, `WebApplicationFactory`, Kestrel on loopback; the path-traversal table and the architecture tests (no fo-dicom or SimpleITK type, no filesystem call outside the resolver). Its own workflow, `web-crossplatform.yml`.
 - `examples/` — `Guide.md` (the map), a runnable notebook that drives the CLI end-to-end over a
   public cohort, and `GUI_WALKTHROUGH.md`. Start here when onboarding. It is *not* the fast smoke
   test — the notebook pulls tens of GB from TCIA. For that, use the `rtmask-conformance`

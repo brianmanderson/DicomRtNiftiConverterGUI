@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests for the web front-end (DicomRtNifti.Web), run without a browser or a display:
+       bUnit renders Razor components in-process, WebApplicationFactory hosts the app on an
+       in-memory server, and the binding-guard tests start real Kestrel on loopback.
+
+       The Home page and /health probe the SimpleITK native, so it must be staged next to the
+       test output exactly as for Core.Tests and App.Tests: SimpleITK.props copies it. -->
+  <Import Project="..\..\src\SimpleITK.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="bunit" Version="2.9.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <!-- fo-dicom synthesizes DICOM for the page tests that need a scan (later briefs); the web
+         project itself never references it. -->
+    <PackageReference Include="fo-dicom" Version="5.2.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DicomRtNifti.Web\DicomRtNifti.Web.csproj" />
+    <!-- Reuse Core.Tests' in-memory DICOM writers rather than duplicating them. -->
+    <Compile Include="..\DicomRtNifti.Core.Tests\DicomTestData.cs" Link="Support\DicomTestData.cs" />
+  </ItemGroup>
+
+</Project>

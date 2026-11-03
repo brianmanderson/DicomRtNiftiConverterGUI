@@ -1,0 +1,26 @@
+@* A page's CLI equivalent (plan section 4), selectable for copying. A planned mode is labelled
+   as such, so a page never presents a flag the CLI does not have yet. *@
+
+<div class="cli">
+    @if (Cli.Command is not null)
+    {
+        @if (Cli.Planned)
+        {
+            <p class="cli-planned">Planned: the CLI does not have this mode yet.</p>
+        }
+        <pre><code>@Cli.Command</code></pre>
+    }
+    else
+    {
+        <p class="cli-none">No CLI command.</p>
+    }
+    @if (Cli.Note is not null)
+    {
+        <p class="cli-note">@Cli.Note</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public CliEquivalent Cli { get; set; } = default!;
+}

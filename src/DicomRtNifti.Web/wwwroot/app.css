@@ -1,0 +1,273 @@
+/* DicomRtNifti web (preview). No inline styles anywhere: the content security policy allows
+   stylesheets from this origin only. */
+
+:root {
+    --bg: #f7f7f5;
+    --panel: #ffffff;
+    --ink: #1f2328;
+    --muted: #59636e;
+    --line: #d8dee4;
+    --accent: #1f5f8b;
+    --ok: #1a7f37;
+    --ok-bg: #e9f6ec;
+    --bad: #b42318;
+    --bad-bg: #fdecea;
+    --pending-bg: #fff8e5;
+    --pending-line: #e3c56b;
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+h1 {
+    font-size: 1.6rem;
+    margin: 0 0 0.4rem;
+}
+
+h1:focus {
+    outline: none;
+}
+
+h2 {
+    font-size: 1.1rem;
+    margin: 1.8rem 0 0.6rem;
+}
+
+code, pre {
+    font-family: var(--mono);
+    font-size: 0.9em;
+}
+
+a {
+    color: var(--accent);
+}
+
+.page {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 15rem;
+    flex: none;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 1.2rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.brand a {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.badge {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--line);
+    border-radius: 0.6rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.nav {
+    margin-top: 1.2rem;
+    flex: 1;
+}
+
+.nav ul {
+    list-style: none;
+    margin: 0 0 0.6rem;
+    padding: 0;
+}
+
+.nav-section {
+    margin: 0.9rem 0 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+}
+
+.nav a {
+    display: block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.3rem;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.nav a:hover {
+    background: var(--bg);
+}
+
+.nav a.active {
+    background: #e4eef6;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.version {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    padding: 0 0.5rem;
+}
+
+.content {
+    flex: 1;
+    padding: 1.6rem 2.2rem 3rem;
+    max-width: 62rem;
+}
+
+.summary {
+    color: var(--muted);
+    margin-top: 0;
+}
+
+.notice {
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    padding: 0.7rem 0.9rem;
+    margin: 1rem 0;
+}
+
+.notice-pending {
+    background: var(--pending-bg);
+    border-color: var(--pending-line);
+}
+
+.notice-failed {
+    background: var(--bad-bg);
+    border-color: var(--bad);
+}
+
+.facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.35rem 1.2rem;
+    margin: 0;
+}
+
+.facts dt {
+    color: var(--muted);
+}
+
+.facts dd {
+    margin: 0;
+}
+
+.status-ok {
+    color: var(--ok);
+    font-weight: 600;
+}
+
+.status-failed {
+    color: var(--bad);
+    font-weight: 600;
+}
+
+.status-pending {
+    color: var(--muted);
+}
+
+table.roots {
+    border-collapse: collapse;
+    width: 100%;
+    background: var(--panel);
+}
+
+table.roots th, table.roots td {
+    text-align: left;
+    padding: 0.4rem 0.7rem;
+    border-bottom: 1px solid var(--line);
+}
+
+table.roots th {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.cli pre {
+    background: #1f2328;
+    color: #f0f3f6;
+    padding: 0.7rem 0.9rem;
+    border-radius: 0.4rem;
+    overflow-x: auto;
+    margin: 0.4rem 0;
+}
+
+.cli-planned {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--bad);
+}
+
+.cli-note, .cli-none {
+    color: var(--muted);
+    margin: 0.3rem 0 0;
+}
+
+.hint {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+#blazor-error-ui {
+    background: #fff4ce;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+.blazor-error-boundary {
+    background: var(--bad);
+    padding: 1rem;
+    color: white;
+}
+
+.blazor-error-boundary::after {
+    content: "An error has occurred.";
+}
+
+@media (max-width: 720px) {
+    .page {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .content {
+        padding: 1.2rem 1rem 2rem;
+    }
+}
