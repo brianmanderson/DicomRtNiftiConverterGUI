@@ -1,0 +1,111 @@
+{
+  "schema": "dicomrtnifti.cohort-convert/1",
+  "output_root": "<ROOT>/convert-anon",
+  "manifest_csv": "export_manifest.csv",
+  "anonymized": true,
+  "anonymization_key": "<ROOT>/convert-anon.key/AnonymizationKey.json",
+  "output_spacing": null,
+  "succeeded": 4,
+  "failed": 1,
+  "skipped": [],
+  "series": [
+    {
+      "patient_id": "P68b3036251",
+      "study_uid": "ST6c5c77fc798b",
+      "series_uid": "SE382b342ccc28",
+      "output_dir": "P68b3036251/ST6c5c77fc798b/SE382b342ccc28",
+      "image": "P68b3036251/ST6c5c77fc798b/SE382b342ccc28/image.nii.gz",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "struct_link_rule": "ReferencedSeriesUid",
+      "masks": [
+        {
+          "name": "Ring",
+          "volume_cc": 0.056,
+          "file": "P68b3036251/ST6c5c77fc798b/SE382b342ccc28/masks/Ring.nii.gz"
+        },
+        {
+          "name": "Target",
+          "volume_cc": 0.056,
+          "file": "P68b3036251/ST6c5c77fc798b/SE382b342ccc28/masks/Target.nii.gz"
+        }
+      ],
+      "doses": [
+        "P68b3036251/ST6c5c77fc798b/SE382b342ccc28/doses/Plan dose.nii.gz"
+      ],
+      "metadata": null
+    },
+    {
+      "patient_id": "P68b3036251",
+      "study_uid": "ST6c5c77fc798b",
+      "series_uid": "SE3c275f56e19e",
+      "output_dir": "P68b3036251/ST6c5c77fc798b/SE3c275f56e19e",
+      "image": "P68b3036251/ST6c5c77fc798b/SE3c275f56e19e/image.nii.gz",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "struct_link_rule": null,
+      "masks": [],
+      "doses": [
+        "P68b3036251/ST6c5c77fc798b/SE3c275f56e19e/doses/Plan dose.nii.gz"
+      ],
+      "metadata": null
+    },
+    {
+      "patient_id": "P917eb7105e",
+      "study_uid": "STd0e4b6b4ad3d",
+      "series_uid": "SE1748c1329004",
+      "output_dir": "P917eb7105e/STd0e4b6b4ad3d/SE1748c1329004",
+      "image": "P917eb7105e/STd0e4b6b4ad3d/SE1748c1329004/image.nii.gz",
+      "spacing": [
+        1.0,
+        1.0,
+        4.0
+      ],
+      "struct_link_rule": "FrameOfReferenceUid",
+      "masks": [
+        {
+          "name": "Target",
+          "volume_cc": 0.224,
+          "file": "P917eb7105e/STd0e4b6b4ad3d/SE1748c1329004/masks/Target.nii.gz"
+        }
+      ],
+      "doses": [],
+      "metadata": null
+    },
+    {
+      "patient_id": "P357df91dfe",
+      "study_uid": "ST8593a329e86a",
+      "series_uid": "SEfb5023009c92",
+      "output_dir": "P357df91dfe/ST8593a329e86a/SEfb5023009c92",
+      "image": "P357df91dfe/ST8593a329e86a/SEfb5023009c92/image.nii.gz",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "struct_link_rule": "LargestSeriesFallback",
+      "masks": [
+        {
+          "name": "Body",
+          "volume_cc": 0.132,
+          "file": "P357df91dfe/ST8593a329e86a/SEfb5023009c92/masks/Body.nii.gz"
+        }
+      ],
+      "doses": [],
+      "metadata": null
+    }
+  ],
+  "errors": [
+    {
+      "patient_id": "P8520363cd1",
+      "series_uid": "SE1bb05f0666d1",
+      "message": "Unexpected VR found for DICOM fragment sequence: SQ"
+    }
+  ]
+}

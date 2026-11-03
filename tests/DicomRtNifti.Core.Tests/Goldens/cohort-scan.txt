@@ -1,0 +1,222 @@
+{
+  "schema": "dicomrtnifti.cohort-scan/1",
+  "input_root": "<ROOT>/in",
+  "scanned_files": 28,
+  "unreadable_files": 0,
+  "unreadable_samples": [],
+  "roi_names": [
+    "Body",
+    "Orphan",
+    "Ring",
+    "Target"
+  ],
+  "patients": [
+    {
+      "patient_id": "PAT_A",
+      "studies": [
+        {
+          "study_instance_uid": "1.2.3.100.1",
+          "series": [
+            {
+              "series_instance_uid": "1.2.3.100.2",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": "",
+              "frame_of_reference_uid": "1.2.3.100.9",
+              "instance_count": 4,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 1.0,
+              "slice_spacing_uniform": true,
+              "slice_spacing_values": [
+                1.0
+              ],
+              "linked_rtstructs": [
+                {
+                  "series_instance_uid": "1.2.3.100.3",
+                  "series_description": "structures",
+                  "match_rule": "ReferencedSeriesUid",
+                  "roi_names": [
+                    "Target",
+                    "Ring"
+                  ]
+                }
+              ],
+              "linked_rtdoses": [
+                {
+                  "series_instance_uid": "1.2.3.100.4",
+                  "series_description": "Plan dose",
+                  "match_rule": "FrameOfReferenceUid"
+                }
+              ]
+            },
+            {
+              "series_instance_uid": "1.2.3.100.5",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": "",
+              "frame_of_reference_uid": "1.2.3.100.9",
+              "instance_count": 3,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 1.0,
+              "slice_spacing_uniform": true,
+              "slice_spacing_values": [
+                1.0
+              ],
+              "linked_rtstructs": [],
+              "linked_rtdoses": [
+                {
+                  "series_instance_uid": "1.2.3.100.4",
+                  "series_description": "Plan dose",
+                  "match_rule": "FrameOfReferenceUid"
+                }
+              ]
+            }
+          ],
+          "unlinked": []
+        }
+      ]
+    },
+    {
+      "patient_id": "PAT_B",
+      "studies": [
+        {
+          "study_instance_uid": "1.2.3.200.1",
+          "series": [
+            {
+              "series_instance_uid": "1.2.3.200.2",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": "",
+              "frame_of_reference_uid": "1.2.3.200.9",
+              "instance_count": 6,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 2.0,
+              "slice_spacing_uniform": false,
+              "slice_spacing_values": [
+                2.0,
+                6.0,
+                8.0
+              ],
+              "linked_rtstructs": [
+                {
+                  "series_instance_uid": "1.2.3.200.3",
+                  "series_description": "structures",
+                  "match_rule": "FrameOfReferenceUid",
+                  "roi_names": [
+                    "Target"
+                  ]
+                }
+              ],
+              "linked_rtdoses": []
+            }
+          ],
+          "unlinked": []
+        }
+      ]
+    },
+    {
+      "patient_id": "PAT_C",
+      "studies": [
+        {
+          "study_instance_uid": "1.2.3.300.1",
+          "series": [],
+          "unlinked": [
+            {
+              "series_instance_uid": "1.2.3.300.3",
+              "modality": "RTSTRUCT",
+              "series_description": "orphan structures",
+              "reason": "did not match any image series in the study"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "patient_id": "PAT_D",
+      "studies": [
+        {
+          "study_instance_uid": "1.2.3.400.1",
+          "series": [
+            {
+              "series_instance_uid": "1.2.3.400.2",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": "",
+              "frame_of_reference_uid": "1.2.3.400.9",
+              "instance_count": 4,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 1.0,
+              "slice_spacing_uniform": true,
+              "slice_spacing_values": [
+                1.0
+              ],
+              "linked_rtstructs": [
+                {
+                  "series_instance_uid": "1.2.3.400.3",
+                  "series_description": "structures",
+                  "match_rule": "LargestSeriesFallback",
+                  "roi_names": [
+                    "Body"
+                  ]
+                }
+              ],
+              "linked_rtdoses": []
+            }
+          ],
+          "unlinked": []
+        }
+      ]
+    },
+    {
+      "patient_id": "PAT_E",
+      "studies": [
+        {
+          "study_instance_uid": "1.2.3.500.1",
+          "series": [
+            {
+              "series_instance_uid": "1.2.3.500.2",
+              "modality": "CT",
+              "series_description": "CT series",
+              "series_date": "",
+              "frame_of_reference_uid": "1.2.3.500.9",
+              "instance_count": 4,
+              "pixel_spacing": [
+                1.0,
+                1.0
+              ],
+              "slice_spacing": 1.0,
+              "slice_spacing_uniform": true,
+              "slice_spacing_values": [
+                1.0
+              ],
+              "linked_rtstructs": [
+                {
+                  "series_instance_uid": "1.2.3.500.3",
+                  "series_description": "structures",
+                  "match_rule": "FrameOfReferenceUid",
+                  "roi_names": [
+                    "Target"
+                  ]
+                }
+              ],
+              "linked_rtdoses": []
+            }
+          ],
+          "unlinked": []
+        }
+      ]
+    }
+  ]
+}

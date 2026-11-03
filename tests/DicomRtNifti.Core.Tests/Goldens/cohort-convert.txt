@@ -1,0 +1,111 @@
+{
+  "schema": "dicomrtnifti.cohort-convert/1",
+  "output_root": "<ROOT>/convert",
+  "manifest_csv": "export_manifest.csv",
+  "anonymized": false,
+  "anonymization_key": null,
+  "output_spacing": null,
+  "succeeded": 4,
+  "failed": 1,
+  "skipped": [],
+  "series": [
+    {
+      "patient_id": "PAT_A",
+      "study_uid": "1.2.3.100.1",
+      "series_uid": "1.2.3.100.2",
+      "output_dir": "PAT_A/CT series_05fdb5075f9a",
+      "image": "PAT_A/CT series_05fdb5075f9a/image.nii.gz",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "struct_link_rule": "ReferencedSeriesUid",
+      "masks": [
+        {
+          "name": "Ring",
+          "volume_cc": 0.056,
+          "file": "PAT_A/CT series_05fdb5075f9a/masks/Ring.nii.gz"
+        },
+        {
+          "name": "Target",
+          "volume_cc": 0.056,
+          "file": "PAT_A/CT series_05fdb5075f9a/masks/Target.nii.gz"
+        }
+      ],
+      "doses": [
+        "PAT_A/CT series_05fdb5075f9a/doses/Plan dose.nii.gz"
+      ],
+      "metadata": null
+    },
+    {
+      "patient_id": "PAT_A",
+      "study_uid": "1.2.3.100.1",
+      "series_uid": "1.2.3.100.5",
+      "output_dir": "PAT_A/CT series_20aa7c82e65e",
+      "image": "PAT_A/CT series_20aa7c82e65e/image.nii.gz",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "struct_link_rule": null,
+      "masks": [],
+      "doses": [
+        "PAT_A/CT series_20aa7c82e65e/doses/Plan dose.nii.gz"
+      ],
+      "metadata": null
+    },
+    {
+      "patient_id": "PAT_B",
+      "study_uid": "1.2.3.200.1",
+      "series_uid": "1.2.3.200.2",
+      "output_dir": "PAT_B/CT series",
+      "image": "PAT_B/CT series/image.nii.gz",
+      "spacing": [
+        1.0,
+        1.0,
+        4.0
+      ],
+      "struct_link_rule": "FrameOfReferenceUid",
+      "masks": [
+        {
+          "name": "Target",
+          "volume_cc": 0.224,
+          "file": "PAT_B/CT series/masks/Target.nii.gz"
+        }
+      ],
+      "doses": [],
+      "metadata": null
+    },
+    {
+      "patient_id": "PAT_D",
+      "study_uid": "1.2.3.400.1",
+      "series_uid": "1.2.3.400.2",
+      "output_dir": "PAT_D/CT series",
+      "image": "PAT_D/CT series/image.nii.gz",
+      "spacing": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "struct_link_rule": "LargestSeriesFallback",
+      "masks": [
+        {
+          "name": "Body",
+          "volume_cc": 0.132,
+          "file": "PAT_D/CT series/masks/Body.nii.gz"
+        }
+      ],
+      "doses": [],
+      "metadata": null
+    }
+  ],
+  "errors": [
+    {
+      "patient_id": "PAT_E",
+      "series_uid": "1.2.3.500.2",
+      "message": "Unexpected VR found for DICOM fragment sequence: SQ"
+    }
+  ]
+}

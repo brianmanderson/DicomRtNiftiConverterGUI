@@ -1,0 +1,81 @@
+DicomRtNifti CLI <VERSION>
+
+Usage: DicomRtNifti.Cli [--headless] <mode> [options]
+  (the leading --headless flag is optional, accepted for backward compatibility)
+
+Global:
+  --help, -h    Show this help and exit
+  --version     Show version + SimpleITK native status and exit
+
+Forward (RTSTRUCT -> per-ROI masks):
+  --headless --forward --rtstruct PATH --image-folder PATH --output-folder PATH
+                       [--include-image]      (also write image.nii.gz)
+                       [--rtdose PATH]        (also write doses/<description>.nii.gz)
+                       [--strict-reference]   (exit 1 instead of warning when the RTSTRUCT
+                                               does not reference this image series)
+
+Reverse (per-ROI masks -> RTSTRUCT) with reference DICOM:
+  --headless --reverse --image-folder PATH --masks-folder PATH --output PATH
+
+Reverse (per-ROI masks -> RTSTRUCT) without reference DICOM:
+  --headless --reverse --masks-folder PATH --output PATH
+                       [--image-nifti PATH]         (default: <masks-folder>/image.nii.gz)
+                       [--metadata PATH]            (default: <masks-folder>/metadata.json)
+                       [--output-image-folder PATH] (persist generated DICOM image series)
+
+Image-reverse (NIfTI image volume -> DICOM image series):
+  --headless --image-reverse --nifti-image PATH --output-folder PATH
+                       [--modality CT|MR|PT|auto]    (default: auto -- inferred from pixel values)
+                       [--ref-dicom-folder PATH]     (currently ignored; metadata auto-synthesized)
+
+Image-forward (DICOM image series -> NIfTI image volume):
+  --headless --image-forward --image-folder PATH --output PATH
+                       [--target-spacing X,Y,Z]      (optional resample, mm)
+
+Cohort modes scan a tree recursively and emit one JSON document on stdout.
+
+Cohort scan (inventory only; no conversion):
+  --cohort-scan --input PATH [--json-out PATH]
+
+Cohort manifest (survey CSV: spacing + per-ROI volume in cc):
+  --cohort-manifest --input PATH --output PATH
+                       [--no-volumes]         (skip rasterizing; volumes = -1)
+                       [--output-spacing X,Y,Z]  (default: report native spacing)
+
+Cohort convert (full export, one folder per series):
+  --cohort-convert --input PATH --output PATH
+    Layout: <patient>/<seriesDate>_<seriesDescription>/ (two series of a patient
+            that would share it each get _<12 hex of their SeriesInstanceUID>), or
+            <patient>/<study>/<series>/ (hashes) under --anonymize.
+
+Options common to --cohort-manifest and --cohort-convert:
+  --associations FILE.json          canonical-name / alias mappings
+  --only-associated-rois            drop ROIs that match no association
+                                    (warns without --associations; exit 1 if nothing matches)
+  --output-spacing X,Y,Z            resample to a fixed grid, mm
+                                    (--target-spacing is accepted as an alias)
+  --anonymize [--salt STRING]       hash identifiers; writes AnonymizationKey.json outside
+                                    the output, in <output>.key/ beside it by default
+  --key-path FILE|FOLDER            with --anonymize: where to write the key instead
+                                    (refused inside --output)
+  --patients ID,ID                  restrict to these PatientIDs
+  --series-description SUBSTR       keep image series whose description matches
+  --struct-description SUBSTR       keep image series whose linked RTSTRUCT
+                                    description matches, and export that one
+  --prefer-largest-series           keep only the largest image series per study
+                                    (equal slice counts break on SeriesInstanceUID, so
+                                    repeated runs pick the same series; prefer the
+                                    filters above when the choice matters)
+  --require-structures              skip series with no linked RTSTRUCT
+  --require-dose                    skip series with no linked RTDOSE
+  --fail-fast                       abort on the first failing series
+  --manifest-name NAME              default: export_manifest.csv
+  --json-out PATH                   also write the JSON document to a file
+
+Options for --cohort-convert only:
+  --metadata-tags KW,...            metadata.json image section
+  --metadata-structure-tags KW,...  metadata.json structure section
+  --metadata-dose-tags KW,...       metadata.json dose section
+      Keywords are fo-dicom names (PatientAge, KVP, DoseUnits) plus computed
+      values (@VoxelSize, @RoiNames, @MaxDose, @DoseVoxelSize).
+  --no-images | --no-structures | --no-doses   skip that output
