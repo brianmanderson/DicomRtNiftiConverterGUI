@@ -260,9 +260,10 @@
               note says why it matters: series in different frames do not share a patient coordinate
               system, so a structure set or dose applies to the series of its own frame.
             <LineBreak/>
-            The DICOM tags tab reads the study attributes (date, description, Study Instance UID)
-            from the first slice of the study's first image series; a study with none reads them from
-            its first RT object, which carries the study module too.
+            The DICOM tags tab reads the study attributes (date, time, description, Study ID,
+            accession number, referring physician, Study Instance UID) from the first slice of the
+            study's first image series; a study with none reads them from its first RT object, which
+            carries the study module too.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Series inspector: geometry &amp; links"/>

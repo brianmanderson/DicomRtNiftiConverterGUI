@@ -27,7 +27,7 @@ namespace DicomRtNifti.App.Tests
     /// through its own view-model path rather than CohortExportService, so the Core fix did not
     /// reach it: under Anonymize it wrote the selected tags verbatim. These tests run the real
     /// DICOM → NIfTI window over a synthetic two-patient cohort carrying every identifier the
-    /// W2-E audit uses (name, ID, birth and study dates, accession, referring physician,
+    /// W2-E audit uses (name, ID, birth and study dates, study time and ID, accession, referring physician,
     /// institution, every UID, a private element holding the name and ID, input folders named
     /// after the patient), with identifying tags selected for the sidecar in all three sections.
     ///
@@ -57,7 +57,7 @@ namespace DicomRtNifti.App.Tests
         private static readonly List<string> ImageKeywords = new List<string>
         {
             "PatientName", "PatientID", "PatientBirthDate", "PatientSex", "StudyDate", "SeriesDate",
-            "StudyTime", "AccessionNumber", "ReferringPhysicianName", "InstitutionName",
+            "StudyTime", "StudyID", "AccessionNumber", "ReferringPhysicianName", "InstitutionName",
             "StudyInstanceUID", "SeriesInstanceUID", "SOPInstanceUID", "FrameOfReferenceUID",
             "SOPClassUID", "Modality", "SeriesDescription", "PixelSpacing",
             MetadataTagCatalog.VoxelSizeKey, MetadataTagCatalog.ImageDimensionsKey,
@@ -145,7 +145,7 @@ namespace DicomRtNifti.App.Tests
                     foreach (string removed in new[]
                              {
                                  "PatientName", "PatientBirthDate", "StudyDate", "SeriesDate", "StudyTime",
-                                 "AccessionNumber", "ReferringPhysicianName", "InstitutionName",
+                                 "StudyID", "AccessionNumber", "ReferringPhysicianName", "InstitutionName",
                                  "SOPInstanceUID", "FrameOfReferenceUID",
                              })
                         Assert.True(image[Friendly(removed)]?.Type == JTokenType.Null, $"ImageAttributes {removed} is not null");
@@ -198,6 +198,8 @@ namespace DicomRtNifti.App.Tests
                     Assert.Equal(p.PatientName, (string)image[Friendly("PatientName")]);
                     Assert.Equal(p.BirthDate, (string)image[Friendly("PatientBirthDate")]);
                     Assert.Equal(p.StudyDate, (string)image[Friendly("StudyDate")]);
+                    Assert.Equal(p.StudyTime, (string)image[Friendly("StudyTime")]);
+                    Assert.Equal(p.StudyId, (string)image[Friendly("StudyID")]);
                     Assert.Equal(p.AccessionNumber, (string)image[Friendly("AccessionNumber")]);
                     Assert.Equal(p.ReferringPhysician, (string)image[Friendly("ReferringPhysicianName")]);
                     Assert.Equal(p.InstitutionName, (string)image[Friendly("InstitutionName")]);
@@ -219,7 +221,8 @@ namespace DicomRtNifti.App.Tests
                     var leaks = new List<string>();
                     AuditBytes("metadata.json", File.ReadAllBytes(sidecar), p.Identifiers().ToList(), leaks);
                     foreach (string label in new[] { "PatientID", "PatientName", "PatientBirthDate", "StudyDate",
-                                 "AccessionNumber", "InstitutionName", "StudyInstanceUID", "CT SeriesInstanceUID" })
+                                 "StudyTime", "StudyID", "AccessionNumber", "InstitutionName", "StudyInstanceUID",
+                                 "CT SeriesInstanceUID" })
                         Assert.Contains(leaks, l => l.StartsWith($"metadata.json: {label} '", StringComparison.Ordinal));
                 }
             }
@@ -365,6 +368,8 @@ namespace DicomRtNifti.App.Tests
             public string GivenName;
             public string BirthDate;     // DA, yyyyMMdd
             public string StudyDate;     // DA, yyyyMMdd
+            public string StudyTime;     // TM, HHmmss.ffffff
+            public string StudyId;
             public string AccessionNumber;
             public string ReferringFamily;
             public string ReferringGiven;
@@ -391,6 +396,8 @@ namespace DicomRtNifti.App.Tests
                 yield return Pair("PatientBirthDate (ISO)", Iso(BirthDate));
                 yield return Pair("StudyDate", StudyDate);
                 yield return Pair("StudyDate (ISO)", Iso(StudyDate));
+                yield return Pair("StudyTime", StudyTime);
+                yield return Pair("StudyID", StudyId);
                 yield return Pair("AccessionNumber", AccessionNumber);
                 yield return Pair("ReferringPhysicianName family", ReferringFamily);
                 yield return Pair("ReferringPhysicianName given", ReferringGiven);
@@ -441,6 +448,8 @@ namespace DicomRtNifti.App.Tests
                         GivenName = "Ottoline",
                         BirthDate = "19370412",
                         StudyDate = "20180923",
+                        StudyTime = "101112.428517",
+                        StudyId = "SID8842QF",
                         AccessionNumber = "ACC5517XQV",
                         ReferringFamily = "Hollowbrook",
                         ReferringGiven = "Edmundine",
@@ -453,6 +462,8 @@ namespace DicomRtNifti.App.Tests
                         GivenName = "Peregrine",
                         BirthDate = "19520730",
                         StudyDate = "20190611",
+                        StudyTime = "143307.915264",
+                        StudyId = "SID1937VK",
                         AccessionNumber = "ACC2290LMB",
                         ReferringFamily = "Fennimore",
                         ReferringGiven = "Rosalind",
@@ -562,7 +573,8 @@ namespace DicomRtNifti.App.Tests
             ds.AddOrUpdate(DicomTag.StudyDate, p.StudyDate);
             ds.AddOrUpdate(DicomTag.SeriesDate, p.StudyDate);
             ds.AddOrUpdate(DicomTag.ContentDate, p.StudyDate);
-            ds.AddOrUpdate(DicomTag.StudyTime, "101112");
+            ds.AddOrUpdate(DicomTag.StudyTime, p.StudyTime);
+            ds.AddOrUpdate(DicomTag.StudyID, p.StudyId);
             ds.AddOrUpdate(DicomTag.AccessionNumber, p.AccessionNumber);
             ds.AddOrUpdate(DicomTag.ReferringPhysicianName, p.ReferringPhysician);
             ds.AddOrUpdate(DicomTag.InstitutionName, p.InstitutionName);
