@@ -198,7 +198,7 @@ namespace DicomRtNifti.Core.Tests
 
             var service = new CohortExportService(new NiftiConversionService(new RtStructMaskService()))
             {
-                SurveyParallelism = parallelism,
+                SeriesParallelism = parallelism,
             };
             var log = new CollectingProgress();
             var run = new SurveyRun();

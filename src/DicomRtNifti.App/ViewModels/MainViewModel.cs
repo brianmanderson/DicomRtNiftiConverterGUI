@@ -650,12 +650,25 @@ namespace DicomRtNifti.App.ViewModels
                         // still the best available answer and the geometry written is untouched.
                         LogGeometryWarnings(model, targetSpacing);
 
+                        // The image and, with structures, the masks from one load of the series.
+                        var structureSet = IncludeStructures ? model.LinkedRtStruct : null;
                         double[] seriesSpacing = null;
-                        if (ExportImages)
+                        Dictionary<string, double> roiVolumes = null;
+
+                        if (ExportImages || structureSet != null)
                         {
-                            progress.Report($"Converting images: {displayLabel}");
-                            seriesSpacing = await Task.Run(() =>
-                                _conversionService.ConvertImageSeriesToNifti(model, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
+                            progress.Report(ExportImages && structureSet != null
+                                ? $"Converting images and rasterizing structures: {displayLabel}"
+                                : ExportImages
+                                    ? $"Converting images: {displayLabel}"
+                                    : $"Rasterizing structures: {displayLabel}");
+                            var conversion = await Task.Run(() =>
+                                _conversionService.ConvertSeries(
+                                    model, outputDir, ExportImages, structureSet,
+                                    effectiveAssociations, effectiveExportUnmatched,
+                                    false, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
+                            seriesSpacing = conversion.Spacing;
+                            roiVolumes = conversion.RoiVolumes;
                         }
 
                         if (seriesSpacing == null)
@@ -665,19 +678,6 @@ namespace DicomRtNifti.App.ViewModels
                             seriesSpacing = (double[])targetSpacing.Clone();
 
                         spacingPerSeries[seriesUid] = seriesSpacing;
-
-                        Dictionary<string, double> roiVolumes = null;
-
-                        if (IncludeStructures && model.LinkedRtStruct != null)
-                        {
-                            progress.Report($"Rasterizing structures: {displayLabel}");
-
-                            roiVolumes = await Task.Run(() =>
-                                _conversionService.ConvertStructToNifti(
-                                    model.LinkedRtStruct, model, outputDir,
-                                    effectiveAssociations, effectiveExportUnmatched,
-                                    false, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
-                        }
 
                         // The conversion returns volumes keyed by the exported (canonical-or-raw) mask name,
                         // so the manifest columns come straight from what was actually written — keeping the
