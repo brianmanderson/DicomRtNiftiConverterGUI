@@ -1,6 +1,6 @@
 name: Conformance (cross-platform)
 
-# Multi-OS analytical accuracy gate for the .NET 8 cross-platform CLI
+# Multi-OS analytical accuracy gate for the .NET 10 cross-platform CLI
 # (DicomRtNifti.Cli), the successor to the Windows-only WPF exe exercised by
 # conformance.yml. A platform is only claimed as "supported" once this gate is
 # green on it. Runs alongside the legacy Windows conformance during the
@@ -24,6 +24,8 @@ env:
 
 jobs:
   conformance:
+    # This name is the context of main's three required status checks. Rename it only together
+    # with main's branch protection, or every PR waits on checks that never report (#99).
     name: ${{ matrix.rid }} conformance (.NET 8 CLI)
     runs-on: ${{ matrix.os }}
     strategy:
@@ -50,7 +52,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up .NET 8 SDK
+      - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
@@ -96,7 +98,7 @@ jobs:
       - name: Generate conformance fixture
         run: rtmask-conformance generate ./fixture --n-quadrature 2
 
-      - name: Run forward conversion (.NET 8 CLI)
+      - name: Run forward conversion (.NET 10 CLI)
         run: >
           dotnet run --project src/DicomRtNifti.Cli -c Release --no-build --
           --forward

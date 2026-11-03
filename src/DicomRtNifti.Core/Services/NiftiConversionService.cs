@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -376,7 +377,8 @@ namespace DicomRtNifti.Core.Services
         /// Converts RT Struct contours to per-ROI binary mask .nii.gz files.
         /// </summary>
         /// <returns>
-        /// Dictionary mapping ROI output name to mask volume (voxel count * voxel volume).
+        /// Dictionary mapping ROI output name to mask volume (voxel count * voxel volume), in the
+        /// structure set's ROI order (see <see cref="InStructureSetOrder"/>).
         /// Returns null if input is empty. Also returns spacing via out parameter.
         /// </returns>
         public Dictionary<string, double> ConvertStructToNifti(
@@ -526,12 +528,13 @@ namespace DicomRtNifti.Core.Services
                 progress?.Report($"  Wrote mask: {safeName}.nii.gz");
             });
 
-            return new Dictionary<string, double>(roiVolumes);
+            return InStructureSetOrder(roiVolumes, roiNamesToExport, rtStructSeries.RoiNames);
         }
 
         /// <summary>
         /// Computes ROI volumes without writing any mask files to disk.
-        /// Returns a dictionary mapping ROI output name -> volume in cc.
+        /// Returns a dictionary mapping ROI output name -> volume in cc, in the structure set's ROI
+        /// order (see <see cref="InStructureSetOrder"/>), the same order as <see cref="ConvertStructToNifti"/>.
         /// </summary>
         public Dictionary<string, double> ComputeStructVolumes(
             DicomSeriesGroup rtStructSeries,
@@ -620,7 +623,9 @@ namespace DicomRtNifti.Core.Services
                 maskForStats.Dispose();
             }
 
-            return roiVolumes;
+            // This loop is sequential, but it walks the rasterizer's results, which come back in
+            // no defined order either.
+            return InStructureSetOrder(roiVolumes, roiNamesToExport, rtStructSeries.RoiNames);
         }
 
         /// <summary>
@@ -816,6 +821,87 @@ namespace DicomRtNifti.Core.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// The ROI volumes in the structure set's own ROI order: the order in which
+        /// StructureSetROISequence lists the ROIs, which <paramref name="dicomRoiNames"/> carries.
+        /// Every method here that returns ROI volumes returns them in this order:
+        /// <see cref="ConvertStructToNifti"/>, <see cref="ConvertSeries"/>,
+        /// <see cref="ComputeStructVolumes"/> and <see cref="SurveySeries"/>.
+        ///
+        /// Without it the order was undefined. The rasterizer and the mask writer each fill a
+        /// ConcurrentDictionary from a Parallel.ForEach, and a ConcurrentDictionary enumerates keys
+        /// that share a hash bucket in an order set by when each was added: by which ROI happened
+        /// to finish first. The --forward summary printed its rows in that order, so two identical
+        /// runs could print them in different orders (toolkit issue 96).
+        ///
+        /// The structure set's order, rather than ordinal by name, because it is the order the
+        /// file itself defines and the one the scanner reports the ROI names in, so a reader can
+        /// set the rows against the structure set without sorting either, and it needs nothing the
+        /// caller does not already have. Consumers that want another order sort for themselves: the
+        /// cohort JSON sorts by name.
+        ///
+        /// An output name chosen by an association takes the place of the DICOM ROI it was matched
+        /// to. A ROI that shares its name with a lower-numbered ROI comes back from the rasterizer
+        /// as <c>&lt;name&gt;_&lt;ROINumber&gt;</c>; it follows that name, by ascending ROINumber.
+        /// Anything else, which the rasterizer is not expected to return, goes last. Ties break
+        /// ordinally on the name, so the order is total.
+        /// </summary>
+        /// <param name="roiNamesToExport">What <see cref="ResolveRoiNames"/> returned for the run.</param>
+        internal static Dictionary<string, double> InStructureSetOrder(
+            IEnumerable<KeyValuePair<string, double>> roiVolumes,
+            Dictionary<string, string> roiNamesToExport,
+            List<string> dicomRoiNames)
+        {
+            // First position of each DICOM name, matched case-insensitively as the rasterizer
+            // matches them.
+            var positionOfDicomName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < dicomRoiNames.Count; i++)
+            {
+                if (!positionOfDicomName.ContainsKey(dicomRoiNames[i]))
+                    positionOfDicomName[dicomRoiNames[i]] = i;
+            }
+
+            int PositionOf(string outputName) =>
+                roiNamesToExport.TryGetValue(outputName, out string dicomName)
+                && positionOfDicomName.TryGetValue(dicomName, out int position)
+                    ? position
+                    : int.MaxValue;
+
+            var ranked = roiVolumes.Select(kv =>
+            {
+                int position = PositionOf(kv.Key);
+                bool renamed = false;
+                int roiNumber = 0;
+
+                // Not in the export list: is it "<name>_<ROINumber>" for a name that is?
+                int underscore = kv.Key.LastIndexOf('_');
+                if (position == int.MaxValue && underscore > 0
+                    && int.TryParse(kv.Key.Substring(underscore + 1), NumberStyles.AllowLeadingSign,
+                        CultureInfo.InvariantCulture, out int suffix))
+                {
+                    int namesakePosition = PositionOf(kv.Key.Substring(0, underscore));
+                    if (namesakePosition != int.MaxValue)
+                    {
+                        position = namesakePosition;
+                        renamed = true;
+                        roiNumber = suffix;
+                    }
+                }
+                return (kv, position, renamed, roiNumber);
+            });
+
+            var ordered = new Dictionary<string, double>();
+            foreach (var r in ranked
+                .OrderBy(r => r.position)
+                .ThenBy(r => r.renamed)
+                .ThenBy(r => r.roiNumber)
+                .ThenBy(r => r.kv.Key, StringComparer.Ordinal))
+            {
+                ordered[r.kv.Key] = r.kv.Value;
+            }
+            return ordered;
         }
 
         /// <summary>
