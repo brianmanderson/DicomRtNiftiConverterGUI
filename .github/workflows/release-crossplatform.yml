@@ -1,7 +1,7 @@
 name: Release (cross-platform)
 
 # Publishes self-contained builds of BOTH the Avalonia desktop GUI (DicomRtNifti.App) and the
-# .NET 8 headless CLI (DicomRtNifti.Cli) for win-x64, linux-x64 and osx-arm64. Every bundle
+# .NET 10 headless CLI (DicomRtNifti.Cli) for win-x64, linux-x64 and osx-arm64. Every bundle
 # carries LICENSE and THIRD-PARTY-NOTICES.md, and the verify step runs the bundled CLI once, so a
 # bundle whose SimpleITK native does not load is never released.
 #
@@ -142,7 +142,7 @@ jobs:
         with:
           ref: ${{ needs.gate.outputs.sha }}
 
-      - name: Set up .NET 8 SDK
+      - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
