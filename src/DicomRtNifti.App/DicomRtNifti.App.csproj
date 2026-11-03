@@ -4,8 +4,8 @@
   <Import Project="..\SimpleITK.props" />
 
   <!--
-    Cross-platform Avalonia desktop GUI (.NET 8), successor to the legacy WPF app.
-    net8.0 / Nullable / version metadata come from ../Directory.Build.props.
+    Cross-platform Avalonia desktop GUI (.NET 10), successor to the legacy WPF app.
+    net10.0 / Nullable / version metadata come from ../Directory.Build.props.
     RootNamespace defaults to the assembly name (DicomRtNifti.App).
   -->
   <PropertyGroup>
