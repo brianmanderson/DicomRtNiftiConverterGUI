@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -128,12 +130,37 @@ namespace DicomRtNifti.App.ViewModels
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
+    /// <summary>
+    /// One entry of a series row's structure-set picker: a linked RTSTRUCT, or (with a null
+    /// <see cref="Model"/>) "Automatic", which leaves the choice to the export's own rule.
+    /// </summary>
+    public sealed class StructureSetChoice
+    {
+        public StructureSetChoice(DicomSeriesGroup model, string label)
+        {
+            Model = model;
+            Label = label;
+        }
+
+        /// <summary>The structure set, or null for "Automatic".</summary>
+        public DicomSeriesGroup Model { get; }
+        public string Label { get; }
+        public override string ToString() => Label;
+    }
+
     /// <summary>ViewModel for a series node in the TreeView, with a selection checkbox.</summary>
     public class SeriesGroupViewModel : INotifyPropertyChanged
     {
+        /// <summary>
+        /// The picker's first entry. CohortExportService then chooses, as it does for the CLI: the
+        /// structure set the Export Options structure-set filter matches, else the first linked.
+        /// </summary>
+        public const string AutomaticStructureSetLabel = "Automatic";
+
         private bool _isSelected = true;
         private bool _isExpanded;
         private SeriesInspectorViewModel _inspector;
+        private StructureSetChoice _selectedStructureSet;
 
         public SeriesGroupViewModel(DicomSeriesGroup model)
         {
@@ -142,8 +169,10 @@ namespace DicomRtNifti.App.ViewModels
                 ? $"({model.FilePaths.Count} files)"
                 : $"{model.SeriesDescription} ({model.FilePaths.Count} files)";
 
-            HasLinkedRtStruct = model.LinkedRtStruct != null;
-            HasLinkedRtDose = model.LinkedRtDose != null;
+            var structureSets = model.LinkedRtStructs ?? new List<DicomSeriesGroup>();
+            var doses = model.LinkedRtDoses ?? new List<DicomSeriesGroup>();
+            HasLinkedRtStruct = model.LinkedRtStruct != null || structureSets.Count > 0;
+            HasLinkedRtDose = model.LinkedRtDose != null || doses.Count > 0;
 
             // The same test the conversions use to decide whether to warn, so a badge in the tree
             // means the log line will follow on Convert Selected and Export Manifest Only.
@@ -153,27 +182,121 @@ namespace DicomRtNifti.App.ViewModels
 
             HasGuessedLink = AnyLinkGuessed(model);
 
-            RoiNames = new ObservableCollection<string>();
-            if (model.LinkedRtStruct != null)
-                foreach (var name in model.LinkedRtStruct.RoiNames)
-                    RoiNames.Add(name);
-
-            if (model.LinkedRtDose != null)
+            // Several structure sets: the row offers a choice among them (GUI-07). One or none: no
+            // picker; the export takes the one there is.
+            var choices = new List<StructureSetChoice>();
+            if (structureSets.Count > 1)
             {
-                string desc = string.IsNullOrWhiteSpace(model.LinkedRtDose.SeriesDescription)
-                    ? "(no description)"
-                    : model.LinkedRtDose.SeriesDescription.Trim();
-                int frames = model.LinkedRtDose.FilePaths != null ? model.LinkedRtDose.FilePaths.Count : 0;
-                LinkedRtDoseLabel = frames > 1 ? $"{desc} ({frames} files)" : desc;
+                choices.Add(new StructureSetChoice(null, AutomaticStructureSetLabel));
+                var labels = structureSets.Select(StructureSetLabel).ToList();
+                for (int i = 0; i < structureSets.Count; i++)
+                {
+                    // Two sets with one description and ROI count are told apart by their UIDs' tails.
+                    string label = labels.Count(l => l == labels[i]) > 1
+                        ? labels[i] + " · …" + Tail(structureSets[i].SeriesInstanceUID, 8)
+                        : labels[i];
+                    choices.Add(new StructureSetChoice(structureSets[i], label));
+                }
             }
+            StructureSetChoices = choices;
+            _selectedStructureSet = choices.FirstOrDefault();
+
+            RoiNames = new ObservableCollection<string>();
+            FillRoiNames();
+
+            // Every linked dose, as every one is exported.
+            var doseLabels = new List<string>();
+            foreach (var dose in doses.Count > 0 ? doses : new List<DicomSeriesGroup> { model.LinkedRtDose })
+            {
+                if (dose == null) continue;
+                string desc = string.IsNullOrWhiteSpace(dose.SeriesDescription)
+                    ? "(no description)"
+                    : dose.SeriesDescription.Trim();
+                int frames = dose.FilePaths != null ? dose.FilePaths.Count : 0;
+                doseLabels.Add(frames > 1 ? $"{desc} ({frames} files)" : desc);
+            }
+            LinkedRtDoseLabel = doseLabels.Count == 0 ? null : string.Join("; ", doseLabels);
         }
 
         public DicomSeriesGroup Model { get; }
         public string DisplayName { get; }
         public bool HasLinkedRtStruct { get; }
         public bool HasLinkedRtDose { get; }
+
+        /// <summary>Every linked dose's description (with its file count when it has several), joined by "; ".</summary>
         public string LinkedRtDoseLabel { get; }
+
+        /// <summary>
+        /// The ROI names of the structure set the row shows as exported: the chosen one, or the
+        /// first linked when the choice is Automatic or there is nothing to choose.
+        /// </summary>
         public ObservableCollection<string> RoiNames { get; }
+
+        /// <summary>
+        /// Every ROI name of every linked structure set, once each (case-insensitive, first
+        /// spelling kept): what the scan discovered for this series, whichever set is chosen.
+        /// </summary>
+        public IReadOnlyList<string> AllRoiNames
+        {
+            get
+            {
+                var names = new List<string>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var sets = (Model.LinkedRtStructs != null && Model.LinkedRtStructs.Count > 0)
+                    ? Model.LinkedRtStructs
+                    : new List<DicomSeriesGroup> { Model.LinkedRtStruct };
+                foreach (var rs in sets)
+                    if (rs?.RoiNames != null)
+                        foreach (var name in rs.RoiNames)
+                            if (seen.Add(name)) names.Add(name);
+                return names;
+            }
+        }
+
+        /// <summary>The picker's entries, Automatic first; empty when the series has fewer than two structure sets.</summary>
+        public IReadOnlyList<StructureSetChoice> StructureSetChoices { get; }
+
+        /// <summary>True when the series has several structure sets, so its row shows the picker.</summary>
+        public bool HasStructureSetChoice => StructureSetChoices.Count > 0;
+
+        /// <summary>The picker's selection; Automatic until the user picks a structure set.</summary>
+        public StructureSetChoice SelectedStructureSet
+        {
+            get { return _selectedStructureSet; }
+            set
+            {
+                if (ReferenceEquals(_selectedStructureSet, value) || value == null) return;
+                _selectedStructureSet = value;
+                OnPropertyChanged();
+                FillRoiNames();
+            }
+        }
+
+        /// <summary>
+        /// The structure set picked for export, or null when the export's own rule chooses
+        /// (Automatic, or a series with one structure set or none).
+        /// </summary>
+        public DicomSeriesGroup ChosenStructureSet => _selectedStructureSet?.Model;
+
+        private void FillRoiNames()
+        {
+            var shown = ChosenStructureSet ?? Model.LinkedRtStruct
+                ?? (Model.LinkedRtStructs != null && Model.LinkedRtStructs.Count > 0 ? Model.LinkedRtStructs[0] : null);
+            RoiNames.Clear();
+            if (shown?.RoiNames != null)
+                foreach (var name in shown.RoiNames)
+                    RoiNames.Add(name);
+        }
+
+        private static string StructureSetLabel(DicomSeriesGroup rs)
+        {
+            string desc = string.IsNullOrWhiteSpace(rs.SeriesDescription) ? "(no description)" : rs.SeriesDescription.Trim();
+            int count = rs.RoiNames?.Count ?? 0;
+            return $"{desc} ({count} ROI{(count == 1 ? "" : "s")})";
+        }
+
+        private static string Tail(string value, int length) =>
+            string.IsNullOrEmpty(value) ? "" : value.Substring(Math.Max(0, value.Length - length));
 
         /// <summary>Drives the "non-uniform Z" badge on the series row.</summary>
         public bool IsNonUniformZ { get; }

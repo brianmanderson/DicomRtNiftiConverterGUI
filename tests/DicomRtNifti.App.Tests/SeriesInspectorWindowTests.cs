@@ -85,7 +85,7 @@ namespace DicomRtNifti.App.Tests
                 // Export Manifest Only now warns exactly as Convert Selected does.
                 string expected;
                 Assert.True(SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(series.Model, null, out expected));
-                await vm.ExportMetaDataCommand.ExecuteAsync(null);
+                await PlanReview.RunAsync(() => vm.ExportMetaDataCommand.ExecuteAsync(null));
                 Dispatcher.UIThread.RunJobs();
                 Assert.Equal("Metadata export complete.", vm.StatusText);
                 Assert.Contains("  " + expected, vm.LogText);

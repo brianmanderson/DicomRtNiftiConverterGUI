@@ -73,13 +73,19 @@
           </TextBlock>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">4.</Run> Click <Run FontWeight="SemiBold">Convert Selected</Run>.
-            A status bar shows progress; the log box below records each step.
+            The <Run FontWeight="SemiBold">export plan</Run> opens first: every series it will write
+            with its output folder, structure set, masks and doses, every selected series it will skip
+            and why, and the warnings the run will log. Nothing is written until you click
+            <Run FontWeight="SemiBold">Convert N series</Run>. A status bar then shows progress, series
+            by series; the log box below records each step.
           </TextBlock>
           <TextBlock Classes="body">
             <Run FontWeight="SemiBold">5.</Run> Outputs land under
             <Run FontFamily="Consolas">{Output}/{PatientID}/{SeriesDate}_{SeriesDescription}/</Run>.
             A CSV manifest (<Run FontFamily="Consolas">export_manifest.csv</Run>) sits at the output root.
-            See <Run FontWeight="SemiBold">Output structure</Run> below for the full layout.
+            See <Run FontWeight="SemiBold">Output structure</Run> below for the full layout. The export
+            is the one the command line's <Run FontFamily="Consolas">--cohort-convert</Run> writes for
+            the same choices: both run the same cohort export in the shared Core library.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Workflow walkthroughs"/>
@@ -136,7 +142,8 @@
           <TextBlock Classes="h2" Text="D. Inventory pass (no .nii.gz files written)"/>
           <TextBlock Classes="body">
             Set up the export options exactly as you would for a full export, then click
-            <Run FontWeight="SemiBold">Export Manifest Only</Run> instead of Convert Selected. The
+            <Run FontWeight="SemiBold">Export Manifest Only</Run> instead of Convert Selected. Its plan
+            opens first, as Convert Selected's does. The
             rasterizer runs against each selected RT-STRUCT to compute per-ROI volumes (in cc), and
             image spacings are read, but nothing is written except
             <Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root. Ideal for
@@ -172,9 +179,12 @@
             <Run FontWeight="SemiBold">Scan</Run> walks the Input folder in parallel, parses each
             DICOM file, and builds the Patient → Study → Series tree.
             <Run FontWeight="SemiBold">Stop</Run> aborts an in-progress scan or conversion.
-            The progress bar and adjacent status text show live percentages and per-step messages
-            (e.g. "Rasterizing structures: PatientA/CT_HEAD"). The bigger log box at the bottom of
-            the window accumulates a timestamped record of every action.
+            During a scan the progress bar counts headers read against files found, and the status
+            text names the step. During Convert Selected or Export Manifest Only the bar moves as each
+            series is finished (a failed one counts), and the status text names the series in hand,
+            e.g. "Converting series 2 of 5: PatientA/1.2.840."; up to two series are worked on at
+            once where that is safe, and they are reported in plan order. The bigger log box at the bottom of the window
+            accumulates a timestamped record of every action.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="Reference: Patient / Study / Series tree"/>
@@ -191,7 +201,13 @@
             The <Run FontWeight="SemiBold">Select all</Run> checkbox at the tree header toggles
             every patient at once. For each image series that has a linked RT-STRUCT, an
             <Run FontWeight="SemiBold">ROI Names</Run> expander appears underneath the row and lists
-            every ROI name found in that structure set.
+            every ROI name found in that structure set. A series with several linked RT-STRUCTs shows an
+            <Run FontFamily="Consolas">[RTSTRUCT]</Run> picker above it: the export uses one structure set
+            per series, and the picker chooses which. <Run FontWeight="SemiBold">Automatic</Run> (the
+            default) takes the one the structure-set filter in Export Options matches, else the first;
+            the ROI Names expander follows the pick. An
+            <Run FontFamily="Consolas">[RTDOSE]</Run> line lists every linked dose, and every one is
+            exported.
           </TextBlock>
           <TextBlock Classes="body">
             Two amber badges flag what the scan found that deserves a look, on the series row and,
@@ -309,12 +325,36 @@
             The three <Run FontWeight="SemiBold">Data to export</Run> checkboxes (Export Images /
             Export Structures / Export Dose) live in the bottom action bar, just above Convert Selected,
             alongside the Export Options button.
-            Everything else — ROI filtering, output spacing, and anonymization — opens from the
-            <Run FontWeight="SemiBold">Export Options...</Run> button as a separate window you can leave
-            open and reposition while you keep working in the main window. Its settings apply to Convert
-            Selected and Export Manifest Only immediately, whether that window is open or closed.
-            Every checkbox here and in the Data to export row is saved the moment you change it, so
-            the next window opens with them as you left them.
+            Everything else — series selection, ROI filtering, output spacing, and anonymization — opens
+            from the <Run FontWeight="SemiBold">Export Options...</Run> button as a separate window you
+            can leave open and reposition while you keep working in the main window. Its settings apply
+            to Convert Selected and Export Manifest Only immediately, whether that window is open or
+            closed. Every checkbox and filter here and in the Data to export row is saved the moment you
+            change it, so the next window opens with them as you left them.
+          </TextBlock>
+
+          <TextBlock Classes="h2" Text="Series selection: Require a structure set / Require a dose / description filters"/>
+          <TextBlock Classes="body">
+            These narrow the series ticked in the tree; a series is exported only when it passes every
+            rule, and the export plan lists each one skipped, with the reason.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Require a structure set</Run> / <Run FontWeight="SemiBold">Require a dose</Run>
+              — skip a series with no linked RT-STRUCT / no linked RT-DOSE.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Series description contains</Run> — keep a series only when its
+              Series Description contains the text (case-insensitive). A study can hold several CTs (a
+              planning CT and CBCTs resampled onto its grid); this keeps the ones you mean.
+            <LineBreak/>
+            • <Run FontWeight="SemiBold">Structure set description contains</Run> — keep a series only
+              when one of its linked RT-STRUCTs has a matching Series Description, and export that
+              structure set. Usually the sharper filter: structure sets are named for what they were
+              drawn on, while a CBCT can match its planning CT in every header. A structure set picked on
+              the series row in the tree wins over this match.
+            <LineBreak/>
+            Empty filters and unticked switches keep every ticked series. The command line's
+            <Run FontFamily="Consolas">--require-structures</Run>, <Run FontFamily="Consolas">--require-dose</Run>,
+            <Run FontFamily="Consolas">--series-description</Run> and <Run FontFamily="Consolas">--struct-description</Run>
+            are the same rules.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Export Images / Export Structures / Export Dose"/>
@@ -344,10 +384,12 @@
           <TextBlock Classes="h2" Text="Multi-RT-STRUCT / multi-RT-DOSE per series"/>
           <TextBlock Classes="body">
             When several RT-STRUCT (or RT-DOSE) files reference the same image series, the scan links
-            them all — the Series inspector counts and lists them — but Convert Selected exports only
-            the first of each. If you need to export multiple structure sets from one image series,
-            run the export twice with the unwanted RT-STRUCT files moved out of the input tree
-            between runs.
+            them all — the Series inspector counts and lists them. Every linked RT-DOSE is exported,
+            one file each under <Run FontFamily="Consolas">doses/</Run> (a repeated description gets a
+            suffix rather than overwriting). One RT-STRUCT is exported per series: pick it on the
+            series row in the tree, or leave the picker on Automatic (the structure-set filter's match,
+            else the first). To export two structure sets of one series, convert twice, picking one
+            each time, into different output folders.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Export Images OFF + Export Structures ON"/>
@@ -360,10 +402,14 @@
 
           <TextBlock Classes="h2" Text="Limit export to selected ROIs"/>
           <TextBlock Classes="body">
-            When ON: only ROIs whose DICOM name matches a defined association (or that you tick in
-            <Run FontWeight="SemiBold">Select ROIs for Export...</Run>) are exported, and matching
-            ROIs are renamed to their canonical names. Patients whose series contain none of the
-            selected ROIs are auto-deselected in the tree.
+            When ON with nothing chosen in <Run FontWeight="SemiBold">Select ROIs for Export...</Run>:
+            only ROIs whose DICOM name matches a defined association are exported, renamed to their
+            canonical names. With names chosen there: a chosen name that is an association's canonical
+            name keeps that association's aliases, a chosen name no association carries matches an ROI
+            of that name, and every other ROI is dropped. If the choice matches no ROI in any exported
+            structure set, the run says so in the log and the status line (the manifest is still
+            written). Patients whose series contain none of the selected ROIs are auto-deselected in
+            the tree.
             <LineBreak/>
             When OFF: all ROIs are exported. Matched ROIs are still renamed to their canonical
             names; unmatched ROIs keep their original DICOM names.
@@ -433,10 +479,20 @@
           <TextBlock Classes="body">
             Runs the full export for every selected series with the current Export Options applied.
             Writes <Run FontFamily="Consolas">image.nii.gz</Run>,
-            <Run FontFamily="Consolas">doses/{SeriesDescription}.nii.gz</Run>, and per-ROI
-            <Run FontFamily="Consolas">masks/*.nii.gz</Run> per series, plus
+            <Run FontFamily="Consolas">doses/{SeriesDescription}.nii.gz</Run> for every linked dose, and
+            per-ROI <Run FontFamily="Consolas">masks/*.nii.gz</Run> per series, plus
             <Run FontFamily="Consolas">export_manifest.csv</Run> at the output root summarizing
             every exported series and its per-ROI volumes.
+            <LineBreak/>
+            It shows the <Run FontWeight="SemiBold">export plan</Run> first, and writes nothing until you
+            click <Run FontWeight="SemiBold">Convert N series</Run>: the output folder of every series to
+            be written, its structure set and the mask names it gives, its doses and any geometry
+            warning; every ticked series that will be skipped, with the reason; RT objects linked to no
+            image series; and where the manifest and the anonymization key will go.
+            <Run FontWeight="SemiBold">Copy plan as JSON</Run> copies the plan in the form the command
+            line's <Run FontFamily="Consolas">--dry-run</Run> prints. A series that fails to convert is
+            reported and the rest carry on; the log ends with each failure (<Run FontFamily="Consolas">FAILED</Run>)
+            and its message.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Export Manifest Only"/>
@@ -444,8 +500,9 @@
             Inventory pass — writes only the CSV manifest
             (<Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root). No
             .nii.gz files are produced; the rasterizer still runs in-memory to compute per-ROI
-            volumes if <Run FontWeight="SemiBold">Export Structures</Run> is ON. It logs the same
-            non-uniform slice-spacing and missing-position warnings as Convert Selected.
+            volumes if <Run FontWeight="SemiBold">Export Structures</Run> is ON. It shows its plan first
+            and logs the same non-uniform slice-spacing and missing-position warnings as Convert
+            Selected; the Series selection rules and the structure set picked per series apply alike.
           </TextBlock>
 
           <TextBlock Classes="h2" Text="Settings..."/>
@@ -505,6 +562,13 @@
             <Run FontFamily="Consolas">export_manifest_meta.csv</Run> at the output root instead of
             <Run FontFamily="Consolas">export_manifest.csv</Run>; no per-series subfolders are created.
           </TextBlock>
+          <TextBlock Classes="body">
+            Two series of one patient with the same Series Date and Series Description (a planning CT
+            and a re-export, say) would share a folder; each then gets
+            <Run FontFamily="Consolas">_{12 hex digits}</Run>, from its Series Instance UID, appended
+            to its folder name, so neither overwrites the other. The export plan shows the folders
+            with the suffix. Doses with the same Series Description are suffixed the same way.
+          </TextBlock>
 
           <TextBlock Classes="h1" Text="CSV manifest"/>
           <TextBlock Classes="body">
@@ -530,7 +594,9 @@
             <LineBreak/>
             • One column per unique canonical ROI name across all exported series — the value is the
               mask volume in cc, or <Run FontFamily="Consolas">-1</Run> if the row's series did not
-              contain that ROI.
+              contain that ROI. A new file's ROI columns come series by series, each series' names
+              in alphabetical (ordinal) order, as the command line writes them; a merge appends new
+              names after the existing columns.
           </TextBlock>
 
           <TextBlock Classes="h1" Text="AnonymizationKey.json"/>
@@ -558,8 +624,8 @@
 
           <TextBlock Classes="h1" Text="Tips"/>
           <TextBlock Classes="body">
-            • The log box at the bottom keeps a timestamped record of every step; the status bar at
-              the very bottom of the window mirrors the latest message.
+            • The log box at the bottom keeps a timestamped record of every step; the status text
+              beside the progress bar names the step or the series in hand.
             <LineBreak/>
             • Closing this window returns you to the launcher. The Input and Output folders and every
               export checkbox are remembered across launches (they are saved as you change them); the

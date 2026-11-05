@@ -45,7 +45,10 @@ toggles to `settings.json` and the folders (plus the reverse window's Convert to
 4. In the bottom action bar, tick the artifact types: **Export Images**, **Export Structures**
    (RT-STRUCT → per-ROI masks under `masks/`), **Export Dose** (RT-DOSE → one file per dose under
    `doses/{SeriesDescription}.nii.gz`).
-5. Click **Convert Selected**. A status bar shows progress; the log box records each step.
+5. Click **Convert Selected**. The **export plan** opens first: each series it will write with its
+   output folder, structure set, masks and doses; each ticked series it will skip, and why; the
+   warnings the run will log. Nothing is written until you click **Convert N series**. A status
+   bar then shows progress series by series; the log box records each step.
 
 Defaults give you images, structures and dose for every selected series, with ROIs keeping their
 original DICOM names, the original voxel spacing preserved, and patient identifiers preserved in
@@ -104,7 +107,8 @@ GUI, then hand it to an unattended run.
 
 ### D. Inventory pass, writing no `.nii.gz` files
 
-Set up the export options as for a full export, then click **Export Manifest Only**. The
+Set up the export options as for a full export, then click **Export Manifest Only**; its plan
+opens first, as Convert Selected's does. The
 rasterizer runs against each selected RT-STRUCT to compute per-ROI volumes in cc, image spacings
 are read, and nothing is written but the CSV manifest at the output root. Good for cohort sizing,
 ROI prevalence audits, and spacing surveys.
@@ -144,16 +148,21 @@ Main window:
 | **Inspector** | What the scan found for the patient, study or series selected in the tree: a patient's studies and counts; every image series and RT object of a study, unlinked ones badged; a series' geometry, RT links and curated tags | `--cohort-scan` (per-series spacing, uniformity and link rule in the JSON) |
 | **Export Images / Structures / Dose** | Which artifact types to write | `--no-images` / `--no-structures` / `--no-doses` invert these |
 | **Export Options…** | Opens the panel below; stays open while you work | — |
-| **Convert Selected** | Run the full export | `--cohort-convert` |
-| **Export Manifest Only** | Survey without writing volumes | `--cohort-manifest` |
+| **Convert Selected** | Show the export plan, then run the full export | `--cohort-convert` (`--dry-run` prints the plan) |
+| **Export Manifest Only** | Show the plan, then survey without writing volumes | `--cohort-manifest` (`--dry-run` prints the plan) |
+| **Export plan** | What a run will do before it does it: each series' output folder, structure set, masks, doses and warnings; each skipped series with its reason; unlinked RT objects. **Copy plan as JSON** copies the same document `--dry-run` prints | `--dry-run` (`dicomrtnifti.cohort-plan/1`) |
+| **`[RTSTRUCT]` picker** (series row) | Which of a series' several structure sets to export; **Automatic** takes the structure-set filter's match, else the first | `--struct-series UID,…` |
 | **Settings…** | Default output directory (used until another output folder has been used; the last one is restored after that); open the output folder after a conversion | — (`%AppData%\DicomToNifti\settings.json`) |
 
 Export Options panel:
 
 | Control | What it does | CLI |
 |---|---|---|
+| **Require a structure set** / **Require a dose** | Skip a ticked series with no linked RT-STRUCT / RT-DOSE | `--require-structures` / `--require-dose` |
+| **Series description contains** | Keep a ticked series only when its description contains the text | `--series-description TEXT` |
+| **Structure set description contains** | Keep a ticked series only when a linked structure set's description contains the text, and export that set | `--struct-description TEXT` |
 | **Edit ROI Associations…** | Canonical-name and alias editor; always applies | `--associations FILE.json` |
-| **Limit export to selected ROIs** + **Select ROIs for Export…** | Drop ROIs that match no association; choose which canonical names to keep | `--only-associated-rois` |
+| **Limit export to selected ROIs** + **Select ROIs for Export…** | Drop ROIs that match no association; choose which canonical names to keep (a chosen name keeps its association's aliases; one no association carries matches itself) | `--only-associated-rois`; the chosen names `--rois NAME,…` |
 | **Resample to fixed spacing** + **Set Spacing…** | Target voxel grid in mm | `--output-spacing X,Y,Z` |
 | **Anonymize export** + **Edit Anonymization Key…** | Hash identifiers; write (and hand-override) the key file | `--anonymize --salt` |
 | **Key location** + **Browse…** | Where the key file goes; empty for `<output folder>.key\` beside the export; refused inside the export | `--key-path FILE\|FOLDER` |
@@ -251,12 +260,15 @@ threshold.
 The GUI shows slice counts in the tree, so you can see at a glance which series is the planning
 CT and which are the shorter aligned CBCTs, and tick accordingly; the inspector shows which rule
 linked each structure set, so a set attached by frame of reference alone (the CBCT case) is visible
-before export. The CLI has no tree to look at,
-which is why it has filters instead — `--struct-description` first (structure sets are named for
-what they were drawn on, and CBCTs resampled onto the planning grid are otherwise
-indistinguishable), then `--series-description`, with `--prefer-largest-series` as a last resort
-that ties exactly in that resampled case. Same decision, made once in advance rather than
-interactively.
+before export. For a large cohort, ticking by eye does not scale, so Export Options carries the
+CLI's filters too: **Structure set description contains** first (structure sets are named for what
+they were drawn on, and CBCTs resampled onto the planning grid are otherwise indistinguishable),
+then **Series description contains**, and **Require a structure set** / **Require a dose**. They
+narrow what is ticked, and the export plan lists every series they skip with the reason. A series
+with several structure sets gets an `[RTSTRUCT]` picker on its row for the one to export. The CLI
+has `--struct-description`, `--series-description`, `--require-*` and `--struct-series` for the
+same, plus `--prefer-largest-series` as a last resort that ties exactly in that resampled case.
+Both run the same Core export, so the same choices write the same files.
 
 ## Output structure
 
@@ -266,11 +278,13 @@ interactively.
 {Output}/{PatientID}/{SeriesDate}_{SeriesDescription}/
     image.nii.gz                     # Export Images
     masks/{ROIName}.nii.gz           # Export Structures
-    doses/{SeriesDescription}.nii.gz # Export Dose, and a dose is linked
+    doses/{SeriesDescription}.nii.gz # Export Dose: one per linked dose
     metadata.json                    # Write DICOM tag sidecar, with tags selected
 ```
 
-Each line appears only when its toggle is on, as noted. `{ROIName}` is the ROI's own name when
+Each line appears only when its toggle is on, as noted. Two series of one patient with the same
+date and description would share a folder, so each gets `_{12 hex digits}` from its Series Instance
+UID appended; two doses with one description are suffixed the same way, so nothing overwrites. `{ROIName}` is the ROI's own name when
 that is already a valid file name; one that had to be sanitized for Windows gets a short hash of
 the exact ROI name appended, so two ROIs differing only in stripped characters never land on one
 file — see [Read the mask path from stdout](../README.md#headless-mode) for the rule and why it
@@ -286,7 +300,9 @@ The CSV manifest sits at the output root either way — `export_manifest.csv` fr
 `export_manifest_meta.csv` from Export Manifest Only (the CLI writes `export_manifest.csv` for
 both, so a scripted survey and conversion into one root merge into a single file). Its first six columns are fixed —
 `PatientID, StudyUID, SeriesUID, SpacingX, SpacingY, SpacingZ` — and every column after them is
-one ROI's volume in cc, with `-1` marking a structure that series does not have. Re-running merges
+one ROI's volume in cc, with `-1` marking a structure that series does not have. A new manifest's
+ROI columns come series by series, each series' names in ordinal order, in either front-end, so a
+GUI manifest and a CLI manifest of one cohort are the same bytes. Re-running merges
 into an existing manifest rather than regenerating it: rows are matched on the three identifier
 columns, and new ROI columns are appended without disturbing the existing ones.
 

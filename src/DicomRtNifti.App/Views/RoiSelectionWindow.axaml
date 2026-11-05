@@ -84,8 +84,8 @@
     <Border Grid.Row="3" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
             BorderThickness="0,1,0,0" Padding="12,8" Margin="0,8,0,0">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-        <Button Content="Cancel" Click="CancelButton_Click" MinWidth="70" Padding="12,6" Margin="4,0" FontSize="12"/>
-        <Button Content="Confirm" Click="ConfirmButton_Click" MinWidth="70" Padding="12,6" Margin="4,0"
+        <Button x:Name="CancelButton" Content="Cancel" Click="CancelButton_Click" MinWidth="70" Padding="12,6" Margin="4,0" FontSize="12"/>
+        <Button x:Name="ConfirmButton" Content="Confirm" Click="ConfirmButton_Click" MinWidth="70" Padding="12,6" Margin="4,0"
                 FontSize="12" Classes="primary"/>
       </StackPanel>
     </Border>

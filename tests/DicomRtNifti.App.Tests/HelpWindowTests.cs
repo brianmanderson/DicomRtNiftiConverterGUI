@@ -34,6 +34,8 @@ namespace DicomRtNifti.App.Tests
                 Assert.Contains("Patient inspector", headings);
                 Assert.Contains("Study inspector", headings);
                 Assert.Contains("Series inspector: geometry & links", headings);
+                // The export options the window gained in W3-D.2 are described.
+                Assert.Contains("Series selection: Require a structure set / Require a dose / description filters", headings);
                 Screenshots.Capture(help, "04_help_dicom_to_nifti");
             }
         }

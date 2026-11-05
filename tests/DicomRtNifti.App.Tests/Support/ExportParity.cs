@@ -17,10 +17,11 @@ using Xunit;
 namespace DicomRtNifti.App.Tests.Support
 {
     /// <summary>
-    /// The forward window's toggles for one parity case, and the <see cref="CohortExportOptions"/>
-    /// they stand for. The mapping is the one W3-D.2 has to implement when Convert Selected moves
-    /// onto the service: every toggle the GUI reads in ExecuteConvertAsync, and nothing else (no
-    /// patient filter, no description filters, no Require*, no largest-series rule).
+    /// The forward window's controls for one parity case, and the <see cref="CohortExportOptions"/>
+    /// a script would pass the CLI's cohort mode for the same export. Since W3-D.2 Convert Selected
+    /// builds its options from the window (MainViewModel.ExportOptionsFor); this side states the
+    /// same export independently, as flags would, with no patient or series list (every series is
+    /// ticked), so a mapping slip in the window shows up as a difference.
     /// </summary>
     public sealed class ExportToggles
     {
@@ -35,6 +36,23 @@ namespace DicomRtNifti.App.Tests.Support
         /// <summary>The ROI associations the GUI loads from roi_associations.json.</summary>
         public List<RoiAssociation> Associations { get; set; } = new List<RoiAssociation>();
 
+        /// <summary>
+        /// "Limit export to selected ROIs" with these canonical names ticked in Select ROIs (and
+        /// every other name unticked); null leaves the filter off.
+        /// </summary>
+        public List<string> SelectedRois { get; set; }
+
+        /// <summary>The structure set picked on the series row, by SeriesInstanceUID; null for Automatic.</summary>
+        public string PickedStructureSet { get; set; }
+
+        public bool RequireStructures { get; set; }
+        public bool RequireDose { get; set; }
+        public string SeriesDescriptionFilter { get; set; } = "";
+        public string StructDescriptionFilter { get; set; } = "";
+
+        /// <summary>How many series the plan skips for these options; both paths must skip them.</summary>
+        public int ExpectedSkipped { get; set; }
+
         public string Salt { get; set; } = AnonymizationService.DefaultSalt;
 
         public CohortExportOptions ToServiceOptions(string inputRoot, string outputRoot) => new CohortExportOptions
@@ -45,9 +63,15 @@ namespace DicomRtNifti.App.Tests.Support
             ExportStructures = IncludeStructures,
             ExportDoses = IncludeDose,
             Associations = Associations,
-            // "Only export specific ROIs" is off in every case: with no ROI selection made it is
-            // OnlyAssociatedRois, and the selection itself has no Core equivalent until W4-C.
-            OnlyAssociatedRois = false,
+            // --rois NAME,... (W4-C), which narrows the export as "Limit export to selected ROIs"
+            // with those names ticked does.
+            OnlyAssociatedRois = SelectedRois != null,
+            RoiSelection = SelectedRois ?? new List<string>(),
+            StructureSetUids = PickedStructureSet == null ? new List<string>() : new List<string> { PickedStructureSet },
+            RequireStructures = RequireStructures,
+            RequireDose = RequireDose,
+            SeriesDescriptionFilter = string.IsNullOrWhiteSpace(SeriesDescriptionFilter) ? null : SeriesDescriptionFilter,
+            StructDescriptionFilter = string.IsNullOrWhiteSpace(StructDescriptionFilter) ? null : StructDescriptionFilter,
             OutputSpacing = OutputSpacing == null ? null : (double[])OutputSpacing.Clone(),
             Anonymize = Anonymize,
             Salt = Salt,
@@ -102,8 +126,8 @@ namespace DicomRtNifti.App.Tests.Support
     /// Runs one synthesized cohort through both forward paths and snapshots what each wrote:
     ///
     /// 1. the GUI: DICOM → NIfTI opened from the launcher, scanned, Convert Selected over every
-    ///    series, driven as the bound controls drive it (the same route WorkflowRoundTripTests and
-    ///    AnonymizedExportMetadataTests take);
+    ///    series, its export plan reviewed and run, driven as the bound controls drive it (the same
+    ///    route WorkflowRoundTripTests and AnonymizedExportMetadataTests take);
     /// 2. the service: a fresh scan of the same folder, <see cref="CohortExportService.BuildPlan"/>
     ///    and <see cref="CohortExportService.ExecuteAsync"/>, with the key opened through
     ///    <see cref="AnonymizationKeyLocation.Open"/> as the CLI's cohort modes open it.
@@ -187,15 +211,35 @@ namespace DicomRtNifti.App.Tests.Support
                     vm.AnonymizeExport = toggles.Anonymize;
                     vm.AnonymizationKeyPath = "";
                     vm.ExportDicomMetadata = false;
+                    vm.RequireStructures = toggles.RequireStructures;
+                    vm.RequireDose = toggles.RequireDose;
+                    vm.SeriesDescriptionFilter = toggles.SeriesDescriptionFilter;
+                    vm.StructDescriptionFilter = toggles.StructDescriptionFilter;
 
                     await vm.ScanCommand.ExecuteAsync(null);
                     Dispatcher.UIThread.RunJobs();
                     Assert.Equal("Scan complete.", vm.StatusText);
 
                     vm.AllPatientsSelected = true;
+                    if (toggles.SelectedRois != null)
+                    {
+                        vm.OnlyExportSpecificRois = true;
+                        await RoiSelectionDialog.SelectAsync(vm, toggles.SelectedRois);
+                        Assert.True(vm.Patients.All(p => p.IsSelected),
+                            "Select ROIs de-selected a patient; pick names every patient has, or the service side is a different export");
+                    }
+                    if (toggles.PickedStructureSet != null)
+                    {
+                        var series = vm.Patients.SelectMany(p => p.Studies).SelectMany(s => s.ImageSeries)
+                            .Single(s => s.StructureSetChoices.Any(c => c.Model?.SeriesInstanceUID == toggles.PickedStructureSet));
+                        series.SelectedStructureSet = series.StructureSetChoices
+                            .Single(c => c.Model?.SeriesInstanceUID == toggles.PickedStructureSet);
+                    }
+
                     int logStart = vm.LogText.Length;
                     Assert.True(vm.ConvertSelectedCommand.CanExecute(null));
-                    await vm.ConvertSelectedCommand.ExecuteAsync(null);
+                    var plan = await PlanReview.RunAsync(() => vm.ConvertSelectedCommand.ExecuteAsync(null));
+                    Assert.Equal(toggles.ExpectedSkipped, plan.Skipped.Count);
                     Dispatcher.UIThread.RunJobs();
 
                     string log = vm.LogText.Substring(logStart);
@@ -229,7 +273,7 @@ namespace DicomRtNifti.App.Tests.Support
 
             Assert.Equal(0, result.FailedCount);
             Assert.Empty(result.Errors);
-            Assert.Empty(plan.Skipped);
+            Assert.Equal(toggles.ExpectedSkipped, plan.Skipped.Count);
             Assert.Empty(plan.UnlinkedRtObjects);
 
             var log = new StringBuilder();

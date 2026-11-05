@@ -1,0 +1,126 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DicomRtNifti.App.Views.ExportPlanWindow"
+        Title="{Binding Title}" Width="820" Height="680"
+        MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppWindowBg}">
+
+  <Window.Styles>
+    <Style Selector="TextBlock.section">
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppHeadingText}"/>
+      <Setter Property="Margin" Value="0,14,0,6"/>
+    </Style>
+    <Style Selector="TextBlock.line">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppLabelText}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- Header -->
+    <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,10">
+      <StackPanel>
+        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
+        <TextBlock Text="{Binding Subtitle}" Foreground="{DynamicResource AppOnAccentSubtitle}" FontSize="11"
+                   Margin="0,4,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <!-- The plan -->
+    <Border Grid.Row="1" Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1"
+            CornerRadius="4" Margin="12,12,12,0" Padding="16">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <TextBlock x:Name="HeadlineText" Text="{Binding Headline}" FontSize="14" FontWeight="SemiBold"
+                     Foreground="{DynamicResource AppHeadingText}" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding Counts}" FontSize="12" Foreground="{DynamicResource AppMutedText}" Margin="0,4,0,0"/>
+          <TextBlock Classes="line" Text="{Binding ManifestLine}" Margin="0,8,0,0"/>
+          <TextBlock Classes="line" Text="{Binding KeyLine}" IsVisible="{Binding HasKeyFile}" Margin="0,2,0,0"/>
+          <Border Classes="warningNote" Margin="0,6,0,0" IsVisible="{Binding HasLegacyKeyWarning}">
+            <TextBlock Text="{Binding LegacyKeyWarning}"/>
+          </Border>
+
+          <ItemsControl ItemsSource="{Binding RunWarnings}" IsVisible="{Binding HasRunWarnings}" Margin="0,6,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="warningNote" Margin="0,0,0,4">
+                  <TextBlock Text="{Binding}"/>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Classes="section" Text="Series to write" IsVisible="{Binding CanRun}"/>
+          <ItemsControl x:Name="SeriesList" ItemsSource="{Binding Series}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border BorderBrush="{DynamicResource AppDivider}" BorderThickness="0,0,0,1" Padding="0,6">
+                  <StackPanel>
+                    <TextBlock Text="{Binding OutputDir}" FontFamily="Consolas" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource AppHeadingText}" TextWrapping="Wrap"/>
+                    <TextBlock Classes="line" Text="{Binding Detail}" Margin="0,2,0,0"/>
+                    <TextBlock Classes="line" Text="{Binding Structures}"/>
+                    <TextBlock Classes="line" Text="{Binding Doses}"/>
+                    <ItemsControl ItemsSource="{Binding Warnings}" IsVisible="{Binding HasWarnings}" Margin="0,4,0,0">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border Classes="warningNote" Margin="0,0,0,4">
+                            <TextBlock Text="{Binding}"/>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Classes="section" Text="Skipped" IsVisible="{Binding HasSkipped}"/>
+          <ItemsControl x:Name="SkippedList" ItemsSource="{Binding Skipped}" IsVisible="{Binding HasSkipped}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Margin="0,0,0,6">
+                  <TextBlock Classes="line" Text="{Binding Series}" FontWeight="SemiBold"/>
+                  <TextBlock Classes="line" Text="{Binding Reason}" Margin="12,0,0,0"/>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Classes="section" Text="RT objects linked to no image series (never exported)" IsVisible="{Binding HasUnlinked}"/>
+          <ItemsControl ItemsSource="{Binding Unlinked}" IsVisible="{Binding HasUnlinked}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Margin="0,0,0,6">
+                  <TextBlock Classes="line" Text="{Binding Series}" FontWeight="SemiBold"/>
+                  <TextBlock Classes="line" Text="{Binding Reason}" Margin="12,0,0,0"/>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <!-- Footer -->
+    <Border Grid.Row="2" Background="{DynamicResource AppToolbarBg}" BorderBrush="{DynamicResource AppBorderAlt}"
+            BorderThickness="0,1,0,0" Padding="12,8" Margin="0,12,0,0">
+      <DockPanel>
+        <Button x:Name="CopyJsonButton" DockPanel.Dock="Left" Content="Copy plan as JSON" Click="CopyJsonButton_Click"
+                Padding="12,6" FontSize="12"
+                ToolTip.Tip="The same plan document the CLI prints for --dry-run (dicomrtnifti.cohort-plan/1)."/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="CancelButton" Content="Cancel" Click="CancelButton_Click" MinWidth="90" Padding="12,6" IsCancel="True"/>
+          <Button x:Name="RunButton" Content="{Binding RunCaption}" Click="RunButton_Click" IsEnabled="{Binding CanRun}"
+                  MinWidth="140" Padding="12,6" Margin="8,0,0,0" Classes="primary" IsDefault="True"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+  </Grid>
+</Window>
