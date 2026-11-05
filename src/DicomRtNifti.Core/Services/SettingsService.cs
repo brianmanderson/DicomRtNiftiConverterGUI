@@ -11,17 +11,44 @@ namespace DicomRtNifti.Core.Services
     /// </summary>
     public class SettingsService
     {
-        private static readonly string AppDataFolder = Path.Combine(
+        /// <summary>
+        /// Where the desktop app keeps its state: <c>%AppData%\DicomToNifti</c> (the platform's
+        /// application-data folder elsewhere). The folder name predates the DicomRtNifti name and
+        /// stays, because it holds users' existing settings.
+        /// </summary>
+        public static readonly string DefaultFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "DicomToNifti");
 
-        private static readonly string SettingsFilePath = Path.Combine(AppDataFolder, "settings.json");
-        private static readonly string AssociationsFilePath = Path.Combine(AppDataFolder, "roi_associations.json");
+        private readonly string _settingsFilePath;
+        private readonly string _associationsFilePath;
 
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
             Formatting = Formatting.Indented
         };
+
+        /// <summary>Settings in <see cref="DefaultFolder"/>, as the desktop app has always kept them.</summary>
+        public SettingsService() : this(DefaultFolder)
+        {
+        }
+
+        /// <summary>
+        /// Settings in <paramref name="folder"/> instead: a server's own state root, or a test's
+        /// temporary folder, so neither reads or writes the desktop user's settings. The folder is
+        /// created on the first save, not here.
+        /// </summary>
+        public SettingsService(string folder)
+        {
+            if (string.IsNullOrWhiteSpace(folder))
+                throw new ArgumentException("A settings folder is required.", nameof(folder));
+            Folder = folder;
+            _settingsFilePath = Path.Combine(folder, "settings.json");
+            _associationsFilePath = Path.Combine(folder, "roi_associations.json");
+        }
+
+        /// <summary>The folder this instance reads settings.json and roi_associations.json from.</summary>
+        public string Folder { get; }
 
         /// <summary>
         /// Loads application settings from disk. Returns defaults if the file does not exist.
@@ -34,10 +61,10 @@ namespace DicomRtNifti.Core.Services
         /// </exception>
         public AppSettings LoadSettings()
         {
-            if (!File.Exists(SettingsFilePath))
+            if (!File.Exists(_settingsFilePath))
                 return new AppSettings();
 
-            var settings = ReadJson<AppSettings>(SettingsFilePath, "application settings");
+            var settings = ReadJson<AppSettings>(_settingsFilePath, "application settings");
             MigrateMetadataTagKeywords(settings);
             return settings;
         }
@@ -74,7 +101,7 @@ namespace DicomRtNifti.Core.Services
         public void SaveSettings(AppSettings settings)
         {
             string json = JsonConvert.SerializeObject(settings, JsonSettings);
-            AtomicFileWriter.WriteAllText(SettingsFilePath, json);
+            AtomicFileWriter.WriteAllText(_settingsFilePath, json);
         }
 
         /// <summary>
@@ -88,10 +115,10 @@ namespace DicomRtNifti.Core.Services
         /// </exception>
         public List<RoiAssociation> LoadAssociations()
         {
-            if (!File.Exists(AssociationsFilePath))
+            if (!File.Exists(_associationsFilePath))
                 return new List<RoiAssociation>();
 
-            return ReadJson<List<RoiAssociation>>(AssociationsFilePath, "ROI associations");
+            return ReadJson<List<RoiAssociation>>(_associationsFilePath, "ROI associations");
         }
 
         /// <summary>
@@ -101,7 +128,7 @@ namespace DicomRtNifti.Core.Services
         public void SaveAssociations(List<RoiAssociation> associations)
         {
             string json = JsonConvert.SerializeObject(associations, JsonSettings);
-            AtomicFileWriter.WriteAllText(AssociationsFilePath, json);
+            AtomicFileWriter.WriteAllText(_associationsFilePath, json);
         }
 
         /// <summary>
@@ -110,8 +137,9 @@ namespace DicomRtNifti.Core.Services
         /// and a literal JSON null both deserialize to null without throwing, and an empty file is
         /// the classic truncated-write artefact, so a null result counts as unusable too.
         ///
-        /// Internal rather than private so the refusal can be unit-tested against a temp file:
-        /// the public entry points are hard-wired to %AppData%, which tests must not touch.
+        /// Internal rather than private so the refusal can be unit-tested against a temp file
+        /// directly; the public entry points reach it through a <see cref="SettingsService(string)"/>
+        /// on a temp folder, never %AppData%, which tests must not touch.
         /// </summary>
         internal static T ReadJson<T>(string path, string what) where T : class
         {

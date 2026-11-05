@@ -117,6 +117,15 @@ namespace DicomRtNifti.Core.CommandLine
         public const string ConvertFlag = "--cohort-convert";
         public const string DryRunFlag = "--dry-run";
 
+        /// <summary><see cref="CohortExportOptions.SeriesInstanceUids"/>: export only these image series.</summary>
+        public const string SeriesFlag = "--series";
+
+        /// <summary><see cref="CohortExportOptions.StructureSetUids"/>: the structure set to export where a series has several.</summary>
+        public const string StructSeriesFlag = "--struct-series";
+
+        /// <summary><see cref="CohortExportOptions.RoiSelection"/>: export only the ROIs these canonical names cover.</summary>
+        public const string RoisFlag = "--rois";
+
         private static readonly CohortExportOptions Defaults = new CohortExportOptions();
 
         public static string FlagFor(CohortMode mode)
@@ -203,6 +212,10 @@ namespace DicomRtNifti.Core.CommandLine
             if (!string.IsNullOrEmpty(patients))
                 options.PatientIds = CohortExportOptions.ParseKeywordList(patients);
 
+            options.SeriesInstanceUids = ParseList(args, SeriesFlag);
+            options.StructureSetUids = ParseList(args, StructSeriesFlag);
+            options.RoiSelection = ParseList(args, RoisFlag);
+
             // --target-spacing is accepted as an alias here for symmetry with --image-forward.
             string spacingArg = CommandLineArgs.OptionalArgAny(args, "--output-spacing", "--target-spacing");
             if (!string.IsNullOrEmpty(spacingArg))
@@ -261,6 +274,22 @@ namespace DicomRtNifti.Core.CommandLine
             }
         }
 
+        /// <summary>
+        /// A comma-separated list flag, trimmed, empties dropped. Given with nothing in it
+        /// (<c>--rois ","</c>) it is refused: an empty selection means "no selection", which would
+        /// silently widen the run to everything the flag was meant to narrow.
+        /// </summary>
+        private static List<string> ParseList(string[] args, string flag)
+        {
+            string text = CommandLineArgs.OptionalArg(args, flag);
+            if (text == null)
+                return new List<string>();
+            var values = CohortExportOptions.ParseKeywordList(text);
+            if (values.Count == 0)
+                throw new CommandLineUsageException($"{flag}: expected a comma-separated list; got '{text}'.");
+            return values;
+        }
+
         private static List<string> ParseKeywords(
             string[] args, string flag, IReadOnlyList<ComputedMetadataOption> computedOptions)
         {
@@ -314,6 +343,9 @@ namespace DicomRtNifti.Core.CommandLine
                 RequireDefault(mode, o.OutputSpacing == null, "an output spacing");
                 AddAnonymization(args, o, presenter);
                 RequireDefault(mode, IsEmpty(o.PatientIds), "a patient filter");
+                RequireDefault(mode, IsEmpty(o.SeriesInstanceUids), "a series selection");
+                RequireDefault(mode, IsEmpty(o.StructureSetUids), "a structure-set choice");
+                RequireDefault(mode, IsEmpty(o.RoiSelection), "an ROI selection");
                 RequireDefault(mode, o.SeriesDescriptionFilter == null, "a series-description filter");
                 RequireDefault(mode, o.StructDescriptionFilter == null, "a structure-set-description filter");
                 RequireDefault(mode, !o.PreferLargestSeries, "--prefer-largest-series");
@@ -338,6 +370,7 @@ namespace DicomRtNifti.Core.CommandLine
                     "The options carry ROI associations but not the file they came from; render a " +
                     nameof(CohortCommand) + " with " + nameof(CohortCommand.AssociationsPath) + ".", nameof(command));
             AddFlag(args, "--only-associated-rois", o.OnlyAssociatedRois);
+            AddList(args, RoisFlag, o.RoiSelection, "ROI names");
             if (o.OutputSpacing != null)
             {
                 args.Add("--output-spacing");
@@ -349,8 +382,10 @@ namespace DicomRtNifti.Core.CommandLine
                 args.Add("--patients");
                 args.Add(JoinList(o.PatientIds, "patient IDs"));
             }
+            AddList(args, SeriesFlag, o.SeriesInstanceUids, "SeriesInstanceUIDs");
             AddValue(args, "--series-description", o.SeriesDescriptionFilter);
             AddValue(args, "--struct-description", o.StructDescriptionFilter);
+            AddList(args, StructSeriesFlag, o.StructureSetUids, "structure-set SeriesInstanceUIDs");
             AddFlag(args, "--prefer-largest-series", o.PreferLargestSeries);
             AddFlag(args, "--require-structures", o.RequireStructures);
             AddFlag(args, "--require-dose", o.RequireDose);
@@ -445,12 +480,15 @@ namespace DicomRtNifti.Core.CommandLine
             args.Add(presenter(path));
         }
 
-        private static void AddKeywords(List<string> args, string flag, List<string> keywords)
+        private static void AddKeywords(List<string> args, string flag, List<string> keywords) =>
+            AddList(args, flag, keywords, "keywords");
+
+        private static void AddList(List<string> args, string flag, List<string> values, string what)
         {
-            if (IsEmpty(keywords))
+            if (IsEmpty(values))
                 return;
             args.Add(flag);
-            args.Add(JoinList(keywords, "keywords"));
+            args.Add(JoinList(values, what));
         }
 
         /// <summary>

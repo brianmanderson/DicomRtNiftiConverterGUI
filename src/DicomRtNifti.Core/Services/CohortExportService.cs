@@ -140,8 +140,9 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
-        /// Narrows a study's image series to those that should be exported. Runs the description
-        /// filter first, then the largest-series rule, recording a reason for everything dropped.
+        /// Narrows a study's image series to those that should be exported. Runs the series
+        /// selection first, then the description filters, then the largest-series rule, recording
+        /// a reason for everything dropped.
         /// </summary>
         private static List<DicomSeriesGroup> ApplySeriesSelection(
             List<DicomSeriesGroup> imageSeries,
@@ -151,6 +152,19 @@ namespace DicomRtNifti.Core.Services
             AnonymizationService anon)
         {
             var candidates = imageSeries;
+
+            if (options.SeriesInstanceUids != null && options.SeriesInstanceUids.Count > 0)
+            {
+                var selected = new HashSet<string>(options.SeriesInstanceUids, StringComparer.Ordinal);
+                var matched = new List<DicomSeriesGroup>();
+                foreach (var s in candidates)
+                {
+                    if (selected.Contains(s.SeriesInstanceUID ?? "")) matched.Add(s);
+                    else skipped.Add(Describe(patientId, s,
+                        "SeriesInstanceUID is not in the series selection", options, anon));
+                }
+                candidates = matched;
+            }
 
             if (!string.IsNullOrWhiteSpace(options.SeriesDescriptionFilter))
             {
@@ -203,10 +217,12 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
-        /// Chooses which of an image series' structure sets to export. When
-        /// <see cref="CohortExportOptions.StructDescriptionFilter"/> is set, the matching one wins
-        /// — otherwise a series carrying both a planning-CT and a CBCT structure set would be
-        /// filtered in on the strength of one and then exported with the other. Falls back to the
+        /// Chooses which of an image series' structure sets to export. One named in
+        /// <see cref="CohortExportOptions.StructureSetUids"/> wins: a front-end that shows the
+        /// linked sets lets the user pick one by identity, which no description rule can match.
+        /// Next, when <see cref="CohortExportOptions.StructDescriptionFilter"/> is set, the matching
+        /// one wins — otherwise a series carrying both a planning-CT and a CBCT structure set would
+        /// be filtered in on the strength of one and then exported with the other. Falls back to the
         /// first linked set, which is the scan-order first after the hierarchy is sorted.
         /// </summary>
         private static DicomSeriesGroup SelectStructureSet(
@@ -214,6 +230,14 @@ namespace DicomRtNifti.Core.Services
         {
             if (image.LinkedRtStructs.Count == 0)
                 return null;
+
+            if (options.StructureSetUids != null && options.StructureSetUids.Count > 0)
+            {
+                var listed = new HashSet<string>(options.StructureSetUids, StringComparer.Ordinal);
+                var chosen = image.LinkedRtStructs.FirstOrDefault(rs => listed.Contains(rs.SeriesInstanceUID ?? ""));
+                if (chosen != null)
+                    return chosen;
+            }
 
             if (!string.IsNullOrWhiteSpace(options.StructDescriptionFilter))
             {
@@ -290,14 +314,20 @@ namespace DicomRtNifti.Core.Services
         /// for its image and its masks, and <see cref="SeriesParallelism"/> series are converted at
         /// once (see <see cref="RunsSeriesAtOnce"/>), recorded in plan order.
         /// </summary>
+        /// <param name="progress">The human log, as the CLI prints it on stderr.</param>
+        /// <param name="events">
+        /// Optional structured progress, in plan order (see <see cref="CohortProgress"/>); the log
+        /// is the same with or without it.
+        /// </param>
         public async Task<CohortExportResult> ExecuteAsync(
             CohortExportPlan plan,
             CohortExportOptions options,
             AnonymizationService anon,
             IProgress<string> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            IProgress<CohortProgress> events = null)
         {
-            return await RunAsync(plan, options, anon, progress, ct, writeFiles: true)
+            return await RunAsync(plan, options, anon, progress, events, ct, writeFiles: true)
                 .ConfigureAwait(false);
         }
 
@@ -311,15 +341,34 @@ namespace DicomRtNifti.Core.Services
         /// series is loaded once for spacing and volumes together, and
         /// <see cref="SeriesParallelism"/> series are surveyed at once, recorded in plan order.
         /// </summary>
+        /// <param name="progress">The human log, as the CLI prints it on stderr.</param>
+        /// <param name="events">
+        /// Optional structured progress, in plan order (see <see cref="CohortProgress"/>); the log
+        /// is the same with or without it.
+        /// </param>
         public async Task<CohortExportResult> ComputeManifestAsync(
             CohortExportPlan plan,
             CohortExportOptions options,
             AnonymizationService anon,
             IProgress<string> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            IProgress<CohortProgress> events = null)
         {
-            return await RunAsync(plan, options, anon, progress, ct, writeFiles: false)
+            return await RunAsync(plan, options, anon, progress, events, ct, writeFiles: false)
                 .ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// The associations and unmatched-ROI rule a run applies to every structure set:
+        /// <see cref="CohortExportOptions.Associations"/> narrowed by
+        /// <see cref="CohortExportOptions.RoiSelection"/> (<see cref="RoiSelection.Resolve"/>), or
+        /// as <see cref="CohortExportOptions.OnlyAssociatedRois"/> leaves them when nothing is
+        /// selected.
+        /// </summary>
+        public static EffectiveRois ResolveRois(CohortExportOptions options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            return RoiSelection.Resolve(options.Associations, options.RoiSelection, options.OnlyAssociatedRois);
         }
 
         private async Task<CohortExportResult> RunAsync(
@@ -327,6 +376,7 @@ namespace DicomRtNifti.Core.Services
             CohortExportOptions options,
             AnonymizationService anon,
             IProgress<string> progress,
+            IProgress<CohortProgress> events,
             CancellationToken ct,
             bool writeFiles)
         {
@@ -356,15 +406,22 @@ namespace DicomRtNifti.Core.Services
             var roiColumns = new List<string>();
             var roiColumnSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            bool associationsGiven = options.Associations != null && options.Associations.Count > 0;
-            if (options.OnlyAssociatedRois && !associationsGiven)
+            var rois = ResolveRois(options);
+            if (!rois.ExportUnmatched && (rois.Associations == null || rois.Associations.Count == 0))
             {
                 // The flag narrows the export to associated ROIs; with no associations there is
                 // nothing to narrow to, and the code path it gates exports every ROI unchanged.
                 progress?.Report(OnlyAssociatedWithoutAssociationsWarning);
             }
 
-            void Record(PlannedSeries planned, SeriesExportResult seriesResult)
+            int seriesCount = plan.Series.Count;
+
+            void ReportStarted(PlannedSeries planned, int index) =>
+                events?.Report(new CohortProgress(CohortProgressPhase.SeriesStarted, index, seriesCount,
+                    SeriesLabel(planned), CohortSeriesOutcome.None,
+                    result.SucceededCount, result.FailedCount, null));
+
+            void Record(PlannedSeries planned, int index, SeriesExportResult seriesResult)
             {
                 result.Series.Add(seriesResult);
                 result.SucceededCount++;
@@ -388,9 +445,13 @@ namespace DicomRtNifti.Core.Services
                         roiColumns.Add(mask.Name);
                 }
                 manifestRows.Add(row);
+
+                events?.Report(new CohortProgress(CohortProgressPhase.SeriesFinished, index, seriesCount,
+                    SeriesLabel(planned), CohortSeriesOutcome.Succeeded,
+                    result.SucceededCount, result.FailedCount, null));
             }
 
-            void RecordFailure(PlannedSeries planned, Exception ex)
+            void RecordFailure(PlannedSeries planned, int index, Exception ex)
             {
                 result.FailedCount++;
                 result.Errors.Add(new CohortError
@@ -400,6 +461,10 @@ namespace DicomRtNifti.Core.Services
                     Message = ex.Message,
                 });
                 progress?.Report($"  failed: {ex.Message}");
+
+                events?.Report(new CohortProgress(CohortProgressPhase.SeriesFinished, index, seriesCount,
+                    SeriesLabel(planned), CohortSeriesOutcome.Failed,
+                    result.SucceededCount, result.FailedCount, ex.Message));
             }
 
             if (!RunsSeriesAtOnce(plan, options, writeFiles))
@@ -411,12 +476,13 @@ namespace DicomRtNifti.Core.Services
                     index++;
 
                     ReportSeriesStart(planned, index, plan.Series.Count, options, progress);
+                    ReportStarted(planned, index);
 
+                    SeriesExportResult seriesResult;
                     try
                     {
-                        var seriesResult = await ConvertSeriesAsync(
-                            planned, options, anon, outputRoot, progress, ct, writeFiles).ConfigureAwait(false);
-                        Record(planned, seriesResult);
+                        seriesResult = await ConvertSeriesAsync(
+                            planned, options, rois, anon, outputRoot, progress, ct, writeFiles).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
@@ -424,11 +490,16 @@ namespace DicomRtNifti.Core.Services
                     }
                     catch (Exception ex)
                     {
-                        RecordFailure(planned, ex);
+                        RecordFailure(planned, index, ex);
 
                         if (options.FailFast)
                             throw;
+                        continue;
                     }
+                    // Outside the try, so only the series' own work can fail the series: a
+                    // structured-progress consumer that throws ends the run instead of being
+                    // counted against a series that already succeeded.
+                    Record(planned, index, seriesResult);
                 }
             }
             else
@@ -450,7 +521,7 @@ namespace DicomRtNifti.Core.Services
                     var running = new Task<HeldSeries>[plan.Series.Count];
                     for (int i = 0; i < running.Length; i++)
                         running[i] = RunHeldAsync(plan.Series[i], i + 1, running.Length,
-                            options, anon, outputRoot, writeFiles, gate, volumeGate, stop.Token);
+                            options, rois, anon, outputRoot, writeFiles, gate, volumeGate, stop.Token);
 
                     try
                     {
@@ -459,13 +530,21 @@ namespace DicomRtNifti.Core.Services
                             ct.ThrowIfCancellationRequested();
                             var planned = plan.Series[i];
                             var held = await running[i].ConfigureAwait(false);
+                            // The structured start goes with the replayed [i/n] line, as it goes
+                            // with the live one above, so both channels keep the same order.
+                            if (held.Started)
+                                ReportStarted(planned, i + 1);
                             held.Progress.ReplayTo(progress);
+
+                            if (held.Error == null)
+                            {
+                                Record(planned, i + 1, held.Result);
+                                continue;
+                            }
 
                             try
                             {
-                                if (held.Error != null)
-                                    ExceptionDispatchInfo.Capture(held.Error).Throw();
-                                Record(planned, held.Result);
+                                ExceptionDispatchInfo.Capture(held.Error).Throw();
                             }
                             catch (OperationCanceledException)
                             {
@@ -473,7 +552,7 @@ namespace DicomRtNifti.Core.Services
                             }
                             catch (Exception ex)
                             {
-                                RecordFailure(planned, ex);
+                                RecordFailure(planned, i + 1, ex);
 
                                 if (options.FailFast)
                                     throw;
@@ -501,7 +580,8 @@ namespace DicomRtNifti.Core.Services
             // at all, at exit 0, with nothing on stderr: the file-name typo in an association list
             // that costs a day. The manifest above is still written (it is the survey that shows
             // which names exist); the condition is reported and recorded as an error so the
-            // caller's JSON carries it, and the CLI exits 1.
+            // caller's JSON carries it, and the CLI exits 1. An ROI selection that matches nothing
+            // is the same typo and is reported the same way.
             string nothingAssociated = DescribeNothingAssociated(plan, options, result);
             if (nothingAssociated != null)
             {
@@ -509,6 +589,8 @@ namespace DicomRtNifti.Core.Services
                 result.Errors.Add(new CohortError { Message = nothingAssociated });
             }
 
+            events?.Report(new CohortProgress(CohortProgressPhase.Completed, seriesCount, seriesCount,
+                null, CohortSeriesOutcome.None, result.SucceededCount, result.FailedCount, null));
             return result;
         }
 
@@ -549,8 +631,7 @@ namespace DicomRtNifti.Core.Services
         private static void ReportSeriesStart(
             PlannedSeries planned, int index, int count, CohortExportOptions options, IProgress<string> progress)
         {
-            string label = $"{planned.ExportPatientId}/{Truncate(planned.ExportSeriesUid, 8)}";
-            progress?.Report($"[{index}/{count}] {label}");
+            progress?.Report($"[{index}/{count}] {SeriesLabel(planned)}");
 
             // The non-uniform-Z diagnostic belonged here from the start and was not: the
             // single-series CLI modes warned, where a human is watching one conversion, and
@@ -576,8 +657,8 @@ namespace DicomRtNifti.Core.Services
         /// </summary>
         private async Task<HeldSeries> RunHeldAsync(
             PlannedSeries planned, int index, int count,
-            CohortExportOptions options, AnonymizationService anon, string outputRoot, bool writeFiles,
-            SemaphoreSlim gate, SemaphoreSlim volumeGate, CancellationToken ct)
+            CohortExportOptions options, EffectiveRois rois, AnonymizationService anon, string outputRoot,
+            bool writeFiles, SemaphoreSlim gate, SemaphoreSlim volumeGate, CancellationToken ct)
         {
             var held = new HeldSeries();
             try
@@ -587,8 +668,9 @@ namespace DicomRtNifti.Core.Services
                 {
                     ct.ThrowIfCancellationRequested();
                     ReportSeriesStart(planned, index, count, options, held.Progress);
+                    held.Started = true;
                     held.Result = await ConvertSeriesAsync(
-                        planned, options, anon, outputRoot, held.Progress, ct,
+                        planned, options, rois, anon, outputRoot, held.Progress, ct,
                         writeFiles, volumeGate).ConfigureAwait(false);
                 }
                 finally
@@ -608,6 +690,9 @@ namespace DicomRtNifti.Core.Services
             public HeldProgress Progress { get; } = new HeldProgress();
             public SeriesExportResult Result { get; set; }
             public Exception Error { get; set; }
+
+            /// <summary>The series reached its turn and logged its header, so it has a start to report.</summary>
+            public bool Started { get; set; }
         }
 
         /// <summary>
@@ -634,17 +719,18 @@ namespace DicomRtNifti.Core.Services
 
         /// <summary>
         /// The --only-associated-rois failure, or null when there is none: associations were
-        /// given, structures were exported, at least one series that carried a structure set
-        /// converted, and still no mask came out. Series that failed outright are their own
-        /// errors and do not count here, so a run that broke for another reason is not blamed on
-        /// the association list.
+        /// given (or ROIs selected), structures were exported, at least one series that carried a
+        /// structure set converted, and still no mask came out. Series that failed outright are
+        /// their own errors and do not count here, so a run that broke for another reason is not
+        /// blamed on the association list.
         /// </summary>
         public static string DescribeNothingAssociated(
             CohortExportPlan plan, CohortExportOptions options, CohortExportResult result)
         {
             if (plan == null || options == null || result == null)
                 return null;
-            if (!options.OnlyAssociatedRois || options.Associations == null || options.Associations.Count == 0)
+            var rois = ResolveRois(options);
+            if (rois.ExportUnmatched || rois.Associations == null || rois.Associations.Count == 0)
                 return null;
             if (!options.ExportStructures)
                 return null;
@@ -654,38 +740,55 @@ namespace DicomRtNifti.Core.Services
                 return null;
 
             var structureSets = plan.Series.Where(p => p.RtStruct != null).ToList();
-            return BuildNothingAssociatedMessage(options.Associations, structureSets);
+            return BuildNothingAssociatedMessage(options, structureSets);
         }
 
         /// <summary>
         /// Names what was asked for and what was there, so the mismatch can be fixed from the
-        /// message alone.
+        /// message alone: the selected names when ROIs were selected, the associations otherwise.
         /// </summary>
         internal static string BuildNothingAssociatedMessage(
-            List<RoiAssociation> associations, List<PlannedSeries> structureSets)
+            CohortExportOptions options, List<PlannedSeries> structureSets)
         {
-            var wanted = associations
-                .Select(a => a.CanonicalName)
-                .Where(n => !string.IsNullOrWhiteSpace(n))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-                .ToList();
             var present = structureSets
                 .SelectMany(p => p.RtStruct.RoiNames)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            return "--only-associated-rois matched no ROI in any of the " + structureSets.Count +
+            var rois = ResolveRois(options);
+            if (!rois.FromSelection)
+                return BuildNothingAssociatedMessage(options.Associations, present, structureSets.Count);
+
+            return "--rois matched no ROI in any of the " + structureSets.Count +
+                   " exported structure set(s), so no mask was exported. ROIs asked for [" +
+                   string.Join(", ", CanonicalNames(rois.Associations)) + "]; the structure sets contain [" +
+                   string.Join(", ", present) + "]. Fix the names given to --rois, or the aliases of " +
+                   "the associations they name.";
+        }
+
+        private static string BuildNothingAssociatedMessage(
+            List<RoiAssociation> associations, List<string> present, int structureSetCount)
+        {
+            return "--only-associated-rois matched no ROI in any of the " + structureSetCount +
                    " exported structure set(s), so no mask was exported. Associations asked for [" +
-                   string.Join(", ", wanted) + "]; the structure sets contain [" +
+                   string.Join(", ", CanonicalNames(associations)) + "]; the structure sets contain [" +
                    string.Join(", ", present) + "]. Fix the association names or aliases, or drop " +
                    "--only-associated-rois to export every ROI.";
         }
 
+        private static List<string> CanonicalNames(List<RoiAssociation> associations) =>
+            associations
+                .Select(a => a.CanonicalName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
         private async Task<SeriesExportResult> ConvertSeriesAsync(
             PlannedSeries planned,
             CohortExportOptions options,
+            EffectiveRois rois,
             AnonymizationService anon,
             string outputRoot,
             IProgress<string> progress,
@@ -711,8 +814,8 @@ namespace DicomRtNifti.Core.Services
             double[] spacing = null;
             Dictionary<string, double> computedVolumes = null;
 
-            var effectiveAssociations = options.Associations;
-            bool exportUnmatched = !options.OnlyAssociatedRois;
+            var effectiveAssociations = rois.Associations;
+            bool exportUnmatched = rois.ExportUnmatched;
 
             if (writeFiles)
             {
@@ -906,5 +1009,9 @@ namespace DicomRtNifti.Core.Services
 
         private static string Truncate(string value, int length) =>
             string.IsNullOrEmpty(value) ? "" : value.Substring(0, Math.Min(length, value.Length));
+
+        /// <summary>How the log and <see cref="CohortProgress"/> name a series: export PatientID / first 8 of export SeriesUID.</summary>
+        private static string SeriesLabel(PlannedSeries planned) =>
+            $"{planned.ExportPatientId}/{Truncate(planned.ExportSeriesUid, 8)}";
     }
 }

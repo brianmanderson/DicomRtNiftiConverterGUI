@@ -103,15 +103,17 @@ namespace DicomRtNifti.Core.Documents
 
         /// <summary>
         /// The names the masks (or the manifest's ROI columns) would carry: the structure set's ROI
-        /// names through the associations, by the resolver the run itself uses, in the order the
-        /// run records them. Empty when structures are not exported or there is no structure set.
+        /// names through the associations (narrowed by any ROI selection), by the resolver the run
+        /// itself uses, in the order the run records them. Empty when structures are not exported
+        /// or there is no structure set.
         /// </summary>
         private static List<string> ExportedRoiNames(PlannedSeries planned, CohortExportOptions options)
         {
             if (!options.ExportStructures || planned.RtStruct == null)
                 return new List<string>();
+            var rois = CohortExportService.ResolveRois(options);
             return NiftiConversionService
-                .ResolveRoiNames(planned.RtStruct.RoiNames, options.Associations, !options.OnlyAssociatedRois)
+                .ResolveRoiNames(planned.RtStruct.RoiNames, rois.Associations, rois.ExportUnmatched)
                 .Keys
                 .OrderBy(n => n, StringComparer.Ordinal)
                 .ToList();
@@ -134,16 +136,18 @@ namespace DicomRtNifti.Core.Documents
 
         /// <summary>
         /// What a run would warn about for the whole cohort, in the run's own words:
-        /// --only-associated-rois with nothing to match against, or with associations that match
-        /// no ROI in any planned structure set (the run would export no mask and exit 1).
+        /// --only-associated-rois with nothing to match against, or with associations (or an ROI
+        /// selection) that match no ROI in any planned structure set (the run would export no mask
+        /// and exit 1).
         /// </summary>
         private static List<string> DescribeRunWarnings(CohortExportPlan plan, CohortExportOptions options)
         {
             var warnings = new List<string>();
-            if (!options.OnlyAssociatedRois || !options.ExportStructures)
+            var rois = CohortExportService.ResolveRois(options);
+            if (rois.ExportUnmatched || !options.ExportStructures)
                 return warnings;
 
-            if (options.Associations == null || options.Associations.Count == 0)
+            if (rois.Associations == null || rois.Associations.Count == 0)
             {
                 warnings.Add(CohortExportService.OnlyAssociatedWithoutAssociationsWarning);
                 return warnings;
@@ -153,7 +157,7 @@ namespace DicomRtNifti.Core.Documents
             if (structureSets.Count > 0 && structureSets.All(p => ExportedRoiNames(p, options).Count == 0))
             {
                 warnings.Add("WARNING: " +
-                    CohortExportService.BuildNothingAssociatedMessage(options.Associations, structureSets));
+                    CohortExportService.BuildNothingAssociatedMessage(options, structureSets));
             }
             return warnings;
         }

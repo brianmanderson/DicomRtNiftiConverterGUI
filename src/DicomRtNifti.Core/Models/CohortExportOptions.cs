@@ -27,6 +27,15 @@ namespace DicomRtNifti.Core.Models
         public List<string> PatientIds { get; set; } = new List<string>();
 
         /// <summary>
+        /// When non-empty, only image series with one of these SeriesInstanceUIDs are exported:
+        /// the "pick these series" a front-end with a tree to tick needs. Matched exactly against
+        /// the source UID, before any anonymization. Applied after <see cref="PatientIds"/> and
+        /// before the description filters; every image series of a selected patient it leaves out
+        /// is reported in <see cref="CohortExportPlan.Skipped"/>.
+        /// </summary>
+        public List<string> SeriesInstanceUids { get; set; } = new List<string>();
+
+        /// <summary>
         /// When set, only image series whose SeriesDescription contains this substring
         /// (case-insensitive) are exported.
         ///
@@ -47,6 +56,16 @@ namespace DicomRtNifti.Core.Models
         /// while the structure sets drawn on them are named for what they are.
         /// </summary>
         public string StructDescriptionFilter { get; set; }
+
+        /// <summary>
+        /// The structure set to export when an image series has several linked: one whose
+        /// SeriesInstanceUID is listed here wins (the first such, in linked order), then one
+        /// matching <see cref="StructDescriptionFilter"/>, then the first linked. A choice, not a
+        /// filter: a series none of whose structure sets is listed still exports, by the next
+        /// rule, so one list can name a structure set for each of many series. Matched exactly
+        /// against the source UID, before any anonymization.
+        /// </summary>
+        public List<string> StructureSetUids { get; set; } = new List<string>();
 
         /// <summary>
         /// When true, keep only the image series with the most slices in each study. A blunt
@@ -81,6 +100,14 @@ namespace DicomRtNifti.Core.Models
         /// unmatched ROIs are exported under their raw DICOM names.
         /// </summary>
         public bool OnlyAssociatedRois { get; set; }
+
+        /// <summary>
+        /// When non-empty, only ROIs these canonical names cover are exported: the desktop app's
+        /// "Select ROIs". A selected name keeps the aliases its association gives it, a name no
+        /// association carries matches itself, and every other ROI is dropped, whatever
+        /// <see cref="OnlyAssociatedRois"/> says. See <see cref="Models.RoiSelection"/>.
+        /// </summary>
+        public List<string> RoiSelection { get; set; } = new List<string>();
 
         // ---- Geometry ---------------------------------------------------------------------
 
