@@ -1,3 +1,21 @@
 @page "/jobs"
+@inject FeatureCatalog Catalog
 
-<FeatureStub Feature="typeof(JobsFeature)" DeliveredBy="W4-E" />
+@* Plan section 4.8. The body is JobsView, which carries the page's scoped styles, so this
+   page's own markup stays plain. *@
+
+<PageTitle>Jobs · DicomRtNifti</PageTitle>
+
+<h1>Jobs</h1>
+<p class="summary">@_feature.Feature.Summary</p>
+
+<JobsView />
+
+<h2>CLI equivalent</h2>
+<CliCommand Cli="_feature.Feature.Cli" />
+
+@code {
+    private FeatureDescriptor _feature = default!;
+
+    protected override void OnInitialized() => _feature = Catalog.For(typeof(JobsFeature));
+}

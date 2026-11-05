@@ -1,0 +1,119 @@
+@using DicomRtNifti.Web.Audit
+@inject AuditLog Log
+@inject ICurrentUser CurrentUser
+
+@* The body of the Audit page (plan section 4.15). The audit log is PHI (it names root-relative
+   paths), so only an administrator sees it; its records were redacted for server paths when
+   they were written. *@
+
+@if (!CurrentUser.IsAdministrator)
+{
+    <div class="notice notice-failed audit-denied" role="alert">The audit log is for administrators.</div>
+}
+else if (!Log.IsConfigured)
+{
+    <div class="notice notice-failed audit-off" role="status">
+        The audit log needs a state folder: set <code>Web:StateRoot</code> in appsettings.json or the environment.
+    </div>
+}
+else
+{
+    <div class="audit-filter">
+        <label for="audit-action">Action</label>
+        <select id="audit-action" @onchange="OnActionChanged">
+            <option value="" selected="@(_action is null)">every action</option>
+            @foreach (string action in AuditActions.All)
+            {
+                <option value="@action" selected="@(_action == action)">@action</option>
+            }
+        </select>
+        <span class="hint">Newest first; times in UTC. Stored as <code>state:audit/audit-YYYY-MM-DD.jsonl</code>.</span>
+    </div>
+
+    @if (_entries.Count == 0)
+    {
+        <p class="hint audit-empty">No audit records yet.</p>
+    }
+    else
+    {
+        <table class="roots audit-entries">
+            <thead>
+                <tr><th>Time</th><th>User</th><th>Action</th><th>Job</th><th>Outcome</th><th>What</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in _entries)
+                {
+                    <tr>
+                        <td class="audit-time">@entry.TimeUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td>@entry.User</td>
+                        <td><code>@entry.Action</code></td>
+                        <td>
+                            @if (entry.JobId is not null)
+                            {
+                                <code title="@entry.JobId">@entry.JobId[..Math.Min(8, entry.JobId.Length)]</code>
+                                <span class="audit-kind">@entry.Kind</span>
+                            }
+                        </td>
+                        <td>@entry.Outcome</td>
+                        <td>
+                            @if (entry.Target is not null)
+                            {
+                                <div>@entry.Target</div>
+                            }
+                            @if (entry.Detail is not null)
+                            {
+                                <div class="audit-detail">@entry.Detail</div>
+                            }
+                            @if (entry.Cli is not null)
+                            {
+                                <div class="audit-cli"><code>@entry.Cli</code></div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (_entries.Count >= _max)
+        {
+            <button type="button" class="audit-more" @onclick="ShowMore">Show older records</button>
+        }
+    }
+}
+
+@code {
+    private const int PageSize = 200;
+
+    private IReadOnlyList<AuditEntry> _entries = Array.Empty<AuditEntry>();
+    private string? _action;
+    private int _max = PageSize;
+
+    protected override void OnInitialized() => Load();
+
+    private void OnActionChanged(ChangeEventArgs e)
+    {
+        string? value = e.Value?.ToString();
+        _action = string.IsNullOrEmpty(value) ? null : value;
+        _max = PageSize;
+        Load();
+    }
+
+    private void ShowMore()
+    {
+        _max += PageSize;
+        Load();
+    }
+
+    private void Load()
+    {
+        if (!CurrentUser.IsAdministrator || !Log.IsConfigured)
+            return;
+        try
+        {
+            _entries = Log.ReadRecent(_max, _action);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _entries = Array.Empty<AuditEntry>();
+        }
+    }
+}
