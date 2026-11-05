@@ -60,7 +60,8 @@ namespace DicomRtNifti.Core.Models
         public List<string> UnpositionedSlices { get; set; } = new List<string>();
 
         /// <summary>
-        /// In-plane spacing [row, column] in mm from the series' first slice, or null when the
+        /// PixelSpacing (0028,0030) in mm from the series' first slice, in DICOM's order: the
+        /// spacing between rows, then between columns — that is [y, x], not [x, y]. Null when the
         /// tag is absent (as on RTSTRUCT).
         /// </summary>
         public double[] PixelSpacing { get; set; }
@@ -70,6 +71,67 @@ namespace DicomRtNifti.Core.Models
         /// as the through-plane fallback when a series has too few slices to derive spacing.
         /// </summary>
         public double? SliceThickness { get; set; }
+
+        /// <summary>
+        /// ImageOrientationPatient (0020,0037) of the first file that carries it: the row
+        /// direction cosines, then the column ones. Null when no file carries a usable value.
+        /// </summary>
+        public double[] ImageOrientationPatient { get; set; }
+
+        /// <summary>
+        /// True when some file's ImageOrientationPatient differs from <see cref="ImageOrientationPatient"/>
+        /// by more than 1e-4 in a component: the files are not one stack of parallel slices.
+        /// </summary>
+        public bool OrientationVaries { get; set; }
+
+        /// <summary>Rows (0028,0010) of the first file that carries it, or null.</summary>
+        public int? Rows { get; set; }
+
+        /// <summary>Columns (0028,0011) of the first file that carries it, or null.</summary>
+        public int? Columns { get; set; }
+
+        /// <summary>
+        /// RescaleSlope (0028,1053) of the first file that carries a rescale (either tag), or
+        /// null when that file has no slope. See <see cref="RescaleVaries"/>.
+        /// </summary>
+        public double? RescaleSlope { get; set; }
+
+        /// <summary>RescaleIntercept (0028,1052), from the same file as <see cref="RescaleSlope"/>.</summary>
+        public double? RescaleIntercept { get; set; }
+
+        /// <summary>True when some file of the series carries RescaleSlope or RescaleIntercept.</summary>
+        public bool HasRescale { get; set; }
+
+        /// <summary>
+        /// True when the files disagree on the rescale, as PET series that scale each slice do:
+        /// <see cref="RescaleSlope"/> and <see cref="RescaleIntercept"/> are then one file's values,
+        /// not the series'.
+        /// </summary>
+        public bool RescaleVaries { get; set; }
+
+        /// <summary>NumberOfFrames (0028,0008) of the first file that carries it, or null (single-frame objects).</summary>
+        public int? NumberOfFrames { get; set; }
+
+        /// <summary>
+        /// How many files carried each Modality value, in ordinal order of the value. The scan
+        /// sets <see cref="Modality"/> to the majority; any other entry is an instance it
+        /// outvoted (a stray localizer or secondary capture). Empty when no file had a Modality.
+        /// </summary>
+        public Dictionary<string, int> ModalityCounts { get; set; } = new Dictionary<string, int>();
+
+        /// <summary>
+        /// RTSTRUCT only: every frame of reference the structure set names — the top-level tag,
+        /// ReferencedFrameOfReferenceSequence and each ROI's ReferencedFrameOfReferenceUID, in that
+        /// order, without duplicates. <see cref="FrameOfReferenceUID"/> is the first of them.
+        /// </summary>
+        public List<string> FrameOfReferenceUIDs { get; set; } = new List<string>();
+
+        /// <summary>
+        /// RTSTRUCT only: names StructureSetROISequence lists more than once within one structure
+        /// set, each once, in order of first repeat. <see cref="RoiNames"/> keeps a single copy;
+        /// an export keeps the name for the lowest ROINumber and suffixes the others with theirs.
+        /// </summary>
+        public List<string> DuplicateRoiNames { get; set; } = new List<string>();
 
         /// <summary>
         /// The first RTSTRUCT series linked to this image series (null if none found).
@@ -107,7 +169,7 @@ namespace DicomRtNifti.Core.Models
 
         /// <summary>
         /// Set on an RTSTRUCT/RTDOSE series to record how it was matched to its image series.
-        /// A study whose RT objects all resolved via <see cref="RtLinkMatchRule.FirstSeriesFallback"/>
+        /// A study whose RT objects all resolved via <see cref="RtLinkMatchRule.LargestSeriesFallback"/>
         /// is a QC signal, not a success: the link is a guess. Left at
         /// <see cref="RtLinkMatchRule.None"/> on image series and on unlinked RT objects.
         /// </summary>

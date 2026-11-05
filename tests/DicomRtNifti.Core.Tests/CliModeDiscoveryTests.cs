@@ -19,7 +19,7 @@ namespace DicomRtNifti.Core.Tests
                 new[]
                 {
                     "--forward", "--reverse", "--image-reverse", "--image-forward",
-                    "--cohort-scan", "--cohort-manifest", "--cohort-convert",
+                    "--cohort-scan", "--cohort-manifest", "--cohort-convert", "--cohort-analyze",
                 },
                 CliModes.All.Select(m => m.Flag));
             Assert.All(CliModes.All, m =>
@@ -39,7 +39,7 @@ namespace DicomRtNifti.Core.Tests
             Assert.True(run.ExitCode == 2, run.ToString());
             Assert.StartsWith(
                 "Headless mode requires --forward, --reverse, --image-reverse, --image-forward, " +
-                "--cohort-scan, --cohort-manifest, or --cohort-convert.",
+                "--cohort-scan, --cohort-manifest, --cohort-convert, or --cohort-analyze.",
                 run.Stderr);
         }
 

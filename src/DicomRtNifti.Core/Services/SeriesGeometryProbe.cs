@@ -380,10 +380,14 @@ namespace DicomRtNifti.Core.Services
         /// <summary>Distance in mm from the first slice to the last.</summary>
         public double ExtentMm { get; set; }
 
-        /// <summary>Full [x, y, z] spacing, or null when either component is unknown.</summary>
+        /// <summary>
+        /// Full [x, y, z] spacing, or null when either component is unknown. PixelSpacing is
+        /// [row, column], the spacing between rows (y) and then between columns (x), so x is its
+        /// second value and y its first (toolkit issue 70).
+        /// </summary>
         public double[] Spacing =>
             (PixelSpacing != null && PixelSpacing.Length >= 2 && SliceSpacing.HasValue)
-                ? new[] { PixelSpacing[0], PixelSpacing[1], SliceSpacing.Value }
+                ? new[] { PixelSpacing[1], PixelSpacing[0], SliceSpacing.Value }
                 : null;
     }
 }
