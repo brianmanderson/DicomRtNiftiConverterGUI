@@ -55,7 +55,7 @@ namespace DicomRtNifti.Core.Analysis
             if (!AnalysisTierNames.IsAvailable(options.Tier))
             {
                 throw new NotSupportedException(
-                    $"The {AnalysisTierNames.Of(options.Tier)} tier is not yet available; only the {AnalysisTierNames.Header} tier is.");
+                    $"The {AnalysisTierNames.Of(options.Tier)} tier is not yet available; only the {AnalysisTierNames.Header} and {AnalysisTierNames.Contours} tiers are.");
             }
 
             var ids = new AnalysisIdentifiers(anon);

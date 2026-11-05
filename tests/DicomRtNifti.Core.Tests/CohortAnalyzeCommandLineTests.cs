@@ -84,7 +84,7 @@ namespace DicomRtNifti.Core.Tests
         }
 
         [Theory]
-        [InlineData("--tier raster is not yet available; only --tier header is.", "--cohort-analyze", "--input", "x", "--tier", "Raster")]
+        [InlineData("--tier raster is not yet available; only --tier header and --tier contours are.", "--cohort-analyze", "--input", "x", "--tier", "Raster")]
         [InlineData("--tier: expected header, contours or raster; got 'voxels'.", "--cohort-analyze", "--input", "x", "--tier", "voxels")]
         [InlineData("Required argument '--input' is missing.", "--cohort-analyze", "--tier", "contours")]
         [InlineData("--key-path places the anonymization key, so it needs --anonymize.", "--cohort-analyze", "--input", "x", "--key-path", "k")]

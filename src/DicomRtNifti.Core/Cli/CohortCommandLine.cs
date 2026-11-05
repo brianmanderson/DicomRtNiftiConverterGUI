@@ -129,7 +129,7 @@ namespace DicomRtNifti.Core.CommandLine
         public const string AnalyzeFlag = "--cohort-analyze";
         public const string DryRunFlag = "--dry-run";
 
-        /// <summary><see cref="CohortCommand.Tier"/>: header, contours or raster (only header is available yet).</summary>
+        /// <summary><see cref="CohortCommand.Tier"/>: header, contours or raster (header and contours are available; raster is not yet).</summary>
         public const string TierFlag = "--tier";
 
         /// <summary><see cref="CohortCommand.CsvOutPath"/>: the folder the analysis' tables are written into.</summary>
@@ -318,7 +318,7 @@ namespace DicomRtNifti.Core.CommandLine
             if (!AnalysisTierNames.IsAvailable(tier))
             {
                 throw new CommandLineUsageException(
-                    $"{TierFlag} {AnalysisTierNames.Of(tier)} is not yet available; only {TierFlag} {AnalysisTierNames.Header} is.");
+                    $"{TierFlag} {AnalysisTierNames.Of(tier)} is not yet available; only {TierFlag} {AnalysisTierNames.Header} and {TierFlag} {AnalysisTierNames.Contours} are.");
             }
             return tier;
         }

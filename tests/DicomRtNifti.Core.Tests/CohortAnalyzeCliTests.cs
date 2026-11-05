@@ -135,7 +135,7 @@ namespace DicomRtNifti.Core.Tests
 
             Assert.True(run.ExitCode == 2, run.ToString());
             Assert.Equal("", run.Stdout);
-            Assert.Contains($"ERROR: --tier {tier.ToLowerInvariant()} is not yet available; only --tier header is.", run.Stderr);
+            Assert.Contains($"ERROR: --tier {tier.ToLowerInvariant()} is not yet available; only --tier header and --tier contours are.", run.Stderr);
             Assert.DoesNotContain("Scanning", run.Stderr);
         }
 
