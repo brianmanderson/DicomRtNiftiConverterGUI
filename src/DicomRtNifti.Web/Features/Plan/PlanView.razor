@@ -1,0 +1,265 @@
+@implements IDisposable
+@using DicomRtNifti.Core.CommandLine
+@using DicomRtNifti.Web.Audit
+@using DicomRtNifti.Web.Features.Export
+@using DicomRtNifti.Web.Jobs
+@inject ExportSession Session
+@inject IInventorySelection Selection
+@inject ExportCommandBuilder Builder
+@inject JobQueue Queue
+@inject JobEvents Events
+@inject PathRedactor Redactor
+@inject ICurrentUser CurrentUser
+
+@* The body of Plan review (plan section 4.7). Build plan submits the dry run (cohort-plan, light
+   lane), which writes nothing; the plan shown is the document Core built, read for display. Run
+   conversion and Run survey submit the export on Export setup to the heavy lane, as
+   cohort-convert and cohort-manifest jobs; the Jobs page follows them. Under anonymization a
+   project's first submission draws its salt (D-36). *@
+
+<ExportTarget Changed="Recompute" />
+
+@if (_message is not null)
+{
+    <div class="notice plan-message" role="status">@_message <a href="jobs">Follow it on Jobs.</a></div>
+}
+@if (_error is not null)
+{
+    <div class="notice notice-failed plan-error" role="alert">@_error</div>
+}
+
+<div class="plan-mode">
+    <label><input type="radio" name="plan-mode" class="plan-convert" checked="@(Session.PlanMode == CohortMode.Convert)" @onchange="() => SetMode(CohortMode.Convert)" /> Conversion</label>
+    <label><input type="radio" name="plan-mode" class="plan-survey" checked="@(Session.PlanMode == CohortMode.Manifest)" @onchange="() => SetMode(CohortMode.Manifest)" /> Survey (manifest only)</label>
+</div>
+
+@if (_dryRun?.Cli is { } dryRunCli)
+{
+    <div class="cli"><pre><code class="plan-cli">@dryRunCli</code></pre></div>
+}
+@foreach (string problem in _dryRun?.Problems ?? Array.Empty<string>())
+{
+    <p class="target-problem plan-problem">@Redactor.Redact(problem)</p>
+}
+<p class="hint">Change the options on <a href="export">Export setup</a>.</p>
+
+<div class="plan-actions">
+    <button class="plan-build" @onclick="BuildPlan" disabled="@(_dryRun?.Cli is null)">Build plan</button>
+    <button class="plan-run-convert" @onclick="() => Run(CohortMode.Convert)" disabled="@(_dryRun?.Cli is null)">Run conversion</button>
+    <button class="plan-run-survey" @onclick="() => Run(CohortMode.Manifest)" disabled="@(_dryRun?.Cli is null)">Run survey</button>
+</div>
+
+@if (PlanJob is { } job)
+{
+    <p class="plan-job">@job.State.DisplayName(): @Redactor.Redact(job.Title)@(job.Reason is null ? "" : " — " + Redactor.Redact(job.Reason))</p>
+    @if (Stale)
+    {
+        <p class="target-problem plan-stale">The options changed since this plan was built; build it again before running.</p>
+    }
+}
+
+@if (_plan is { } plan)
+{
+    <h2>The plan</h2>
+    <dl class="facts plan-facts">
+        <dt>Mode</dt><dd>@plan.Mode</dd>
+        <dt>Series to write</dt><dd class="plan-count">@plan.SeriesCount</dd>
+        <dt>Skipped</dt><dd>@plan.Skipped.Count</dd>
+        <dt>Unlinked RT objects</dt><dd>@plan.Unlinked.Count</dd>
+        <dt>Output</dt><dd>@plan.OutputRoot</dd>
+        <dt>Manifest</dt><dd>@plan.ManifestCsv</dd>
+        <dt>Spacing</dt><dd>@(plan.OutputSpacing ?? "each series' own grid")</dd>
+        <dt>Anonymized</dt><dd>@(plan.Anonymized ? "yes, key " + plan.AnonymizationKey : "no")</dd>
+        <dt>Estimated work</dt><dd>@plan.SeriesCount series on the heavy lane (one conversion at a time unless the server allows more)</dd>
+    </dl>
+
+    @if (plan.Warnings.Count > 0)
+    {
+        <h3>Warnings</h3>
+        <ul class="plan-warnings">
+            @foreach (string warning in plan.Warnings)
+            {
+                <li>@warning</li>
+            }
+        </ul>
+    }
+
+    <h3>Output tree</h3>
+    <div class="plan-tree">
+        @foreach (var folder in plan.Tree.Children)
+        {
+            @RenderFolder(folder)
+        }
+    </div>
+
+    <h3>Series</h3>
+    <table class="roots plan-series">
+        <thead>
+            <tr><th>Patient</th><th>Series</th><th>Images</th><th>Output folder</th><th>Structure set</th><th>ROIs</th><th>Doses</th><th>Warnings</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var series in plan.Planned)
+            {
+                <tr>
+                    <td>@series.PatientId</td>
+                    <td>@series.Modality @series.Description</td>
+                    <td>@series.Instances</td>
+                    <td><code>@series.OutputDir</code></td>
+                    <td>@(series.StructureSet ?? "none")</td>
+                    <td>@string.Join(", ", series.Rois)</td>
+                    <td>@series.Doses</td>
+                    <td>@string.Join(" ", series.Warnings)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @if (plan.Skipped.Count > 0)
+    {
+        <h3>Skipped</h3>
+        @RenderExcluded(plan.Skipped, "plan-skipped")
+    }
+    @if (plan.Unlinked.Count > 0)
+    {
+        <h3>Unlinked RT objects</h3>
+        @RenderExcluded(plan.Unlinked, "plan-unlinked")
+    }
+}
+
+@code {
+    private ExportCommand? _dryRun;
+    private PlanDocumentView? _plan;
+    private string? _planLoadedFor;
+    private string? _plannedCli;
+    private string? _message;
+    private string? _error;
+    private JobEventThrottle? _throttle;
+
+    private JobRecord? PlanJob => Queue.Find(Session.PlanJobId);
+
+    /// <summary>The plan on screen was built for another command than the one the options now make.</summary>
+    private bool Stale => _plannedCli is not null && _dryRun?.Cli is not null && _plannedCli != _dryRun.Cli;
+
+    protected override void OnInitialized()
+    {
+        Recompute();
+        LoadPlan();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Only once interactive: a prerendered instance is thrown away and must not subscribe.
+        if (firstRender)
+            _throttle = new JobEventThrottle(Events, () => InvokeAsync(Refresh), change => change.JobId == Session.PlanJobId);
+    }
+
+    public void Dispose() => _throttle?.Dispose();
+
+    private void Refresh()
+    {
+        LoadPlan();
+        StateHasChanged();
+    }
+
+    private void Recompute() => _dryRun = Builder.Build(Session, Selection, Session.PlanMode, dryRun: true);
+
+    private void SetMode(CohortMode mode)
+    {
+        Session.PlanMode = mode;
+        Session.NotifyChanged();
+        Recompute();
+    }
+
+    /// <summary>Reads the finished dry run's document, once per job.</summary>
+    private void LoadPlan()
+    {
+        var job = PlanJob;
+        if (job is null)
+        {
+            _plan = null;
+            _planLoadedFor = null;
+            return;
+        }
+
+        _plannedCli ??= job.Cli;
+        if (job.State != JobState.Succeeded || _planLoadedFor == job.Id)
+            return;
+        if (Queue.ReadResult(job.Id) is { } json)
+        {
+            _plan = PlanDocumentView.Parse(json);
+            _planLoadedFor = job.Id;
+        }
+    }
+
+    private void BuildPlan()
+    {
+        _message = null;
+        _error = null;
+        var command = Builder.Build(Session, Selection, Session.PlanMode, dryRun: true, createSalt: true);
+        if (!command.IsValid)
+        {
+            _error = Redactor.Redact(string.Join(" ", command.Problems));
+            return;
+        }
+
+        var submission = Queue.Submit(PlanJobHandler.KindName,
+            PlanJobParameters.For(command.Parameters!, survey: Session.PlanMode == CohortMode.Manifest), CurrentUser.Id);
+        if (!submission.Accepted)
+        {
+            _error = submission.Refusal;
+            return;
+        }
+
+        Session.PlanJobId = submission.Job!.Id;
+        Session.NotifyChanged();
+        _plan = null;
+        _planLoadedFor = null;
+        _plannedCli = submission.Job.Cli;
+        Recompute();
+    }
+
+    private void Run(CohortMode mode)
+    {
+        _message = null;
+        _error = null;
+        var command = Builder.Build(Session, Selection, mode, createSalt: true);
+        if (!command.IsValid)
+        {
+            _error = Redactor.Redact(string.Join(" ", command.Problems));
+            return;
+        }
+
+        string kind = mode == CohortMode.Convert ? CohortConvertJobHandler.KindName : CohortManifestJobHandler.KindName;
+        var submission = Queue.Submit(kind, command.Parameters, CurrentUser.Id);
+        if (!submission.Accepted)
+        {
+            _error = submission.Refusal;
+            return;
+        }
+
+        _message = $"Queued: {Redactor.Redact(submission.Job!.Title)}.";
+        Recompute();
+    }
+
+    private RenderFragment RenderFolder(PlanDocumentView.Folder folder) =>
+        @<details open="@(folder.Children.Count > 0 ? true : null)">
+            <summary><code>@folder.Name/</code>@(folder.Series is { } s ? $"  {s.Modality} {s.Description}, {s.Rois.Count} ROI(s), {s.Doses} dose(s)" : "")</summary>
+            @foreach (var child in folder.Children)
+            {
+                @RenderFolder(child)
+            }
+        </details>;
+
+    private static RenderFragment RenderExcluded(IReadOnlyList<PlanDocumentView.Excluded> rows, string css) =>
+        @<table class="roots @css">
+            <thead>
+                <tr><th>Patient</th><th>Series</th><th>Modality</th><th>Description</th><th>Reason</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    <tr><td>@row.PatientId</td><td><code>@row.SeriesUid</code></td><td>@row.Modality</td><td>@row.Description</td><td>@row.Reason</td></tr>
+                }
+            </tbody>
+        </table>;
+}

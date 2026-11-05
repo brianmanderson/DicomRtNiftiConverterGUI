@@ -1,3 +1,21 @@
 @page "/plan"
+@inject FeatureCatalog Catalog
 
-<FeatureStub Feature="typeof(PlanFeature)" DeliveredBy="W4-H" />
+@* Plan section 4.7. The body is PlanView, which carries the page's scoped styles, the dry run's
+   own command and the run actions. *@
+
+<PageTitle>Plan review · DicomRtNifti</PageTitle>
+
+<h1>Plan review</h1>
+<p class="summary">@_feature.Feature.Summary</p>
+
+<PlanView />
+
+<h2>CLI equivalent</h2>
+<CliCommand Cli="_feature.Feature.Cli" />
+
+@code {
+    private FeatureDescriptor _feature = default!;
+
+    protected override void OnInitialized() => _feature = Catalog.For(typeof(PlanFeature));
+}

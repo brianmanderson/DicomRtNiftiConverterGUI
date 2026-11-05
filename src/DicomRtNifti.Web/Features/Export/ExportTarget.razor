@@ -1,0 +1,146 @@
+@using DicomRtNifti.Web.State
+@inject DataRoots Roots
+@inject DataRootResolver Resolver
+@inject ProjectStore Projects
+@inject ExportSession Session
+
+@* Which cohort folder, which output project and (on ROI curation and Export setup) which of the
+   project's association sets: the circuit's ExportSession, shared by the forward path's pages.
+   Names only: a folder is a data root and a root-relative path the resolver checks, a project is
+   one folder name under the output root. Browsing folders is the Data sources page's (W4-G). *@
+
+<fieldset class="export-target">
+    <legend>Cohort and project</legend>
+    <div class="target-row">
+        <label>
+            Data root
+            <select class="target-root" value="@(Session.InputRootId ?? "")" @onchange="RootChanged">
+                <option value="">(choose)</option>
+                @foreach (var root in Roots.Browsable)
+                {
+                    <option value="@root.Id">@root.Id</option>
+                }
+            </select>
+        </label>
+        <label>
+            Folder under the root
+            <input class="target-path" value="@Session.InputPath" @onchange="PathChanged" placeholder="(the root itself)" />
+        </label>
+    </div>
+    @if (InputProblem is { } inputProblem)
+    {
+        <p class="target-problem">@inputProblem</p>
+    }
+    <div class="target-row">
+        <label>
+            Output project
+            <input class="target-project" list="export-projects" value="@Session.Project" @onchange="ProjectChanged" placeholder="a new or existing project" />
+            <datalist id="export-projects">
+                @foreach (string project in _projects)
+                {
+                    <option value="@project"></option>
+                }
+            </datalist>
+        </label>
+        @if (ShowAssociationSet)
+        {
+            <label>
+                Association set
+                <select class="target-set" value="@(Session.AssociationSet ?? "")" @onchange="SetChanged">
+                    <option value="">(none)</option>
+                    @foreach (string set in _sets)
+                    {
+                        <option value="@set">@set</option>
+                    }
+                    @if (Session.AssociationSet is { } current && !_sets.Contains(current))
+                    {
+                        <option value="@current">@current (not saved)</option>
+                    }
+                </select>
+            </label>
+        }
+    </div>
+    @if (ProjectProblem is { } projectProblem)
+    {
+        <p class="target-problem">@projectProblem</p>
+    }
+</fieldset>
+
+@code {
+    private IReadOnlyList<string> _projects = Array.Empty<string>();
+    private IReadOnlyList<string> _sets = Array.Empty<string>();
+
+    /// <summary>Offer the project's association sets (ROI curation chooses its own set elsewhere).</summary>
+    [Parameter]
+    public bool ShowAssociationSet { get; set; } = true;
+
+    /// <summary>Called after any choice changes the session.</summary>
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private string? InputProblem =>
+        Session.InputRootId is null || Resolver.TryResolve(Session.InputRootId, Session.InputPath, RootAccess.Read, out _, out _)
+            ? null
+            : Refusal();
+
+    private string? ProjectProblem =>
+        string.IsNullOrWhiteSpace(Session.Project) ? null : Projects.CheckProjectName(Session.Project);
+
+    protected override void OnParametersSet() => Load();
+
+    /// <summary>Re-reads the projects and sets, after a save elsewhere on the page.</summary>
+    public void Reload()
+    {
+        Load();
+        StateHasChanged();
+    }
+
+    private void Load()
+    {
+        _projects = Projects.IsConfigured ? Projects.Projects() : Array.Empty<string>();
+        _sets = Projects.IsConfigured && Session.Project is { } project && Projects.CheckProjectName(project) is null
+            ? Projects.AssociationSets(project)
+            : Array.Empty<string>();
+    }
+
+    private string Refusal()
+    {
+        Resolver.TryResolve(Session.InputRootId, Session.InputPath, RootAccess.Read, out _, out string? refusal);
+        return refusal ?? "";
+    }
+
+    private Task RootChanged(ChangeEventArgs e)
+    {
+        string value = e.Value?.ToString() ?? "";
+        Session.InputRootId = value.Length == 0 ? null : value;
+        return Changed_();
+    }
+
+    private Task PathChanged(ChangeEventArgs e)
+    {
+        Session.InputPath = (e.Value?.ToString() ?? "").Trim().Replace('\\', '/').Trim('/');
+        return Changed_();
+    }
+
+    private Task ProjectChanged(ChangeEventArgs e)
+    {
+        string value = (e.Value?.ToString() ?? "").Trim();
+        Session.Project = value.Length == 0 ? null : value;
+        Session.AssociationSet = null;
+        Load();
+        return Changed_();
+    }
+
+    private Task SetChanged(ChangeEventArgs e)
+    {
+        string value = e.Value?.ToString() ?? "";
+        Session.AssociationSet = value.Length == 0 ? null : value;
+        return Changed_();
+    }
+
+    private async Task Changed_()
+    {
+        Session.NotifyChanged();
+        await Changed.InvokeAsync();
+    }
+}

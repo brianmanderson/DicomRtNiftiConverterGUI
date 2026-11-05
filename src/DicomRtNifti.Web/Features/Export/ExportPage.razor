@@ -1,3 +1,21 @@
 @page "/export"
+@inject FeatureCatalog Catalog
 
-<FeatureStub Feature="typeof(ExportFeature)" DeliveredBy="W4-H" />
+@* Plan section 4.6. The body is ExportView, which carries the page's scoped styles and the live
+   command; the feature's generic CLI form stays below it. *@
+
+<PageTitle>Export setup · DicomRtNifti</PageTitle>
+
+<h1>Export setup</h1>
+<p class="summary">@_feature.Feature.Summary</p>
+
+<ExportView />
+
+<h2>CLI equivalent</h2>
+<CliCommand Cli="_feature.Feature.Cli" />
+
+@code {
+    private FeatureDescriptor _feature = default!;
+
+    protected override void OnInitialized() => _feature = Catalog.For(typeof(ExportFeature));
+}
