@@ -50,6 +50,11 @@ namespace DicomRtNifti.Web.Tests
             page.Find(".ds-scan").Click();
             Assert.Equal("Queued: Scan archive:cohort.", page.Find(".ds-message").TextContent);
 
+            var scanned = host.Queue.List().Single(j => j.Kind == SnapshotScanJobHandler.KindName);
+            await host.WaitFinishedAsync(scanned.Id, 30);
+            // The page re-renders on job events, throttled, for up to one interval after the last
+            // one; a click on a row it has since replaced would find no handler. Let it go quiet.
+            await Task.Delay(JobEventThrottle.Interval * 3);
             page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".ds-inventory")), TimeSpan.FromSeconds(30));
             Assert.Contains("Succeeded", page.Find(".ds-scan-card").TextContent);
             Assert.DoesNotContain(host.Folders.Root, page.Markup, StringComparison.OrdinalIgnoreCase);
@@ -57,8 +62,7 @@ namespace DicomRtNifti.Web.Tests
             page.Find(".ds-inventory").Click();
 
             var session = context.Services.GetRequiredService<ScanSession>();
-            var job = host.Queue.List().Single(j => j.Kind == SnapshotScanJobHandler.KindName);
-            Assert.Equal(job.Id, session.SnapshotId);
+            Assert.Equal(scanned.Id, session.SnapshotId);
             Assert.EndsWith("/inventory", context.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().Uri);
         }
 
