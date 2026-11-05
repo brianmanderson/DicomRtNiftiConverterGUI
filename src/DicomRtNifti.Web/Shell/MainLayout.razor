@@ -1,0 +1,23 @@
+@inherits LayoutComponentBase
+@inject HostStatus Status
+
+<div class="page">
+    <aside class="sidebar">
+        <div class="brand">
+            <a href="">DicomRtNifti</a>
+            <span class="badge">web preview</span>
+        </div>
+        <NavMenu />
+        <div class="version" title="@Status.Version">@Status.DisplayVersion</div>
+    </aside>
+
+    <main class="content">
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

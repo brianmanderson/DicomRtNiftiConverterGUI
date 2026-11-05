@@ -1,0 +1,112 @@
+@page "/"
+@inject HostStatus Status
+@inject DataRoots Roots
+@inject FeatureCatalog Catalog
+
+@* Roots appear by id only: the browser never sees a server path (plan section 3.3). *@
+
+<PageTitle>Home · DicomRtNifti</PageTitle>
+
+<h1>DicomRtNifti web</h1>
+<p class="summary">@_feature.Feature.Summary</p>
+
+<h2>This server</h2>
+<dl class="facts">
+    <dt>Version</dt>
+    <dd><code>@Status.Version</code></dd>
+    <dt>SimpleITK native</dt>
+    <dd class="@(Status.NativeOk ? "status-ok" : "status-failed")">@Status.NativeProbe</dd>
+</dl>
+@if (!Status.NativeOk)
+{
+    <div class="notice notice-failed" role="alert">
+        The SimpleITK native did not load, so this server cannot convert images or rasterize
+        structures. Scanning reads headers only and does not need it.
+    </div>
+}
+
+<h2>Data roots</h2>
+@if (Roots.Browsable.Count == 0)
+{
+    <p>
+        No data roots are configured. Add them to <code>appsettings.json</code> under
+        <code>Web:DataRoots</code>, or set environment variables such as
+        <code>Web__DataRoots__0__Id</code> and <code>Web__DataRoots__0__Path</code>.
+    </p>
+}
+else
+{
+    <table class="roots">
+        <thead>
+            <tr><th>Root</th><th>Access</th><th>Status</th><th>Free space</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var root in Roots.Browsable)
+            {
+                <tr>
+                    <td><code>@root.Id</code></td>
+                    <td>@(root.Access == RootAccess.ReadWrite ? "read-write" : "read-only")</td>
+                    <StatusCells Availability="@Find(root)" />
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2>Server folders</h2>
+<table class="roots">
+    <thead>
+        <tr><th>Folder</th><th>Holds</th><th>Status</th><th>Free space</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var (folder, holds) in ServerFolders)
+        {
+            var root = Roots.Folder(folder);
+            <tr>
+                <td>@folder</td>
+                <td>@holds</td>
+                @if (root is null)
+                {
+                    <td class="status-pending">not configured</td>
+                    <td></td>
+                }
+                else
+                {
+                    <StatusCells Availability="@Find(root)" />
+                }
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2>CLI equivalent</h2>
+<CliCommand Cli="_feature.Feature.Cli" />
+
+@code {
+    private static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(3);
+
+    private static readonly (ServerFolder Folder, string Holds)[] ServerFolders =
+    {
+        (ServerFolder.Keys, "anonymization keys, one folder per project; never served"),
+        (ServerFolder.Uploads, "uploaded cases, one folder per job"),
+        (ServerFolder.State, "jobs, scan snapshots, audit and per-user state"),
+    };
+
+    private FeatureDescriptor _feature = default!;
+    private readonly Dictionary<DataRoot, RootAvailability> _availability = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _feature = Catalog.For(typeof(HomeFeature));
+        var folders = Roots.Browsable
+            .Concat(ServerFolders.Select(f => Roots.Folder(f.Folder)).OfType<DataRoot>())
+            .Distinct()
+            .ToList();
+        var checks = folders.Select(f => DataRootResolver.CheckAvailabilityAsync(f, CheckTimeout)).ToList();
+        var results = await Task.WhenAll(checks);
+        for (int i = 0; i < folders.Count; i++)
+            _availability[folders[i]] = results[i];
+    }
+
+    private RootAvailability? Find(DataRoot root) => _availability.TryGetValue(root, out var a) ? a : null;
+}

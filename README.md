@@ -71,6 +71,21 @@ Launch the GUI with `dotnet run --project src/DicomRtNifti.App` (or run the publ
 
 Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The same material is readable outside the app in [`examples/GUI_WALKTHROUGH.md`](examples/GUI_WALKTHROUGH.md), which also maps every control to its CLI flag. The CLI below is the alternative when scripting batch / benchmark runs.
 
+## Web mode (preview)
+
+A browser front-end over the same Core (`src/DicomRtNifti.Web`, Blazor Server), for the host that holds the data. This is the scaffold: the Home page reports the version, the SimpleITK native probe and the configured folders; every other page says what it will do and shows the CLI command that does it today.
+
+```bash
+dotnet run --project src/DicomRtNifti.Web -c Release
+```
+
+It serves `http://localhost:5180`.
+
+- **Loopback only.** The server refuses to start on any address other than `localhost`, `127.0.0.1` or `::1` while no authentication is configured (a later release adds it): `--urls http://0.0.0.0:5180` exits with code 2 before anything listens.
+- **Folders are configured on the server, not picked in the browser.** The browser names a folder as `root:relative/path` under the data roots in `appsettings.json` (`Web:DataRoots`, each with `Id`, `Path` and `Access` `Read` or `ReadWrite`, plus `OutputRoot`, `KeyRoot`, `UploadRoot`, `StateRoot`) or environment variables (`Web__DataRoots__0__Id`, `Web__DataRoots__0__Path`). A path that would leave its root (`..`, an absolute or UNC path, a link pointing out) is refused, and no server path outside a root appears in a page or a log.
+- **Every input is assumed to carry PHI**: every response is sent with `Cache-Control: no-store` and a same-origin content security policy, and only `localhost` host names are accepted.
+- `GET /health` returns the version and the native probe as JSON: 200 when the native loaded, 503 when it did not.
+
 ## Features
 
 - Recursive DICOM folder scanning with automatic Patient/Study/Series grouping

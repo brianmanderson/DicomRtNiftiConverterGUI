@@ -1,0 +1,34 @@
+@* The placeholder body of a page the scaffold registers but a later brief builds: what the page
+   is for, that it is not available yet, which brief delivers it, and the CLI that does the same
+   thing today. That brief replaces the page, not this component. *@
+@inject FeatureCatalog Catalog
+
+<PageTitle>@_descriptor.Title · DicomRtNifti</PageTitle>
+
+<h1>@_descriptor.Title</h1>
+<p class="summary">@_descriptor.Feature.Summary</p>
+
+<div class="notice notice-pending" role="status">
+    <strong>Not yet available in the web app.</strong> @Placeholder
+</div>
+
+<h2>CLI equivalent</h2>
+<CliCommand Cli="_descriptor.Feature.Cli" />
+
+@code {
+    private FeatureDescriptor _descriptor = default!;
+
+    /// <summary>The feature class (an <see cref="IWebFeature"/>) whose page this is.</summary>
+    [Parameter, EditorRequired]
+    public Type Feature { get; set; } = default!;
+
+    /// <summary>The brief that replaces this placeholder, e.g. "W4-G"; null when none is named yet.</summary>
+    [Parameter]
+    public string? DeliveredBy { get; set; }
+
+    private string Placeholder => DeliveredBy is null
+        ? "This page is a placeholder; no brief builds it yet."
+        : $"This page is a placeholder; brief {DeliveredBy} builds it.";
+
+    protected override void OnParametersSet() => _descriptor = Catalog.For(Feature);
+}

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- The web front-end (preview): a Blazor Web App with the global Interactive Server render
+       mode, Core called in-process (D-30). It holds routing, pages, hosting, data-root
+       resolution and path redaction only; every computation stays in Core (plan section 3.4),
+       which an architecture test in DicomRtNifti.Web.Tests enforces.
+
+       SimpleITK.props is imported for the native only: Core P/Invokes SimpleITKCSharpNative,
+       which must sit next to this host's output for the Home page and /health probe to load it.
+       No code here names an itk.simple or fo-dicom type, and there is no fo-dicom reference. -->
+  <Import Project="..\SimpleITK.props" />
+
+  <PropertyGroup>
+    <AssemblyName>DicomRtNifti.Web</AssemblyName>
+    <RootNamespace>DicomRtNifti.Web</RootNamespace>
+    <!-- Directory.Build.props turns both off for the older projects; this one is new code and
+         is annotated from the start. -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DicomRtNifti.Core\DicomRtNifti.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DicomRtNifti.Web.Tests" />
+  </ItemGroup>
+
+</Project>
