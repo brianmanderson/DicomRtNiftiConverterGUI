@@ -1,0 +1,79 @@
+/* The Data sources page. Scoped to this component; no inline styles (the content security policy). */
+
+.ds-roots, .ds-crumbs, .ds-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: baseline;
+    margin: 0 0 0.6rem;
+}
+
+.ds-root.ds-current {
+    font-weight: 600;
+    border-color: var(--accent);
+}
+
+.ds-crumb, .ds-folder {
+    background: none;
+    border: none;
+    padding: 0.1rem 0.2rem;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--mono);
+}
+
+.ds-sep {
+    color: var(--muted);
+}
+
+.ds-folders {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0.8rem;
+    max-height: 18rem;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+}
+
+.ds-folders li {
+    border-bottom: 1px solid var(--line);
+}
+
+.ds-folders li:last-child {
+    border-bottom: none;
+}
+
+.ds-scan-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    padding: 0.7rem 0.9rem;
+    margin: 0 0 0.8rem;
+}
+
+.ds-scan-card.ds-open {
+    border-color: var(--accent);
+}
+
+.ds-scan-head {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+
+.ds-scan-card progress {
+    width: 100%;
+    margin: 0.5rem 0 0.2rem;
+}
+
+.ds-progress, .ds-reason {
+    font-size: 0.9rem;
+    margin: 0.2rem 0;
+}
+
+.ds-unreadable {
+    margin: 0.4rem 0;
+    font-size: 0.9rem;
+}

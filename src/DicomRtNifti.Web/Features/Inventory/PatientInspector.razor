@@ -1,0 +1,112 @@
+@using DicomRtNifti.Core.Analysis
+@using DicomRtNifti.Core.Services
+
+@* The patient inspector (GUI_WALKTHROUGH "The inspector", Patient): what the patient's folder holds
+   without expanding the tree. Counts are display counts over the tree's own split of each study;
+   the badges are the tree's. *@
+
+<h2 class="inv-inspector-head">Patient inspector</h2>
+<InspectorTabs @bind-Tab="_tab" />
+
+@if (_tab == InspectorTabs.Summary)
+{
+    <dl class="facts">
+        <dt>Patient ID</dt>
+        <dd><code>@InventoryText.OrMissing(Node.Patient.PatientID)</code></dd>
+        <dt>Name</dt>
+        <dd>@InventoryText.OrMissing(Node.Patient.PatientName)</dd>
+        <dt>Studies</dt>
+        <dd>@Node.Studies.Count</dd>
+        <dt>Image series</dt>
+        <dd>@InventoryTree.DescribeModalityCounts(Node.ImageSeries)</dd>
+        <dt>Image instances</dt>
+        <dd>@Node.ImageSeries.Sum(s => s.Series.FilePaths.Count)</dd>
+        <dt>RTSTRUCT</dt>
+        <dd>@Counted("RTSTRUCT")</dd>
+        <dt>RTDOSE</dt>
+        <dd>@Counted("RTDOSE")</dd>
+        <dt>Other objects</dt>
+        <dd>@Others</dd>
+    </dl>
+
+    @if (Node.BadgeCounts.Count > 0)
+    {
+        <p class="inv-badges">
+            @foreach (var (badge, count) in Node.BadgeCounts)
+            {
+                <span class="badge inv-flag inv-@badge.Severity" data-code="@badge.Code">@(count > 1 ? $"{count} × {badge.Label}" : badge.Label)</span>
+            }
+        </p>
+    }
+    @if (Node.Studies.Any(s => s.Objects.Any(o => o.IsUnlinked)))
+    {
+        <p class="notice notice-pending">@StudyInspector.UnlinkedNote</p>
+    }
+
+    <h3>Studies</h3>
+    <ul class="inv-lines">
+        @foreach (var study in Node.Studies)
+        {
+            int unlinked = study.Objects.Count(o => o.IsUnlinked);
+            <li>
+                <span class="inv-date">@InventoryText.Date(study.Study.StudyDate)</span>
+                @study.Label · @study.ImageSeries.Count image series · @study.Objects.Count RT object(s)
+                @if (unlinked > 0)
+                {
+                    <span class="badge inv-flag inv-@FlagCodes.Get(FlagCodes.LinkUnlinked).Severity">@(unlinked == 1 ? "unlinked" : $"{unlinked} unlinked")</span>
+                }
+            </li>
+        }
+    </ul>
+}
+else
+{
+    <DicomTagsTab Level="patient" Sources="TagSources" />
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public PatientNode Node { get; set; } = default!;
+
+    private string _tab = InspectorTabs.Summary;
+
+    private string Counted(string modality)
+    {
+        var objects = Node.Studies.SelectMany(s => s.Objects).Where(o => o.Series.Modality == modality).ToList();
+        int unlinked = objects.Count(o => o.IsUnlinked), linked = objects.Count - unlinked;
+        if (objects.Count == 0)
+            return "none";
+        if (unlinked == 0)
+            return $"{linked} linked";
+        return linked == 0 ? $"{unlinked} unlinked" : $"{linked} linked, {unlinked} unlinked";
+    }
+
+    private string Others
+    {
+        get
+        {
+            var others = Node.Studies.SelectMany(s => s.Objects).Where(o => !o.IsLinkable).ToList();
+            return others.Count == 0
+                ? "none"
+                : string.Join(", ", others.GroupBy(o => InventoryText.OrMissing(o.Series.Modality))
+                    .OrderBy(g => g.Key, StringComparer.Ordinal)
+                    .Select(g => $"{g.Count()} {g.Key}"));
+        }
+    }
+
+    private IReadOnlyList<DicomTagsTab.TagSource> TagSources
+    {
+        get
+        {
+            // The first image slice; only with no image series at all, the first file of an RT object.
+            string? image = Node.ImageSeries.Select(s => s.Series.FilePaths.FirstOrDefault()).FirstOrDefault(f => f is not null);
+            string? path = image ?? Node.Studies.SelectMany(s => s.Objects).Select(o => o.Series.FilePaths.FirstOrDefault()).FirstOrDefault(f => f is not null);
+            return new[]
+            {
+                new DicomTagsTab.TagSource("Patient",
+                    image is not null ? "the first slice of the first image series" : "the first file of the first RT object",
+                    path, DicomTagsTab.PatientKeywords),
+            };
+        }
+    }
+}

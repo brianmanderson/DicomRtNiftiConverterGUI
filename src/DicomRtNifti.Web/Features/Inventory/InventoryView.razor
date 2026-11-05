@@ -1,0 +1,220 @@
+@using DicomRtNifti.Core.CommandLine
+@using DicomRtNifti.Core.Models
+@using DicomRtNifti.Web.Features.DataSources
+@using DicomRtNifti.Web.Jobs
+@using DicomRtNifti.Web.State
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@inject ScanSession Session
+@inject DataRoots Roots
+@inject RootPathPresenter Presenter
+@inject PathRedactor Redactor
+
+@* The body of the Inventory page (plan section 4.3). It reads the scan snapshot in view and never
+   the disk: the tree, its badges (each a SeriesFlags predicate, through InventoryTree) and the
+   inspectors are mappings of the scanned model. Rows are addressed by tree position, so neither
+   the address nor the markup's keys carry an identifier. The selection lives with the snapshot,
+   where Export setup reads it. *@
+
+@if (_snapshot is null || _tree is null)
+{
+    <p class="hint inv-no-scan">No scan yet. <a href="data-sources">Scan a folder</a> on the Data sources page, then open it here.</p>
+}
+else
+{
+    <dl class="facts inv-source">
+        <dt>Folder</dt>
+        <dd><code>@_snapshot.Folder.Presented</code></dd>
+        <dt>Scanned</dt>
+        <dd>@_snapshot.ScannedUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss") UTC</dd>
+        <dt>Contents</dt>
+        <dd>@_snapshot.Scan.TotalFileCount file(s): @_tree.Patients.Count patient(s), @_tree.SeriesCount image series@(_snapshot.Scan.SkippedErrorCount > 0 ? $"; {_snapshot.Scan.SkippedErrorCount} file(s) could not be read" : "")</dd>
+    </dl>
+
+    <div class="inv-filters" role="search">
+        <label>
+            Find
+            <input type="search" class="inv-text" value="@_filter.Text" @onchange="OnText" placeholder="patient, description, modality" />
+        </label>
+        <label>
+            Badge
+            <select class="inv-badge-filter" value="@(_filter.BadgeCode ?? "")" @onchange="OnBadge">
+                <option value="">any</option>
+                @foreach (string flag in _tree.BadgeCodes)
+                {
+                    <option value="@flag">@flag</option>
+                }
+            </select>
+        </label>
+        @if (_filter.IsActive)
+        {
+            <button type="button" class="inv-clear-filter" @onclick="ClearFilter">Clear</button>
+        }
+    </div>
+
+    <div class="inv-layout">
+        <div class="inv-tree" role="tree" aria-label="Scanned patients, studies and series">
+            @if (_rows.Count == 0)
+            {
+                <p class="hint inv-no-match">Nothing matches the filter.</p>
+            }
+            else if (_rows.Count > VirtualizeFrom)
+            {
+                <Virtualize Items="_rows" Context="row" ItemSize="RowHeight" OverscanCount="20">
+                    <InventoryTreeRow Row="row" Tree="_tree" Selection="_snapshot.Selection" Expanded="_expanded"
+                                      SelectedKey="_selectedKey" OnToggle="Toggle" OnSelect="Select" OnCheck="Check" />
+                </Virtualize>
+            }
+            else
+            {
+                @foreach (var row in _rows)
+                {
+                    <InventoryTreeRow @key="row.Key" Row="row" Tree="_tree" Selection="_snapshot.Selection" Expanded="_expanded"
+                                      SelectedKey="_selectedKey" OnToggle="Toggle" OnSelect="Select" OnCheck="Check" />
+                }
+            }
+        </div>
+
+        <section class="inv-inspector" aria-label="Inspector">
+            @switch (_tree.Find(_selectedKey))
+            {
+                case PatientNode patient:
+                    <PatientInspector Node="patient" />
+                    break;
+                case StudyNode study:
+                    <StudyInspector Node="study" />
+                    break;
+                case SeriesNode series:
+                    <SeriesInspector Node="series" />
+                    break;
+                default:
+                    <p class="hint">Click a row to inspect it.</p>
+                    break;
+            }
+        </section>
+    </div>
+
+    <h2>Selection</h2>
+    <p class="inv-selection-summary">
+        @if (_snapshot.Selection.IsEmpty)
+        {
+            <span>No series selected: Export setup takes the whole scan.</span>
+        }
+        else
+        {
+            <span>@_snapshot.Selection.Count of @_tree.SeriesCount image series selected.</span>
+            <button type="button" class="inv-clear-selection" @onclick="ClearSelection">Clear selection</button>
+        }
+    </p>
+
+    <h2>CLI equivalent</h2>
+    <h3>The tree and its geometry</h3>
+    <CliCommand Cli="ScanCli" />
+    <h3>The badges, as flags</h3>
+    <CliCommand Cli="AnalyzeCli" />
+    @if (SelectionCli is { } selectionCli)
+    {
+        <h3>The selection</h3>
+        <CliCommand Cli="selectionCli" />
+    }
+}
+
+@code {
+    /// <summary>Rows above which the tree is virtualized; below it every row is rendered.</summary>
+    public const int VirtualizeFrom = 200;
+
+    /// <summary>The fixed row height the virtualized tree and its stylesheet share, in pixels.</summary>
+    public const float RowHeight = 30;
+
+    private ScanSnapshot? _snapshot;
+    private InventoryTree? _tree;
+    private InventoryFilter _filter = InventoryFilter.None;
+    private readonly HashSet<string> _expanded = new(StringComparer.Ordinal);
+    private List<InventoryRow> _rows = new();
+    private string? _selectedKey;
+
+    protected override void OnInitialized()
+    {
+        _snapshot = Session.Current;
+        if (_snapshot is null)
+            return;
+        _tree = new InventoryTree(_snapshot.Scan);
+        // A single patient opens expanded: there is nothing else to choose between.
+        if (_tree.Patients.Count == 1)
+            _expanded.Add(_tree.Patients[0].Key);
+        _selectedKey = _tree.Patients.FirstOrDefault()?.Key;
+        Reflow();
+    }
+
+    private void Reflow() => _rows = _tree!.Rows(_filter, _expanded);
+
+    private void OnText(ChangeEventArgs e)
+    {
+        _filter = _filter with { Text = e.Value as string };
+        Reflow();
+    }
+
+    private void OnBadge(ChangeEventArgs e)
+    {
+        string? code = e.Value as string;
+        _filter = _filter with { BadgeCode = string.IsNullOrEmpty(code) ? null : code };
+        Reflow();
+    }
+
+    private void ClearFilter()
+    {
+        _filter = InventoryFilter.None;
+        Reflow();
+    }
+
+    private void Toggle(string key)
+    {
+        if (!_expanded.Remove(key))
+            _expanded.Add(key);
+        Reflow();
+    }
+
+    private void Select(string key) => _selectedKey = key;
+
+    private void Check((string Key, bool Selected) change)
+    {
+        var uids = _tree!.Find(change.Key) switch
+        {
+            PatientNode p => p.ImageSeries.Select(s => s.Series.SeriesInstanceUID),
+            StudyNode s => s.ImageSeries.Select(x => x.Series.SeriesInstanceUID),
+            SeriesNode x => new[] { x.Series.SeriesInstanceUID },
+            _ => Enumerable.Empty<string>(),
+        };
+        _snapshot!.Selection.Set(uids.ToList(), change.Selected);
+    }
+
+    private void ClearSelection() => _snapshot!.Selection.Clear();
+
+    private CliEquivalent ScanCli => new(
+        Redactor.Redact(SnapshotScanJobHandler.CliFor(_snapshot!.Folder, Presenter.Commands)),
+        "The scan document (dicomrtnifti.cohort-scan/1) lists the same patients, studies and image series, with the geometry and link rules the inspectors show.");
+
+    private CliEquivalent AnalyzeCli => new(
+        Redactor.Redact(CommandLineText.Join(CohortCommandLine.Render(
+            CohortMode.Analyze, new CohortExportOptions { InputRoot = _snapshot!.Folder.FullPath }, Presenter.Commands))),
+        "Every badge is a flag code of the header-tier analysis (dicomrtnifti.cohort-analysis/1), raised by the same predicate.");
+
+    /// <summary>The selection as Export setup will hand it to Core: <c>--series</c> on a manifest dry run.</summary>
+    private CliEquivalent? SelectionCli
+    {
+        get
+        {
+            if (_snapshot!.Selection.IsEmpty || Roots.Folder(ServerFolder.Output) is not { } output)
+                return null;
+            var options = new CohortExportOptions
+            {
+                InputRoot = _snapshot.Folder.FullPath,
+                OutputRoot = Path.Combine(output.Path, "PROJECT"),
+                SeriesInstanceUids = _snapshot.Selection.SeriesInstanceUids(),
+            };
+            var command = new CohortCommand { Mode = CohortMode.Manifest, Options = options, DryRun = true };
+            return new CliEquivalent(
+                Redactor.Redact(CommandLineText.Join(CohortCommandLine.Render(command, Presenter.Commands))),
+                "PROJECT is the output project Export setup names. --cohort-convert takes the same --series list.");
+        }
+    }
+}

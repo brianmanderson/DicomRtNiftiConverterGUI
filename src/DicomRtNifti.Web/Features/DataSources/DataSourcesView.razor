@@ -1,0 +1,291 @@
+@implements IDisposable
+@using DicomRtNifti.Web.Audit
+@using DicomRtNifti.Web.Jobs
+@using DicomRtNifti.Web.State
+@inject DataRoots Roots
+@inject DataRootResolver Resolver
+@inject PathRedactor Redactor
+@inject RootPathPresenter Presenter
+@inject JobQueue Queue
+@inject JobEvents Events
+@inject ScanSnapshotStore Snapshots
+@inject ScanSession Session
+@inject ICurrentUser CurrentUser
+@inject NavigationManager Navigation
+@inject Microsoft.Extensions.Options.IOptions<WebOptions> Options
+
+@* The body of the Data sources page (plan section 4.2). The folder browser walks the data roots
+   through the resolver only, so every folder it offers is one a scan may read; the folder in hand
+   is circuit state, never part of the address. Scanning submits an inventory-scan job and
+   returns at once: the scan runs on the light lane. Everything a job recorded passes the path
+   redactor before it is shown. *@
+
+@if (Queue.UnavailableReason is { } off)
+{
+    <div class="notice notice-failed" role="status">@Redactor.Redact(off)</div>
+}
+@if (!Snapshots.IsPersistent)
+{
+    <div class="notice notice-pending ds-memory-only" role="status">
+        No state root is configured, so scans are kept in memory only: a restart asks for a re-scan.
+    </div>
+}
+
+<h2>Folder</h2>
+@if (Roots.Browsable.Count == 0)
+{
+    <p class="hint ds-no-roots">No data root is configured. Add one under <code>Web:DataRoots</code> in appsettings.json.</p>
+}
+else
+{
+    <div class="ds-roots" role="group" aria-label="Data roots">
+        @foreach (var root in Roots.Browsable)
+        {
+            <button type="button" class="ds-root @(root.Id == _rootId ? "ds-current" : "")"
+                    @onclick="() => OpenRoot(root.Id)">@root.Id</button>
+        }
+    </div>
+
+    @if (_rootId is not null)
+    {
+        <nav class="ds-crumbs" aria-label="Folder path">
+            <button type="button" class="ds-crumb" @onclick="() => OpenPath(0)">@_rootId:</button>
+            @for (int i = 0; i < _segments.Count; i++)
+            {
+                int depth = i + 1;
+                <span class="ds-sep">/</span>
+                <button type="button" class="ds-crumb" @onclick="() => OpenPath(depth)">@_segments[i]</button>
+            }
+        </nav>
+
+        @if (_browseError is not null)
+        {
+            <div class="notice notice-failed ds-browse-error" role="status">@_browseError</div>
+        }
+        else if (_subfolders.Count == 0)
+        {
+            <p class="hint">No sub-folders.</p>
+        }
+        else
+        {
+            <ul class="ds-folders">
+                @foreach (string name in _subfolders)
+                {
+                    <li><button type="button" class="ds-folder" @onclick="() => OpenChild(name)">@name</button></li>
+                }
+            </ul>
+        }
+
+        <div class="ds-actions">
+            <button type="button" class="ds-scan" disabled="@(!Queue.IsAvailable || _browseError is not null)"
+                    @onclick="Scan">Scan @Presented</button>
+        </div>
+        @if (_message is not null)
+        {
+            <div class="notice ds-message" role="status">@_message</div>
+        }
+
+        <h3>CLI equivalent</h3>
+        <CliCommand Cli="FolderCli" />
+    }
+}
+
+<h2>Scans</h2>
+@if (_scans.Count == 0)
+{
+    <p class="hint ds-no-scans">No scan yet.</p>
+}
+@foreach (var job in _scans)
+{
+    var snapshot = job.State == JobState.Succeeded ? Snapshots.Find(job.Id) : null;
+    <div class="ds-scan-card @(job.Id == Session.SnapshotId ? "ds-open" : "")" @key="job.Id">
+        <div class="ds-scan-head">
+            <strong>@Redactor.Redact(job.Title)</strong>
+            <span class="@StateClass(job.State)">@job.State.DisplayName()</span>
+        </div>
+        @if (job.State == JobState.Running)
+        {
+            @if (job.Progress.HasCounts && job.Progress.Total > 0)
+            {
+                <progress max="@job.Progress.Total" value="@job.Progress.Done"></progress>
+            }
+            else
+            {
+                <progress></progress>
+            }
+            <div class="ds-progress">@ProgressText(job.Progress)</div>
+            <button type="button" class="ds-cancel" @onclick="() => Cancel(job.Id)">Cancel</button>
+        }
+        else if (job.State == JobState.Queued)
+        {
+            <div class="ds-progress">Waiting for the light lane.</div>
+            <button type="button" class="ds-cancel" @onclick="() => Cancel(job.Id)">Cancel</button>
+        }
+        else if (job.Reason is not null)
+        {
+            <div class="ds-reason">@Redactor.Redact(job.Reason)</div>
+        }
+
+        @if (snapshot is not null)
+        {
+            @if (snapshot.Scan.SkippedErrorSamples.Count > 0)
+            {
+                <details class="ds-unreadable">
+                    <summary>@snapshot.Scan.SkippedErrorCount file(s) could not be read</summary>
+                    <ul>
+                        @foreach (string sample in snapshot.Scan.SkippedErrorSamples)
+                        {
+                            <li><code>@Redactor.Redact(sample)</code></li>
+                        }
+                    </ul>
+                </details>
+            }
+            <button type="button" class="ds-inventory" @onclick="() => OpenInventory(job.Id)">Open in Inventory</button>
+        }
+        else if (job.State == JobState.Succeeded)
+        {
+            <div class="hint">This scan's snapshot is no longer available; scan the folder again.</div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Scans listed, newest first.</summary>
+    public const int ScanRows = 10;
+
+    private string? _rootId;
+    private List<string> _segments = new();
+    private IReadOnlyList<string> _subfolders = Array.Empty<string>();
+    private string? _browseError;
+    private string? _message;
+    private List<JobRecord> _scans = new();
+    private JobEventThrottle? _throttle;
+
+    private string RelativePath => string.Join("/", _segments);
+
+    private string Presented => _rootId + ":" + RelativePath;
+
+    private CliEquivalent FolderCli
+    {
+        get
+        {
+            if (_rootId is null || !Resolver.TryResolve(_rootId, RelativePath, RootAccess.Read, out var folder, out _))
+                return new CliEquivalent(null);
+            return new CliEquivalent(
+                Redactor.Redact(SnapshotScanJobHandler.CliFor(folder, Presenter.Commands)) + " --json-out scan.json",
+                !Options.Value.ShowAbsolutePaths
+                    ? $"{_rootId} stands for the server path of data root '{_rootId}'."
+                    : null);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        if (Roots.Browsable.Count > 0)
+            OpenRoot(Roots.Browsable[0].Id);
+        LoadScans();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Only once interactive: a prerendered instance is thrown away and must not subscribe.
+        if (firstRender)
+            _throttle = new JobEventThrottle(Events, () => InvokeAsync(Refresh));
+    }
+
+    private void Refresh()
+    {
+        LoadScans();
+        StateHasChanged();
+    }
+
+    private void LoadScans() =>
+        _scans = Queue.List().Where(j => j.Kind == SnapshotScanJobHandler.KindName).Take(ScanRows).ToList();
+
+    private void OpenRoot(string rootId)
+    {
+        _rootId = rootId;
+        _segments = new List<string>();
+        Browse();
+    }
+
+    private void OpenPath(int depth)
+    {
+        _segments = _segments.Take(depth).ToList();
+        Browse();
+    }
+
+    private void OpenChild(string name)
+    {
+        _segments.Add(name);
+        Browse();
+    }
+
+    private void Browse()
+    {
+        _message = null;
+        _browseError = null;
+        _subfolders = Array.Empty<string>();
+        if (!Resolver.TryResolve(_rootId, RelativePath, RootAccess.Read, out var folder, out string? refusal))
+        {
+            _browseError = Redactor.Redact(refusal);
+            return;
+        }
+
+        if (!DataRootResolver.DirectoryExists(folder))
+        {
+            _browseError = $"{folder.Presented} does not exist or is not available.";
+            return;
+        }
+
+        try
+        {
+            _subfolders = Resolver.ListSubfolders(folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            _browseError = $"{folder.Presented} cannot be listed: {Redactor.Redact(ex.Message)}";
+        }
+    }
+
+    private void Scan()
+    {
+        if (_rootId is null)
+            return;
+        var submission = Queue.Submit(SnapshotScanJobHandler.KindName, new ScanJobParameters(_rootId, RelativePath), CurrentUser.Id);
+        _message = submission.Accepted
+            ? $"Queued: {Redactor.Redact(submission.Job!.Title)}."
+            : Redactor.Redact(submission.Refusal);
+        LoadScans();
+    }
+
+    private void Cancel(string jobId)
+    {
+        _message = Queue.Cancel(jobId, CurrentUser.Id).Message;
+        LoadScans();
+    }
+
+    private void OpenInventory(string jobId)
+    {
+        Session.Open(jobId);
+        Navigation.NavigateTo("inventory");
+    }
+
+    private static string ProgressText(JobProgress progress)
+    {
+        if (!progress.HasCounts)
+            return "Starting.";
+        return progress.TotalKnown
+            ? $"{progress.Done} of {progress.Total} files read"
+            : $"{progress.Done} files read, {progress.Total} found so far";
+    }
+
+    private static string StateClass(JobState state) => state switch
+    {
+        JobState.Succeeded => "status-ok",
+        JobState.SucceededWithFailures or JobState.Failed or JobState.Interrupted => "status-failed",
+        _ => "status-pending",
+    };
+
+    public void Dispose() => _throttle?.Dispose();
+}

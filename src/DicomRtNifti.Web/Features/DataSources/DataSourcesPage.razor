@@ -1,3 +1,18 @@
 @page "/data-sources"
+@inject FeatureCatalog Catalog
 
-<FeatureStub Feature="typeof(DataSourcesFeature)" DeliveredBy="W4-G" />
+@* Plan section 4.2. The body is DataSourcesView, which carries the page's scoped styles, so this
+   page's own markup stays plain. *@
+
+<PageTitle>Data sources · DicomRtNifti</PageTitle>
+
+<h1>Data sources</h1>
+<p class="summary">@_feature.Feature.Summary</p>
+
+<DataSourcesView />
+
+@code {
+    private FeatureDescriptor _feature = default!;
+
+    protected override void OnInitialized() => _feature = Catalog.For(typeof(DataSourcesFeature));
+}

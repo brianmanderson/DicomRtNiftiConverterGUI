@@ -1,0 +1,91 @@
+@using DicomRtNifti.Core.Services
+@inject InspectorTagReader Reader
+@inject PathRedactor Redactor
+
+@* The inspectors' DICOM tags tab: the curated attributes the Select Metadata Tags list offers,
+   under the names the metadata.json sidecar uses, read from the files the GUI's tab reads, the
+   first time the tab is shown. Core reads them; InspectorTagReader decides which file it may
+   open. A file is named in words ("the series' first slice"), never by its path. *@
+
+@foreach (var source in Sources)
+{
+    <h4>@source.Section <span class="inv-tags-from">from @source.From</span></h4>
+    @if (source.Path is null)
+    {
+        <p class="hint">No such file in this @Level.</p>
+    }
+    else if (!_results.TryGetValue(source.Section, out var result))
+    {
+        <p class="hint inv-tags-loading">Reading…</p>
+    }
+    else if (result.Error is not null)
+    {
+        <p class="notice notice-failed inv-tags-error">Could not read tags: @result.Error</p>
+    }
+    else if (result.Rows.Count == 0)
+    {
+        <p class="hint">No curated tags present in this file.</p>
+    }
+    else
+    {
+        <table class="roots inv-tags">
+            <thead>
+                <tr><th>Attribute</th><th>Keyword</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in result.Rows)
+                {
+                    <tr><td>@row.Name</td><td><code>@row.Keyword</code></td><td>@row.Value</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    /// <summary>One file the tab reads: its section, which file it is in words, its server path (never shown), and the keywords.</summary>
+    public sealed record TagSource(string Section, string From, string? Path, IReadOnlyList<string> Keywords);
+
+    /// <summary>The patient-level keywords of <see cref="MetadataTagCatalog.CuratedImageKeywords"/>, as the GUI's patient inspector reads them.</summary>
+    public static readonly IReadOnlyList<string> PatientKeywords = new[]
+    {
+        "PatientName", "PatientID", "PatientBirthDate", "PatientSex", "PatientAge", "PatientWeight",
+    };
+
+    /// <summary>The study-level keywords of <see cref="MetadataTagCatalog.CuratedImageKeywords"/>, as the GUI's study inspector reads them.</summary>
+    public static readonly IReadOnlyList<string> StudyKeywords = new[]
+    {
+        "StudyDate", "StudyTime", "StudyDescription", "StudyID", "AccessionNumber",
+        "ReferringPhysicianName", "StudyInstanceUID",
+    };
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<TagSource> Sources { get; set; } = default!;
+
+    /// <summary>"patient", "study" or "series", for the empty-source note.</summary>
+    [Parameter]
+    public string Level { get; set; } = "series";
+
+    private readonly Dictionary<string, (List<InspectorTagRow> Rows, string? Error)> _results = new();
+    private string? _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        string key = string.Join("|", Sources.Select(s => s.Section + "=" + s.Path));
+        if (key == _loadedFor)
+            return;
+        _loadedFor = key;
+        _results.Clear();
+        foreach (var source in Sources.Where(s => s.Path is not null))
+        {
+            try
+            {
+                _results[source.Section] = (await Reader.ReadAsync(source.Path!, source.Keywords), null);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _results[source.Section] = (new List<InspectorTagRow>(), Redactor.Redact(ex.Message));
+            }
+        }
+    }
+}

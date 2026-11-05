@@ -27,9 +27,9 @@ namespace DicomRtNifti.Web.Tests
         private static readonly Assembly Web = typeof(Program).Assembly;
 
         /// <summary>
-        /// The only types whose code may call a filesystem API: the resolver, and the three types
-        /// that keep server state (the job store, the per-project job locks, the audit log). Every
-        /// path those three touch comes from <see cref="DataRootResolver.ResolveServerPath"/>, so
+        /// The only types whose code may call a filesystem API: the resolver, and the four types
+        /// that keep server state (the job store, the per-project job locks, the audit log, the
+        /// scan snapshots). Every path those four touch comes from <see cref="DataRootResolver.ResolveServerPath"/>, so
         /// the resolver's checks still stand between them and the disk.
         /// </summary>
         private static readonly Type[] FileSystemAllowed =
@@ -38,6 +38,7 @@ namespace DicomRtNifti.Web.Tests
             typeof(DicomRtNifti.Web.Jobs.JobStore),
             typeof(DicomRtNifti.Web.Jobs.ProjectLocks),
             typeof(DicomRtNifti.Web.Audit.AuditLog),
+            typeof(DicomRtNifti.Web.State.ScanSnapshotStore),
         };
 
         private static readonly HashSet<string> FileSystemTypes = new HashSet<string>(StringComparer.Ordinal)
