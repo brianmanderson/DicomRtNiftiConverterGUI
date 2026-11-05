@@ -1,0 +1,842 @@
+{
+  "schema": "dicomrtnifti.cohort-analysis/1",
+  "tier": "header",
+  "anonymized": true,
+  "input_root": null,
+  "associations": null,
+  "output_spacing": null,
+  "summary": {
+    "patients": 5,
+    "studies": 5,
+    "image_series": 5,
+    "rtstructs": 5,
+    "rtdoses": 1,
+    "other_objects": 0,
+    "flags_by_severity": {
+      "serious": 1,
+      "warning": 3,
+      "info": 0
+    },
+    "flags_by_code": {
+      "GEOM_NONUNIFORM_Z": 1,
+      "GEOM_UNPOSITIONED": 1,
+      "GEOM_OBLIQUE": 0,
+      "GEOM_MIXED_ORIENTATION": 0,
+      "GEOM_MODALITY_MINORITY": 0,
+      "LINK_FALLBACK": 1,
+      "LINK_UNLINKED": 1,
+      "LINK_FOR_MISMATCH": 0,
+      "LINK_REFERENCED_SERIES_ABSENT": 0,
+      "LINK_MULTIPLE_FRAMES": 0,
+      "RT_MULTIPLE_STRUCTS": 0,
+      "ROI_DUPLICATE_NAME": 0,
+      "ROI_UNASSOCIATED": 0
+    }
+  },
+  "geometry": {
+    "image_series": 5,
+    "with_positions": 5,
+    "uniform": 4,
+    "non_uniform_within_tolerance": 0,
+    "non_uniform_material": 1,
+    "with_unpositioned_slices": 1,
+    "planes": {
+      "axial": 5,
+      "coronal": 0,
+      "sagittal": 0,
+      "oblique": 0,
+      "unknown": 0
+    },
+    "pixel_spacing_x_mm": {
+      "series": 5,
+      "min": 1.0,
+      "median": 1.0,
+      "max": 1.0,
+      "values": [
+        {
+          "value": 1.0,
+          "series": 5
+        }
+      ]
+    },
+    "pixel_spacing_y_mm": {
+      "series": 5,
+      "min": 1.0,
+      "median": 1.0,
+      "max": 1.0,
+      "values": [
+        {
+          "value": 1.0,
+          "series": 5
+        }
+      ]
+    },
+    "slice_spacing_mm": {
+      "series": 5,
+      "min": 1.0,
+      "median": 1.0,
+      "max": 2.0,
+      "values": [
+        {
+          "value": 1.0,
+          "series": 4
+        },
+        {
+          "value": 2.0,
+          "series": 1
+        }
+      ]
+    },
+    "slice_count": {
+      "series": 5,
+      "min": 3.0,
+      "median": 4.0,
+      "max": 6.0,
+      "values": [
+        {
+          "value": 3.0,
+          "series": 1
+        },
+        {
+          "value": 4.0,
+          "series": 3
+        },
+        {
+          "value": 6.0,
+          "series": 1
+        }
+      ]
+    },
+    "extent_z_mm": {
+      "series": 5,
+      "min": 2.0,
+      "median": 3.0,
+      "max": 20.0,
+      "values": [
+        {
+          "value": 2.0,
+          "series": 1
+        },
+        {
+          "value": 3.0,
+          "series": 3
+        },
+        {
+          "value": 20.0,
+          "series": 1
+        }
+      ]
+    },
+    "grids": [
+      {
+        "rows": 16,
+        "columns": 16,
+        "series": 5
+      }
+    ]
+  },
+  "series": [
+    {
+      "patient_id": "P68b3036251",
+      "study_uid": "ST6c5c77fc798b",
+      "series_uid": "SE382b342ccc28",
+      "modality": "CT",
+      "series_description": "CT series",
+      "geometry": {
+        "instance_count": 4,
+        "slice_count": 4,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          1.0,
+          1.0
+        ],
+        "spacing": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "slice_spacing": 1.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          1.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 3.0,
+        "extent_mm": 3.0,
+        "slice_thickness": 1.0,
+        "rows": 16,
+        "columns": 16,
+        "field_of_view_mm": [
+          16.0,
+          16.0
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": 1.0,
+        "rescale_intercept": 0.0,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 4
+        }
+      },
+      "links": {
+        "rtstructs": [
+          {
+            "series_uid": "SE21ec74998204",
+            "series_description": "structures",
+            "match_rule": "ReferencedSeriesUid",
+            "roi_count": 2,
+            "frame_of_reference_match": true
+          }
+        ],
+        "default_rtstruct": "SE21ec74998204"
+      },
+      "rois": [
+        {
+          "structure_set_uid": "SE21ec74998204",
+          "name": "Target",
+          "canonical_name": "Target",
+          "associated": false,
+          "output_name": "Target",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        },
+        {
+          "structure_set_uid": "SE21ec74998204",
+          "name": "Ring",
+          "canonical_name": "Ring",
+          "associated": false,
+          "output_name": "Ring",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        }
+      ],
+      "dose": [
+        {
+          "series_uid": "SE5a78ba2b68da",
+          "series_description": "Plan dose",
+          "match_rule": "FrameOfReferenceUid",
+          "file_count": 1,
+          "linked_series": 2,
+          "frame_of_reference_match": true
+        }
+      ],
+      "flags": []
+    },
+    {
+      "patient_id": "P68b3036251",
+      "study_uid": "ST6c5c77fc798b",
+      "series_uid": "SE3c275f56e19e",
+      "modality": "CT",
+      "series_description": "CT series",
+      "geometry": {
+        "instance_count": 3,
+        "slice_count": 3,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          1.0,
+          1.0
+        ],
+        "spacing": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "slice_spacing": 1.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          1.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 2.0,
+        "extent_mm": 2.0,
+        "slice_thickness": 1.0,
+        "rows": 16,
+        "columns": 16,
+        "field_of_view_mm": [
+          16.0,
+          16.0
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": 1.0,
+        "rescale_intercept": 0.0,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 3
+        }
+      },
+      "links": {
+        "rtstructs": [],
+        "default_rtstruct": null
+      },
+      "rois": [],
+      "dose": [
+        {
+          "series_uid": "SE5a78ba2b68da",
+          "series_description": "Plan dose",
+          "match_rule": "FrameOfReferenceUid",
+          "file_count": 1,
+          "linked_series": 2,
+          "frame_of_reference_match": true
+        }
+      ],
+      "flags": []
+    },
+    {
+      "patient_id": "P917eb7105e",
+      "study_uid": "STd0e4b6b4ad3d",
+      "series_uid": "SE1748c1329004",
+      "modality": "CT",
+      "series_description": "CT series",
+      "geometry": {
+        "instance_count": 6,
+        "slice_count": 6,
+        "unpositioned_slices": 1,
+        "pixel_spacing": [
+          1.0,
+          1.0
+        ],
+        "spacing": [
+          1.0,
+          1.0,
+          2.0
+        ],
+        "slice_spacing": 2.0,
+        "slice_spacing_uniform": false,
+        "slice_spacing_values": [
+          2.0,
+          6.0,
+          8.0
+        ],
+        "spacing_error_factor": 2.0,
+        "z_min": 0.0,
+        "z_max": 20.0,
+        "extent_mm": 20.0,
+        "slice_thickness": 1.0,
+        "rows": 16,
+        "columns": 16,
+        "field_of_view_mm": [
+          16.0,
+          16.0
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": 1.0,
+        "rescale_intercept": 0.0,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 7
+        }
+      },
+      "links": {
+        "rtstructs": [
+          {
+            "series_uid": "SE942477dba31b",
+            "series_description": "structures",
+            "match_rule": "FrameOfReferenceUid",
+            "roi_count": 1,
+            "frame_of_reference_match": true
+          }
+        ],
+        "default_rtstruct": "SE942477dba31b"
+      },
+      "rois": [
+        {
+          "structure_set_uid": "SE942477dba31b",
+          "name": "Target",
+          "canonical_name": "Target",
+          "associated": false,
+          "output_name": "Target",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        }
+      ],
+      "dose": [],
+      "flags": [
+        "GEOM_NONUNIFORM_Z",
+        "GEOM_UNPOSITIONED"
+      ]
+    },
+    {
+      "patient_id": "P357df91dfe",
+      "study_uid": "ST8593a329e86a",
+      "series_uid": "SEfb5023009c92",
+      "modality": "CT",
+      "series_description": "CT series",
+      "geometry": {
+        "instance_count": 4,
+        "slice_count": 4,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          1.0,
+          1.0
+        ],
+        "spacing": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "slice_spacing": 1.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          1.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 3.0,
+        "extent_mm": 3.0,
+        "slice_thickness": 1.0,
+        "rows": 16,
+        "columns": 16,
+        "field_of_view_mm": [
+          16.0,
+          16.0
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": 1.0,
+        "rescale_intercept": 0.0,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 4
+        }
+      },
+      "links": {
+        "rtstructs": [
+          {
+            "series_uid": "SEe56e6b671198",
+            "series_description": "structures",
+            "match_rule": "LargestSeriesFallback",
+            "roi_count": 1,
+            "frame_of_reference_match": false
+          }
+        ],
+        "default_rtstruct": "SEe56e6b671198"
+      },
+      "rois": [
+        {
+          "structure_set_uid": "SEe56e6b671198",
+          "name": "Body",
+          "canonical_name": "Body",
+          "associated": false,
+          "output_name": "Body",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        }
+      ],
+      "dose": [],
+      "flags": [
+        "LINK_FALLBACK"
+      ]
+    },
+    {
+      "patient_id": "P8520363cd1",
+      "study_uid": "ST96cc1ae51343",
+      "series_uid": "SE1bb05f0666d1",
+      "modality": "CT",
+      "series_description": "CT series",
+      "geometry": {
+        "instance_count": 4,
+        "slice_count": 4,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          1.0,
+          1.0
+        ],
+        "spacing": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "slice_spacing": 1.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          1.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 3.0,
+        "extent_mm": 3.0,
+        "slice_thickness": 1.0,
+        "rows": 16,
+        "columns": 16,
+        "field_of_view_mm": [
+          16.0,
+          16.0
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": 1.0,
+        "rescale_intercept": 0.0,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 4
+        }
+      },
+      "links": {
+        "rtstructs": [
+          {
+            "series_uid": "SEa2ca7ecc2d23",
+            "series_description": "structures",
+            "match_rule": "FrameOfReferenceUid",
+            "roi_count": 1,
+            "frame_of_reference_match": true
+          }
+        ],
+        "default_rtstruct": "SEa2ca7ecc2d23"
+      },
+      "rois": [
+        {
+          "structure_set_uid": "SEa2ca7ecc2d23",
+          "name": "Target",
+          "canonical_name": "Target",
+          "associated": false,
+          "output_name": "Target",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        }
+      ],
+      "dose": [],
+      "flags": []
+    }
+  ],
+  "roi_naming": {
+    "names": [
+      {
+        "name": "Body",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "body",
+        "canonical_name": "Body",
+        "associated": false
+      },
+      {
+        "name": "Orphan",
+        "series": 0,
+        "patients": 0,
+        "structure_sets": 1,
+        "normalized": "orphan",
+        "canonical_name": "Orphan",
+        "associated": false
+      },
+      {
+        "name": "Ring",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "ring",
+        "canonical_name": "Ring",
+        "associated": false
+      },
+      {
+        "name": "Target",
+        "series": 3,
+        "patients": 3,
+        "structure_sets": 3,
+        "normalized": "target",
+        "canonical_name": "Target",
+        "associated": false
+      }
+    ],
+    "clusters": [],
+    "coverage": {
+      "patients_with_rois": 4,
+      "canonical": [
+        {
+          "canonical_name": "Body",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.25
+        },
+        {
+          "canonical_name": "Ring",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.25
+        },
+        {
+          "canonical_name": "Target",
+          "from_association": false,
+          "patients": 3,
+          "share": 0.75
+        }
+      ],
+      "patients": [
+        {
+          "patient_id": "P68b3036251",
+          "canonical_names": [
+            "Ring",
+            "Target"
+          ]
+        },
+        {
+          "patient_id": "P917eb7105e",
+          "canonical_names": [
+            "Target"
+          ]
+        },
+        {
+          "patient_id": "P357df91dfe",
+          "canonical_names": [
+            "Body"
+          ]
+        },
+        {
+          "patient_id": "P8520363cd1",
+          "canonical_names": [
+            "Target"
+          ]
+        }
+      ]
+    },
+    "uncovered": [],
+    "dropped_if_only_associated": []
+  },
+  "linkage": {
+    "rule_counts": {
+      "RTSTRUCT": {
+        "ReferencedSeriesUid": 1,
+        "FrameOfReferenceUid": 2,
+        "LargestSeriesFallback": 1,
+        "None": 1
+      },
+      "RTDOSE": {
+        "ReferencedSeriesUid": 0,
+        "FrameOfReferenceUid": 1,
+        "LargestSeriesFallback": 0,
+        "None": 0
+      }
+    },
+    "fallback": [
+      {
+        "patient_id": "P357df91dfe",
+        "study_uid": "ST8593a329e86a",
+        "object_uid": "SEe56e6b671198",
+        "modality": "RTSTRUCT",
+        "series_description": "structures",
+        "match_rule": "LargestSeriesFallback",
+        "linked_to": [
+          "SEfb5023009c92"
+        ],
+        "referenced_series": null,
+        "reason": null
+      }
+    ],
+    "unlinked": [
+      {
+        "patient_id": "P983513a2fd",
+        "study_uid": "ST238f8ae9af1c",
+        "object_uid": "SE924353ebcd18",
+        "modality": "RTSTRUCT",
+        "series_description": "orphan structures",
+        "match_rule": "None",
+        "linked_to": [],
+        "referenced_series": null,
+        "reason": "no image series in study"
+      }
+    ],
+    "for_mismatch": [],
+    "referenced_series_absent": [],
+    "multi_struct_series": [],
+    "shared_doses": [
+      {
+        "patient_id": "P68b3036251",
+        "study_uid": "ST6c5c77fc798b",
+        "object_uid": "SE5a78ba2b68da",
+        "modality": "RTDOSE",
+        "series_description": "Plan dose",
+        "match_rule": "FrameOfReferenceUid",
+        "linked_to": [
+          "SE382b342ccc28",
+          "SE3c275f56e19e"
+        ],
+        "referenced_series": null,
+        "reason": null
+      }
+    ],
+    "series_without_rtstruct": 1,
+    "series_without_rtdose": 3,
+    "frames_per_study": [
+      {
+        "patient_id": "P68b3036251",
+        "study_uid": "ST6c5c77fc798b",
+        "image_series": 2,
+        "frames": 1,
+        "image_series_without_frame": 0
+      },
+      {
+        "patient_id": "P917eb7105e",
+        "study_uid": "STd0e4b6b4ad3d",
+        "image_series": 1,
+        "frames": 1,
+        "image_series_without_frame": 0
+      },
+      {
+        "patient_id": "P357df91dfe",
+        "study_uid": "ST8593a329e86a",
+        "image_series": 1,
+        "frames": 1,
+        "image_series_without_frame": 0
+      },
+      {
+        "patient_id": "P8520363cd1",
+        "study_uid": "ST96cc1ae51343",
+        "image_series": 1,
+        "frames": 1,
+        "image_series_without_frame": 0
+      }
+    ],
+    "other_objects": []
+  },
+  "flags": [
+    {
+      "code": "GEOM_NONUNIFORM_Z",
+      "severity": "serious",
+      "patient_id": "P917eb7105e",
+      "study_uid": "STd0e4b6b4ad3d",
+      "series_uid": "SE1748c1329004",
+      "object_uid": null,
+      "roi": null,
+      "message": "WARNING: series SE1748c1329004 has non-uniform slice spacing — 6 slices with gaps from 2 mm to 8 mm. NIfTI carries one spacing per axis, so the output will be written at 4 mm throughout and any volume computed from it will be off by up to 2x. Resample the source series to a uniform grid before converting if the geometry matters. Note: 1 slice(s) of this series were skipped for lacking a usable ImagePositionPatient, and the gaps above include the holes they left."
+    },
+    {
+      "code": "GEOM_UNPOSITIONED",
+      "severity": "warning",
+      "patient_id": "P917eb7105e",
+      "study_uid": "STd0e4b6b4ad3d",
+      "series_uid": "SE1748c1329004",
+      "object_uid": null,
+      "roi": null,
+      "message": "WARNING: series SE1748c1329004: 1 of 7 image slice(s) carry no usable ImagePositionPatient and were skipped — (InstanceNumber 7): ImagePositionPatient missing. The remaining 6 slice(s) are converted as a series with a gap where each skipped slice was; any slice-spacing warning that follows judges that reduced series."
+    },
+    {
+      "code": "LINK_UNLINKED",
+      "severity": "warning",
+      "patient_id": "P983513a2fd",
+      "study_uid": "ST238f8ae9af1c",
+      "series_uid": null,
+      "object_uid": "SE924353ebcd18",
+      "roi": null,
+      "message": "RTSTRUCT SE924353ebcd18 ('orphan structures') is linked to no image series in its study (no image series in study), so no export includes it."
+    },
+    {
+      "code": "LINK_FALLBACK",
+      "severity": "warning",
+      "patient_id": "P357df91dfe",
+      "study_uid": "ST8593a329e86a",
+      "series_uid": "SEfb5023009c92",
+      "object_uid": "SEe56e6b671198",
+      "roi": null,
+      "message": "RTSTRUCT SEe56e6b671198 ('structures') was linked to series SEfb5023009c92 by LargestSeriesFallback: neither its referenced series nor its frame of reference matched an image series of the study, so the study's largest series was assumed."
+    }
+  ]
+}
