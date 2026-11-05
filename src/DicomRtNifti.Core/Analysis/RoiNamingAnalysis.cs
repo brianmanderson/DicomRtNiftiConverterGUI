@@ -16,7 +16,8 @@ namespace DicomRtNifti.Core.Analysis
     /// one an export takes when nothing chooses another), names compare ignoring case and keep
     /// the first spelling met (MainViewModel's ROI browser counts), and coverage is Select ROIs'
     /// patient count (RoiSelectionViewModel). What would be dropped comes from the export's own
-    /// resolver (<see cref="NiftiConversionService.ResolveRoiNames"/>), not a re-implementation.
+    /// resolver (<see cref="NiftiConversionService.ResolveRoiNames"/>), read back as the
+    /// rasterizer reads it, not a re-implementation.
     /// </summary>
     public static class RoiNamingAnalysis
     {
@@ -65,10 +66,8 @@ namespace DicomRtNifti.Core.Analysis
                             tally.Patients.Add(patient.PatientID ?? "");
                         }
 
-                        var kept = new HashSet<string>(
-                            NiftiConversionService.ResolveRoiNames(set.RoiNames, assoc, exportUnmatched: false).Values,
-                            StringComparer.Ordinal);
-                        foreach (var name in set.RoiNames.Where(n => !kept.Contains(n)))
+                        var kept = CohortAnalysisService.OutputByDicomName(set.RoiNames, assoc, exportUnmatched: false);
+                        foreach (var name in set.RoiNames.Where(n => !kept.ContainsKey(n)))
                         {
                             if (!dropped.TryGetValue(name, out var count))
                             {

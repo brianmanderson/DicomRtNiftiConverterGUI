@@ -267,19 +267,17 @@ namespace DicomRtNifti.Core.Analysis
 
         /// <summary>
         /// Every ROI of one structure set: its canonical name, whether an association covers it,
-        /// and what the export's own resolver does with it with and without --only-associated-rois.
+        /// and what the export does with it with and without --only-associated-rois. That is the
+        /// export's resolver (<see cref="NiftiConversionService.ResolveRoiNames"/>) read back the
+        /// way the rasterizer reads it: a DICOM name looked up ignoring case, the last mapping
+        /// winning (RtStructMaskService's reverse lookup), so two names differing only in case
+        /// both export, as they do.
         /// </summary>
         private static IEnumerable<RoiEntry> DescribeRois(DicomSeriesGroup rtStruct, string rtUid, List<RoiAssociation> associations)
         {
             var names = rtStruct.RoiNames ?? new List<string>();
-            var outputByDicomName = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var mapping in NiftiConversionService.ResolveRoiNames(names, associations, exportUnmatched: true))
-            {
-                if (!outputByDicomName.ContainsKey(mapping.Value))
-                    outputByDicomName[mapping.Value] = mapping.Key;
-            }
-            var keptIfOnlyAssociated = new HashSet<string>(
-                NiftiConversionService.ResolveRoiNames(names, associations, exportUnmatched: false).Values, StringComparer.Ordinal);
+            var outputByDicomName = OutputByDicomName(names, associations, exportUnmatched: true);
+            var keptIfOnlyAssociated = OutputByDicomName(names, associations, exportUnmatched: false);
 
             return names.Select(name => new RoiEntry
             {
@@ -288,9 +286,19 @@ namespace DicomRtNifti.Core.Analysis
                 CanonicalName = RoiNameMatcher.ResolveToCanonical(name, associations),
                 Associated = associations.Count > 0 && !SeriesFlags.IsUnassociated(name, associations),
                 OutputName = outputByDicomName.TryGetValue(name, out var output) ? output : null,
-                KeptIfOnlyAssociated = keptIfOnlyAssociated.Contains(name),
+                KeptIfOnlyAssociated = keptIfOnlyAssociated.ContainsKey(name),
                 Duplicate = rtStruct.DuplicateRoiNames?.Contains(name) ?? false,
             }).ToList();
+        }
+
+        /// <summary>The rasterizer's DICOM name → output name lookup for one structure set (RtStructMaskService.cs:85-89).</summary>
+        internal static Dictionary<string, string> OutputByDicomName(
+            List<string> dicomRoiNames, List<RoiAssociation> associations, bool exportUnmatched)
+        {
+            var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var mapping in NiftiConversionService.ResolveRoiNames(dicomRoiNames, associations, exportUnmatched))
+                lookup[mapping.Value] = mapping.Key;
+            return lookup;
         }
 
         /// <summary>Whether the image's frame is one the RT object names; null when either names none.</summary>

@@ -199,7 +199,11 @@ namespace DicomRtNifti.Core.Analysis
         /// <summary>An association covers it; false for every ROI when no association set is given.</summary>
         public bool Associated { get; set; }
 
-        /// <summary>The mask name an export with these associations writes it under, or null when the export drops it.</summary>
+        /// <summary>
+        /// The mask name an export with these associations writes it under, or null when the
+        /// export drops it. A name the structure set repeats, or repeats in another case, is
+        /// written under this name with "_ROINumber" appended for every ROI after the first.
+        /// </summary>
         public string OutputName { get; set; }
 
         /// <summary>Whether --only-associated-rois keeps it (the export's own resolver; with no associations it keeps everything).</summary>

@@ -102,10 +102,13 @@ namespace DicomRtNifti.Core.Tests
             var scan = Cohort();
             var summary = RoiNamingAnalysis.Analyze(scan, Associations, id => id);
 
+            // The resolver's output, read back as the rasterizer reads it: DICOM names ignoring case.
             var expected = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var image in scan.Patients.SelectMany(p => p.Studies).SelectMany(s => s.Series).Where(s => s.LinkedRtStruct != null))
             {
-                var kept = NiftiConversionService.ResolveRoiNames(image.LinkedRtStruct.RoiNames, Associations, false).Values;
+                var kept = new HashSet<string>(
+                    NiftiConversionService.ResolveRoiNames(image.LinkedRtStruct.RoiNames, Associations, false).Values,
+                    StringComparer.OrdinalIgnoreCase);
                 foreach (var name in image.LinkedRtStruct.RoiNames.Where(n => !kept.Contains(n)))
                     expected[name] = expected.TryGetValue(name, out int c) ? c + 1 : 1;
             }
@@ -115,6 +118,26 @@ namespace DicomRtNifti.Core.Tests
             // Both P2 names match Lung_L; the resolver maps the first, so the second is dropped.
             Assert.Contains(summary.DroppedIfOnlyAssociated, d => d.Name == "Lung-L");
             Assert.Equal(new[] { "GTV", "Heart", "PTV 70" }, summary.Uncovered);
+        }
+
+        /// <summary>
+        /// The resolver keys its map ignoring case, so "GTV" and "gtv" in one structure set leave
+        /// one entry; the rasterizer looks DICOM names up ignoring case too, so both still export
+        /// (one suffixed with its ROINumber). The ROI table says so, rather than reporting one dropped.
+        /// </summary>
+        [Fact]
+        public void NamesDifferingOnlyInCase_BothExport_AsTheRasterizerReadsTheResolver()
+        {
+            var image = CohortAnalysisFlagTests.Ct("6.1");
+            CohortAnalysisFlagTests.Link(image, Set("6.1.3", "GTV", "gtv", "Body"));
+            var study = CohortAnalysisFlagTests.Study(image);
+            study.Series.Add(image.LinkedRtStruct);
+
+            var rois = CohortAnalysisFlagTests.Analyze(study).Series.Single().Rois;
+
+            Assert.Equal(new[] { "GTV", "gtv", "Body" }, rois.Select(r => r.Name));
+            Assert.Equal(new[] { "GTV", "GTV", "Body" }, rois.Select(r => r.OutputName));
+            Assert.All(rois, r => Assert.True(r.KeptIfOnlyAssociated));
         }
 
         [Fact]
