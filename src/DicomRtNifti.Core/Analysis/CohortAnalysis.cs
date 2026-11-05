@@ -54,7 +54,7 @@ namespace DicomRtNifti.Core.Analysis
         /// <summary>Flags raised, by severity: serious, warning, info, every one present.</summary>
         public Dictionary<string, int> FlagsBySeverity { get; set; } = new Dictionary<string, int>();
 
-        /// <summary>Flags raised, by code, every code of <see cref="FlagCodes.All"/> present in its order.</summary>
+        /// <summary>Flags raised, by code: every code of <see cref="FlagCodes.All"/> the tier can raise, present in its order.</summary>
         public Dictionary<string, int> FlagsByCode { get; set; } = new Dictionary<string, int>();
     }
 
@@ -172,6 +172,32 @@ namespace DicomRtNifti.Core.Analysis
         /// side names none. False on a link by referenced series raises LINK_FOR_MISMATCH.
         /// </summary>
         public bool? FrameOfReferenceMatch { get; set; }
+
+        /// <summary>The contours tier's read of the structure set; absent below it.</summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public StructureSetContourFacts Contours { get; set; }
+    }
+
+    /// <summary>What the contours tier's full read of one structure set found (<see cref="RtStructContourReader"/>).</summary>
+    public sealed class StructureSetContourFacts
+    {
+        /// <summary>The file read in full; false raises RT_UNREADABLE, and a conversion of it fails.</summary>
+        public bool Readable { get; set; }
+
+        /// <summary>The reader's message when unreadable; withheld (null) under anonymization.</summary>
+        public string Error { get; set; }
+
+        /// <summary>ROIs of the StructureSetROISequence.</summary>
+        public int Rois { get; set; }
+
+        /// <summary>ROIs a ROIContourSequence item gives a ContourSequence.</summary>
+        public int RoisWithContours { get; set; }
+
+        /// <summary>ROIContourSequence items repeating a ROINumber: ignored after the first, as the rasterizer does.</summary>
+        public int DuplicateContourItems { get; set; }
+
+        /// <summary>ROIContourSequence items naming no ROI of the set.</summary>
+        public int OrphanContourItems { get; set; }
     }
 
     public sealed class LinkedDose
@@ -185,6 +211,10 @@ namespace DicomRtNifti.Core.Analysis
         public int LinkedSeries { get; set; }
 
         public bool? FrameOfReferenceMatch { get; set; }
+
+        /// <summary>The contours tier's dose audit against this image series; absent below it.</summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public DoseFacts Audit { get; set; }
     }
 
     /// <summary>One ROI of one linked structure set.</summary>
@@ -211,6 +241,13 @@ namespace DicomRtNifti.Core.Analysis
 
         /// <summary>The structure set names another ROI the same (ROI_DUPLICATE_NAME).</summary>
         public bool Duplicate { get; set; }
+
+        /// <summary>
+        /// The contours tier's measures of the ROI's contour data; absent below it, and for an ROI
+        /// of a structure set that could not be read.
+        /// </summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public RoiContourFacts Contours { get; set; }
     }
 
     /// <summary>One flag: a code from <see cref="FlagCodes"/> and where it was raised.</summary>

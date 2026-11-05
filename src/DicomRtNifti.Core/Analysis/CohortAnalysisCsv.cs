@@ -21,17 +21,33 @@ namespace DicomRtNifti.Core.Analysis
         public const string RoiNamesFile = "analysis_roi_names.csv";
         public const string FlagsFile = "analysis_flags.csv";
 
-        /// <summary>The four tables, file name first, in that order.</summary>
+        /// <summary>The contours tier's: a row per ROI of a linked structure set that was read.</summary>
+        public const string RoiContoursFile = "analysis_roi_contours.csv";
+
+        /// <summary>The contours tier's: a row per linked dose of an image series.</summary>
+        public const string DosesFile = "analysis_doses.csv";
+
+        /// <summary>
+        /// The four tables, file name first, in that order; the contours tier adds
+        /// <see cref="RoiContoursFile"/> and <see cref="DosesFile"/> after them, so the header
+        /// tier's four are the same files at every tier.
+        /// </summary>
         public static IReadOnlyList<KeyValuePair<string, string>> Build(CohortAnalysis analysis)
         {
             if (analysis == null) throw new ArgumentNullException(nameof(analysis));
-            return new[]
+            var tables = new List<KeyValuePair<string, string>>
             {
                 new KeyValuePair<string, string>(SeriesFile, SeriesTable(analysis)),
                 new KeyValuePair<string, string>(RoisFile, RoisTable(analysis)),
                 new KeyValuePair<string, string>(RoiNamesFile, RoiNamesTable(analysis)),
                 new KeyValuePair<string, string>(FlagsFile, FlagsTable(analysis)),
             };
+            if (analysis.Tier != AnalysisTierNames.Header)
+            {
+                tables.Add(new KeyValuePair<string, string>(RoiContoursFile, RoiContoursTable(analysis)));
+                tables.Add(new KeyValuePair<string, string>(DosesFile, DosesTable(analysis)));
+            }
+            return tables;
         }
 
         private static string SeriesTable(CohortAnalysis analysis)
@@ -81,6 +97,59 @@ namespace DicomRtNifti.Core.Analysis
                         Bool(roi.StructureSetUid == s.Links.DefaultRtstruct),
                         Text(roi.Name), Text(roi.CanonicalName), Bool(roi.Associated), Text(roi.OutputName),
                         Bool(roi.KeptIfOnlyAssociated), Bool(roi.Duplicate));
+                }
+            }
+            return table.ToString();
+        }
+
+        private static string RoiContoursTable(CohortAnalysis analysis)
+        {
+            var table = new Table(
+                "patient_id", "study_uid", "series_uid", "structure_set_uid", "roi_name",
+                "contours", "usable_contours", "parse_failed", "too_few_points", "degenerate_contours", "points",
+                "geometric_types", "planes", "z_min_mm", "z_max_mm", "z_extent_mm",
+                "bounds_min_x_mm", "bounds_min_y_mm", "bounds_min_z_mm", "bounds_max_x_mm", "bounds_max_y_mm", "bounds_max_z_mm",
+                "grid_checked", "slices_with_contours", "off_plane_contours", "outside_fov_contours", "partly_outside_fov_contours",
+                "empty", "degenerate");
+            foreach (var s in analysis.Series)
+            {
+                foreach (var roi in s.Rois.Where(r => r.Contours != null))
+                {
+                    var c = roi.Contours;
+                    table.Row(
+                        Text(s.PatientId), Text(s.StudyUid), Text(s.SeriesUid), Text(roi.StructureSetUid), Text(roi.Name),
+                        Number(c.Contours), Number(c.UsableContours), Number(c.ParseFailed), Number(c.TooFewPoints),
+                        Number(c.DegenerateContours), Number(c.Points),
+                        Text(List(c.GeometricTypes.Select(t => t.Key + "=" + Number(t.Value)))), Number(c.Planes),
+                        Number(c.ZMin), Number(c.ZMax), Number(c.ZExtentMm),
+                        Number(At(c.BoundsMinMm, 0)), Number(At(c.BoundsMinMm, 1)), Number(At(c.BoundsMinMm, 2)),
+                        Number(At(c.BoundsMaxMm, 0)), Number(At(c.BoundsMaxMm, 1)), Number(At(c.BoundsMaxMm, 2)),
+                        Bool(c.GridChecked), Number(c.SlicesWithContours), Number(c.OffPlaneContours),
+                        Number(c.OutsideFovContours), Number(c.PartlyOutsideFovContours), Bool(c.Empty), Bool(c.Degenerate));
+                }
+            }
+            return table.ToString();
+        }
+
+        private static string DosesTable(CohortAnalysis analysis)
+        {
+            var table = new Table(
+                "patient_id", "study_uid", "series_uid", "dose_uid", "readable", "dose_units", "dose_type", "dose_summation_type",
+                "rows", "columns", "frames", "voxel_x_mm", "voxel_y_mm", "voxel_z_mm", "max_dose",
+                "orientation_matches_image", "same_grid_as_image", "rois_checked", "rois_not_covered");
+            foreach (var s in analysis.Series)
+            {
+                foreach (var dose in s.Dose.Where(d => d.Audit != null))
+                {
+                    var a = dose.Audit;
+                    var coverage = a.RoiCoverage ?? new List<RoiDoseCoverage>();
+                    table.Row(
+                        Text(s.PatientId), Text(s.StudyUid), Text(s.SeriesUid), Text(dose.SeriesUid), Bool(a.Error == null),
+                        Text(a.DoseUnits), Text(a.DoseType), Text(a.DoseSummationType),
+                        Number(a.Rows), Number(a.Columns), Number(a.Frames),
+                        Number(At(a.VoxelSizeMm, 0)), Number(At(a.VoxelSizeMm, 1)), Number(At(a.VoxelSizeMm, 2)), Number(a.MaxDose),
+                        Bool(a.OrientationMatchesImage), Bool(a.SameGridAsImage),
+                        Number(coverage.Count), Text(List(coverage.Where(r => !r.Covered).Select(r => r.Roi))));
                 }
             }
             return table.ToString();

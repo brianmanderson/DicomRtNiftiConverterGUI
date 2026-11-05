@@ -34,8 +34,11 @@ namespace DicomRtNifti.Core.Analysis
     /// same document because both build it here (<see cref="CohortAnalysisDocument"/>).
     ///
     /// The header tier reads nothing beyond the scan: the scanner's model and the header values it
-    /// keeps (orientation, grid, rescale, frames, the modality tally). The contours and raster
-    /// tiers are refused until the briefs that build them (W4-I, W4-K) land.
+    /// keeps (orientation, grid, rescale, frames, the modality tally). The contours tier adds a
+    /// full read of every linked structure set (<see cref="RtStructContourReader"/>) and dose
+    /// (<see cref="DoseGridAudit"/>) and one image header per series (<see cref="ImageGrid"/>),
+    /// and adds fields to the document without changing the header tier's. The raster tier is
+    /// refused until brief W4-K lands.
     /// </summary>
     public static class CohortAnalysisService
     {
@@ -56,6 +59,10 @@ namespace DicomRtNifti.Core.Analysis
             }
 
             var ids = new AnalysisIdentifiers(anon);
+            // The contours tier reads each linked structure set once, however many series link it.
+            var reads = options.Tier >= AnalysisTier.Contours
+                ? new Dictionary<string, StructureSetContours>(StringComparer.Ordinal)
+                : null;
             var associations = (options.Associations ?? new List<RoiAssociation>()).Where(a => a != null).ToList();
             var analysis = new CohortAnalysis
             {
@@ -73,7 +80,12 @@ namespace DicomRtNifti.Core.Analysis
                     var images = study.Series.Where(SeriesFlags.IsImageSeries).ToList();
 
                     foreach (var image in images)
-                        analysis.Series.Add(DescribeSeries(image, study, associations, ids, context));
+                    {
+                        var series = DescribeSeries(image, study, associations, ids, context);
+                        if (reads != null)
+                            DescribeContours(series, image, ids, context, reads);
+                        analysis.Series.Add(series);
+                    }
 
                     foreach (var obj in study.Series.Where(s => !SeriesFlags.IsImageSeries(s)))
                     {
@@ -117,7 +129,7 @@ namespace DicomRtNifti.Core.Analysis
 
             analysis.Linkage = LinkageAudit.Audit(scan, ids);
             analysis.Geometry = ImageGeometry.Summarize(analysis.Series);
-            analysis.Summary = Summarize(scan, analysis.Flags);
+            analysis.Summary = Summarize(scan, analysis.Flags, options.Tier);
             return analysis;
         }
 
@@ -241,6 +253,159 @@ namespace DicomRtNifti.Core.Analysis
             return series;
         }
 
+        /// <summary>
+        /// The contours tier for one image series: every linked structure set read in full and its
+        /// ROIs measured against the series' grid, and every linked dose audited against the
+        /// series and the ROIs of its default structure set. Adds to <paramref name="series"/>.
+        /// </summary>
+        private static void DescribeContours(
+            SeriesAnalysis series, DicomSeriesGroup image, AnalysisIdentifiers ids, FlagContext context,
+            Dictionary<string, StructureSetContours> reads)
+        {
+            string seriesUid = series.SeriesUid;
+            var grid = ImageGrid.FromSeries(image);
+            RoiContours[] defaultRois = null;
+
+            for (int s = 0; s < image.LinkedRtStructs.Count; s++)
+            {
+                var rs = image.LinkedRtStructs[s];
+                string rtUid = ids.Series(rs.SeriesInstanceUID);
+                var read = ReadOnce(rs, reads);
+                var link = series.Links.Rtstructs[s];
+                link.Contours = new StructureSetContourFacts
+                {
+                    Readable = read.Error == null,
+                    Error = ids.Anonymized ? null : read.Error,
+                    Rois = read.Rois.Count,
+                    RoisWithContours = read.Rois.Count(r => r.HasContourSequence),
+                    DuplicateContourItems = read.DuplicateContourItems,
+                    OrphanContourItems = read.OrphanContourItems,
+                };
+                if (read.Error != null)
+                {
+                    context.Raise(series, FlagCodes.RtUnreadable, seriesUid, rtUid, null, string.Format(CultureInfo.InvariantCulture,
+                        "structure set {0}: its contour data could not be read in full ({1}); a conversion of it fails.",
+                        rtUid, ids.Anonymized ? "the reader's message is withheld under anonymization" : read.Error));
+                    continue;
+                }
+
+                // The scan's ROI names are the StructureSetROISequence's, in file order; pair each
+                // with the reader's ROI of the same name and occurrence.
+                var entries = series.Rois.Where(r => r.StructureSetUid == rtUid).ToList();
+                var matched = MatchRois(entries.Select(e => e.Name).ToList(), read);
+                if (rs == image.LinkedRtStruct)
+                    defaultRois = matched;
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    if (matched[i] == null) continue;
+                    var facts = RoiContourGeometry.Measure(matched[i], grid);
+                    entries[i].Contours = facts;
+                    RaiseRoiFlags(context, series, seriesUid, rtUid, entries[i].Name, facts, grid);
+                }
+            }
+
+            var spacing = series.Geometry?.Spacing;
+            for (int d = 0; d < image.LinkedRtDoses.Count; d++)
+            {
+                var rd = image.LinkedRtDoses[d];
+                string rdUid = ids.Series(rd.SeriesInstanceUID);
+                var rois = (defaultRois ?? new RoiContours[0]).Where(r => r != null)
+                    .Select(r => new KeyValuePair<string, RoiContours>(r.Name, r));
+                DoseFacts audit = rd.FilePaths == null || rd.FilePaths.Count == 0
+                    ? new DoseFacts { Error = "the dose series has no file", RoiCoverage = null }
+                    : DoseGridAudit.Audit(rd.FilePaths[0], grid, spacing, rois);
+                if (audit.Error != null && ids.Anonymized)
+                {
+                    context.Raise(series, FlagCodes.RtUnreadable, seriesUid, rdUid, null, string.Format(CultureInfo.InvariantCulture,
+                        "RTDOSE {0}: it could not be read in full (the reader's message is withheld under anonymization); a conversion of it fails.", rdUid));
+                    audit.Error = "withheld under anonymization";
+                }
+                else if (audit.Error != null)
+                {
+                    context.Raise(series, FlagCodes.RtUnreadable, seriesUid, rdUid, null, string.Format(CultureInfo.InvariantCulture,
+                        "RTDOSE {0}: it could not be read in full ({1}); a conversion of it fails.", rdUid, audit.Error));
+                }
+                series.Dose[d].Audit = audit;
+
+                if (audit.OrientationMatchesImage == false)
+                {
+                    context.Raise(series, FlagCodes.DoseNotAligned, seriesUid, rdUid, null, string.Format(CultureInfo.InvariantCulture,
+                        "RTDOSE {0}: its rows and columns do not run along series {1}'s; the dose grid is rotated against the image.",
+                        rdUid, seriesUid));
+                }
+                foreach (var coverage in (audit.RoiCoverage ?? new List<RoiDoseCoverage>()).Where(c => !c.Covered))
+                {
+                    context.Raise(series, FlagCodes.DoseNotCoveringRoi, seriesUid, rdUid, coverage.Roi, string.Format(CultureInfo.InvariantCulture,
+                        "RTDOSE {0}: ROI '{1}' extends outside the dose grid ({2:0.##}% of its contour points inside); a DVH over it misses dose.",
+                        rdUid, coverage.Roi, coverage.PointsInside * 100));
+                }
+            }
+
+            // Flags are raised structure set by structure set, then dose by dose; keep the series'
+            // list in FlagCodes.All order as the header tier's is.
+            var ordered = series.Flags.OrderBy(FlagCodes.OrderOf).ToList();
+            series.Flags.Clear();
+            series.Flags.AddRange(ordered);
+        }
+
+        private static StructureSetContours ReadOnce(DicomSeriesGroup rtStruct, Dictionary<string, StructureSetContours> reads)
+        {
+            string path = rtStruct.FilePaths?.FirstOrDefault();
+            if (path == null)
+                return new StructureSetContours { Error = "the structure set series has no file" };
+            if (!reads.TryGetValue(path, out var read))
+            {
+                read = RtStructContourReader.Read(path);
+                reads[path] = read;
+            }
+            return read;
+        }
+
+        /// <summary>For each name, in order, the reader's ROI of that name and occurrence; null where it has none.</summary>
+        internal static RoiContours[] MatchRois(List<string> names, StructureSetContours read)
+        {
+            var byName = read.Rois.GroupBy(r => r.Name ?? "", StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => new Queue<RoiContours>(g), StringComparer.Ordinal);
+            return names.Select(n => byName.TryGetValue(n ?? "", out var queue) && queue.Count > 0 ? queue.Dequeue() : null).ToArray();
+        }
+
+        private static void RaiseRoiFlags(
+            FlagContext context, SeriesAnalysis series, string seriesUid, string rtUid, string roi, RoiContourFacts facts, ImageGrid grid)
+        {
+            if (facts.Empty)
+            {
+                string why = facts.Contours == 0
+                    ? "no contour references it"
+                    : string.Format(CultureInfo.InvariantCulture, "{0} contour(s): parse-failed={1}, too-few-points={2}",
+                        facts.Contours, facts.ParseFailed, facts.TooFewPoints);
+                context.Raise(series, FlagCodes.RoiEmpty, seriesUid, rtUid, roi, string.Format(CultureInfo.InvariantCulture,
+                    "structure set {0}, ROI '{1}': no contour has a point ({2}), so an export writes no mask for it.", rtUid, roi, why));
+                return;
+            }
+            if (facts.Degenerate)
+            {
+                context.Raise(series, FlagCodes.RoiDegenerate, seriesUid, rtUid, roi, string.Format(CultureInfo.InvariantCulture,
+                    "structure set {0}, ROI '{1}': all {2} usable contour(s) are degenerate (a closed contour of fewer than three " +
+                    "points or no area, or an open contour of one point) [types: {3}].",
+                    rtUid, roi, facts.UsableContours, string.Join(", ", facts.GeometricTypes.Keys)));
+            }
+            if (facts.OffPlaneContours > 0)
+            {
+                context.Raise(series, FlagCodes.RoiOffPlane, seriesUid, rtUid, roi, string.Format(CultureInfo.InvariantCulture,
+                    "structure set {0}, ROI '{1}': {2} planar contour(s) are not on one z plane within {3} mm of an image slice of " +
+                    "series {4}; the rasterizer fills a planar contour on its nearest slice.",
+                    rtUid, roi, facts.OffPlaneContours, RoiContourGeometry.OffPlaneToleranceMm, seriesUid));
+            }
+            if (facts.OutsideFovContours > 0)
+            {
+                context.Raise(series, FlagCodes.RoiOutsideFov, seriesUid, rtUid, roi, string.Format(CultureInfo.InvariantCulture,
+                    "structure set {0}, ROI '{1}': {2} of {3} usable contour(s) lie wholly outside the voxels of series {4} " +
+                    "({5} x {6}, z {7:0.##} to {8:0.##} mm): the structure set may be matched to the wrong image series, or its " +
+                    "contours lie outside the image extent.",
+                    rtUid, roi, facts.OutsideFovContours, facts.UsableContours, seriesUid, grid.Columns, grid.Rows, grid.ZLow, grid.ZHigh));
+            }
+        }
+
         private static void RaiseReferencedSeriesAbsent(
             FlagContext context, SeriesAnalysis series, string seriesUid, DicomSeriesGroup rtStruct, string rtUid,
             AnalysisIdentifiers ids)
@@ -310,7 +475,7 @@ namespace DicomRtNifti.Core.Analysis
             return frames.Contains(image.FrameOfReferenceUID, StringComparer.Ordinal);
         }
 
-        private static CohortAnalysisSummary Summarize(DicomScanResult scan, List<AnalysisFlag> flags)
+        private static CohortAnalysisSummary Summarize(DicomScanResult scan, List<AnalysisFlag> flags, AnalysisTier tier)
         {
             var all = scan.Patients.SelectMany(p => p.Studies).SelectMany(s => s.Series).ToList();
             var summary = new CohortAnalysisSummary
@@ -325,7 +490,7 @@ namespace DicomRtNifti.Core.Analysis
 
             foreach (var severity in new[] { FlagSeverity.Serious, FlagSeverity.Warning, FlagSeverity.Info })
                 summary.FlagsBySeverity[severity] = flags.Count(f => f.Severity == severity);
-            foreach (var definition in FlagCodes.All)
+            foreach (var definition in FlagCodes.All.Where(d => FlagCodes.RaisedAt(d, tier)))
                 summary.FlagsByCode[definition.Code] = flags.Count(f => f.Code == definition.Code);
             return summary;
         }

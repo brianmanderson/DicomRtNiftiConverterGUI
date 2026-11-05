@@ -11,8 +11,9 @@ namespace DicomRtNifti.Cli.Modes
     /// <summary>
     /// --cohort-analyze: scan a tree and print dicomrtnifti.cohort-analysis/1 — linkage, image
     /// geometry, orientation, ROI naming and flags — with no conversion; --csv-out also writes the
-    /// analysis' tables. The header tier costs nothing beyond the scan; --tier contours and
-    /// --tier raster are refused (exit 2) until they exist. --anonymize hashes identifiers as
+    /// analysis' tables. The header tier costs nothing beyond the scan; --tier contours adds a full
+    /// read of every linked structure set and dose (ROI geometry, the dose audit); --tier raster is
+    /// refused (exit 2) until it exists. --anonymize hashes identifiers as
     /// --cohort-scan does, reading the key at --key-path and writing none.
     /// </summary>
     internal sealed class CohortAnalyzeMode : ICliMode
@@ -24,13 +25,15 @@ namespace DicomRtNifti.Cli.Modes
         public IReadOnlyList<string> Usage { get; } = new[]
         {
             "Cohort analyze (linkage, geometry, orientation, ROI naming and flags; no conversion):",
-            "  --cohort-analyze --input PATH [--tier header] [--associations FILE.json]",
+            "  --cohort-analyze --input PATH [--tier header|contours] [--associations FILE.json]",
             "                   [--anonymize [--salt STRING] [--key-path FILE]]",
             "                   [--json-out PATH] [--csv-out FOLDER]",
-            "    --tier header costs nothing beyond the scan; contours and raster are not yet",
-            "                   available (exit 2)",
+            "    --tier header costs nothing beyond the scan; contours adds a full read of each",
+            "                   linked structure set and dose (empty, off-plane and out-of-view ROIs,",
+            "                   dose grid alignment and coverage); raster is not yet available (exit 2)",
             "    --csv-out writes " + CohortAnalysisCsv.SeriesFile + ", " + CohortAnalysisCsv.RoisFile + ",",
             "                   " + CohortAnalysisCsv.RoiNamesFile + " and " + CohortAnalysisCsv.FlagsFile,
+            "                   (contours adds " + CohortAnalysisCsv.RoiContoursFile + " and " + CohortAnalysisCsv.DosesFile + ")",
         };
 
         public int Run(string[] args)

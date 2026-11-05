@@ -87,14 +87,15 @@ namespace DicomRtNifti.Core.Tests
                 Assert.Contains($"| `{definition.Code}` | {definition.Severity} |", readme);
         }
 
+        /// <summary>Every header-tier code; the contours tier's have an example of their own (CohortAnalyzeContoursCliTests).</summary>
         [Fact]
-        public void TheExample_RaisesEveryFlagCode()
+        public void TheExample_RaisesEveryHeaderTierFlagCode()
         {
             var run = Run("--cohort-analyze", "--input", _cohort.Input, "--associations", _cohort.AssociationsPath);
             var document = JObject.Parse(run.Stdout);
 
             var raised = document["flags"].Select(f => (string)f["code"]).Distinct().OrderBy(c => c).ToList();
-            Assert.Equal(FlagCodes.All.Select(d => d.Code).OrderBy(c => c), raised);
+            Assert.Equal(FlagCodes.All.Where(d => d.Tier == AnalysisTierNames.Header).Select(d => d.Code).OrderBy(c => c), raised);
             Assert.Equal(CohortAnalysisDocument.Schema, (string)document["schema"]);
             Assert.Equal("header", (string)document["tier"]);
         }
@@ -126,10 +127,9 @@ namespace DicomRtNifti.Core.Tests
         }
 
         [Theory]
-        [InlineData("contours")]
         [InlineData("raster")]
         [InlineData("RASTER")]
-        public void TheContoursAndRasterTiers_AreRefusedWithExit2(string tier)
+        public void TheRasterTier_IsRefusedWithExit2(string tier)
         {
             var run = CliRun.Execute("--cohort-analyze", "--input", _cohort.Input, "--tier", tier);
 

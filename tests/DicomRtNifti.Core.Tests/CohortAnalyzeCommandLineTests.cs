@@ -74,8 +74,16 @@ namespace DicomRtNifti.Core.Tests
             Assert.Equal(AnalysisTier.Header, CohortCommandLine.Parse(new[] { "--cohort-analyze", "--input", "x" }).Tier);
         }
 
+        [Fact]
+        public void Parse_AcceptsTheContoursTier_AndRenderCarriesIt()
+        {
+            var command = CohortCommandLine.Parse(new[] { "--cohort-analyze", "--input", "x", "--tier", "Contours" });
+
+            Assert.Equal(AnalysisTier.Contours, command.Tier);
+            Assert.Equal(new[] { "--cohort-analyze", "--input", "x", "--tier", "contours" }, CohortCommandLine.Render(command, null));
+        }
+
         [Theory]
-        [InlineData("--tier contours is not yet available; only --tier header is.", "--cohort-analyze", "--input", "x", "--tier", "contours")]
         [InlineData("--tier raster is not yet available; only --tier header is.", "--cohort-analyze", "--input", "x", "--tier", "Raster")]
         [InlineData("--tier: expected header, contours or raster; got 'voxels'.", "--cohort-analyze", "--input", "x", "--tier", "voxels")]
         [InlineData("Required argument '--input' is missing.", "--cohort-analyze", "--tier", "contours")]
@@ -110,7 +118,7 @@ namespace DicomRtNifti.Core.Tests
             }, null));
             Assert.Throws<ArgumentException>(() => CohortCommandLine.Render(new CohortCommand
             {
-                Mode = CohortMode.Analyze, Options = { InputRoot = "in" }, Tier = AnalysisTier.Contours,
+                Mode = CohortMode.Analyze, Options = { InputRoot = "in" }, Tier = AnalysisTier.Raster,
             }, null));
 
             Assert.Throws<ArgumentException>(() => CohortCommandLine.Render(new CohortCommand
