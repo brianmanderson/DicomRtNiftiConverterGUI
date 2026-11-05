@@ -1,0 +1,334 @@
+@implements IDisposable
+@using DicomRtNifti.Web.Audit
+@using DicomRtNifti.Web.Jobs
+@inject JobQueue Queue
+@inject JobEvents Events
+@inject PathRedactor Redactor
+@inject ICurrentUser CurrentUser
+
+@* The body of the Jobs page (plan section 4.8). It only reads the job service and calls Cancel
+   and Retry, which return at once: the work runs on the lanes' workers, never on this circuit.
+   Everything a job recorded passes the path redactor before it is shown; titles, log lines and
+   the series in hand name patients, which is why the page is for authorized users. Jobs are
+   picked by clicking, never by an id in the address. *@
+
+@if (Queue.UnavailableReason is { } off)
+{
+    <div class="notice notice-failed jobs-off" role="status">@Redactor.Redact(off)</div>
+}
+
+@if (_message is not null)
+{
+    <div class="notice jobs-message" role="status">@_message</div>
+}
+
+<h2>Lanes</h2>
+<table class="roots jobs-lanes">
+    <thead>
+        <tr><th>Lane</th><th>Takes</th><th>Workers</th><th>Running</th><th>Waiting</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var lane in _lanes)
+        {
+            <tr>
+                <td>@lane.Lane</td>
+                <td>@(lane.Lane == JobLane.Heavy ? "conversions and surveys" : "scans")</td>
+                <td>@lane.Workers</td>
+                <td>@lane.Running</td>
+                <td>@lane.Queued of @lane.Capacity</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2>Running</h2>
+@if (Running.Count == 0)
+{
+    <p class="hint jobs-none-running">Nothing is running.</p>
+}
+@foreach (var job in Running)
+{
+    <div class="job-card job-running" @key="job.Id">
+        <div class="job-head">
+            <strong>@Redactor.Redact(job.Title)</strong>
+            <span class="job-kind">@job.Kind</span>
+        </div>
+        @if (job.Progress.HasCounts && job.Progress.Total > 0)
+        {
+            <progress max="@job.Progress.Total" value="@job.Progress.Done"></progress>
+        }
+        else
+        {
+            <progress></progress>
+        }
+        <div class="job-progress">@ProgressText(job.Progress)</div>
+        <div class="job-meta">Running for @Duration(job.Elapsed) · attempt @job.Attempt · submitted by @job.User</div>
+        <div class="job-actions">
+            <button type="button" class="job-cancel" @onclick="() => Cancel(job.Id)">Cancel</button>
+            <button type="button" class="job-select" @onclick="() => Select(job.Id)">Show log</button>
+        </div>
+    </div>
+}
+
+<h2>Queued</h2>
+@if (Queued.Count == 0)
+{
+    <p class="hint">Nothing is waiting.</p>
+}
+else
+{
+    <table class="roots jobs-queued">
+        <thead>
+            <tr><th>Job</th><th>Lane</th><th>Submitted</th><th>By</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var job in Queued)
+            {
+                <tr @key="job.Id">
+                    <td>@Redactor.Redact(job.Title)</td>
+                    <td>@job.Lane</td>
+                    <td>@Time(job.CreatedUtc)</td>
+                    <td>@job.User</td>
+                    <td class="job-actions">
+                        <button type="button" class="job-cancel" @onclick="() => Cancel(job.Id)">Cancel</button>
+                        <button type="button" class="job-select" @onclick="() => Select(job.Id)">Details</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2>History</h2>
+@if (History.Count == 0)
+{
+    <p class="hint">No job has finished yet.</p>
+}
+else
+{
+    <table class="roots jobs-history">
+        <thead>
+            <tr><th>Job</th><th>State</th><th>Finished</th><th>Took</th><th>By</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var job in History.Take(_showAllHistory ? int.MaxValue : HistoryRows))
+            {
+                <tr @key="job.Id">
+                    <td>@Redactor.Redact(job.Title)</td>
+                    <td class="@StateClass(job.State)">@job.State.DisplayName()</td>
+                    <td>@Time(job.FinishedUtc)</td>
+                    <td>@Duration(job.Elapsed)</td>
+                    <td>@job.User</td>
+                    <td class="job-actions">
+                        @if (job.State.CanRetry())
+                        {
+                            <button type="button" class="job-retry" @onclick="() => Retry(job.Id)">Retry</button>
+                        }
+                        <button type="button" class="job-select" @onclick="() => Select(job.Id)">Details</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    @if (History.Count > HistoryRows && !_showAllHistory)
+    {
+        <button type="button" class="jobs-show-all" @onclick="() => _showAllHistory = true">Show all @History.Count</button>
+    }
+}
+
+@if (Selected is { } selected)
+{
+    <section class="job-details">
+        <h2>Job details</h2>
+        <dl class="facts">
+            <dt>Job</dt>
+            <dd>@Redactor.Redact(selected.Title)</dd>
+            <dt>Id</dt>
+            <dd><code>@selected.Id</code></dd>
+            <dt>Kind</dt>
+            <dd>@selected.Kind, @selected.Lane.ToString().ToLowerInvariant() lane</dd>
+            <dt>State</dt>
+            <dd class="job-state @StateClass(selected.State)">@selected.State.DisplayName()</dd>
+            @if (selected.Reason is not null)
+            {
+                <dt>Reason</dt>
+                <dd class="job-reason">@Redactor.Redact(selected.Reason)</dd>
+            }
+            @if (selected.Project is not null)
+            {
+                <dt>Project</dt>
+                <dd><code>@Redactor.Redact(selected.Project)</code></dd>
+            }
+            <dt>Submitted</dt>
+            <dd>@Time(selected.CreatedUtc) by @selected.User</dd>
+            @if (selected.StartedUtc is not null)
+            {
+                <dt>Started</dt>
+                <dd>@Time(selected.StartedUtc) (attempt @selected.Attempt)</dd>
+            }
+            @if (selected.FinishedUtc is not null)
+            {
+                <dt>Finished</dt>
+                <dd>@Time(selected.FinishedUtc), after @Duration(selected.Elapsed)</dd>
+            }
+            @if (selected.Progress.HasCounts)
+            {
+                <dt>Progress</dt>
+                <dd>@ProgressText(selected.Progress)</dd>
+            }
+        </dl>
+
+        <h3>CLI equivalent</h3>
+        <CliCommand Cli="new CliEquivalent(Redactor.Redact(selected.Cli))" />
+
+        <h3>Log</h3>
+        @if (_tail.Count == 0)
+        {
+            <p class="hint">The log is empty.</p>
+        }
+        else
+        {
+            <p class="hint">The last @_tail.Count line(s); the full log is kept with the job on the server.</p>
+            <pre class="job-log">@string.Join("\n", _tail)</pre>
+        }
+    </section>
+}
+
+@code {
+    /// <summary>Lines of the selected job's log shown.</summary>
+    public const int TailLines = 200;
+
+    private const int HistoryRows = 25;
+
+    private IReadOnlyList<JobRecord> _jobs = Array.Empty<JobRecord>();
+    private IReadOnlyList<LaneStatus> _lanes = Array.Empty<LaneStatus>();
+    private List<string> _tail = new();
+    private string? _tailKey;
+    private string? _selectedId;
+    private string? _message;
+    private bool _showAllHistory;
+    private JobEventThrottle? _throttle;
+    private Timer? _ticker;
+
+    private List<JobRecord> Running => _jobs.Where(j => j.State == JobState.Running).ToList();
+
+    // Oldest first: the order the lane takes them in.
+    private List<JobRecord> Queued => _jobs.Where(j => j.State == JobState.Queued).Reverse().ToList();
+
+    private List<JobRecord> History => _jobs.Where(j => j.State.IsFinished())
+        .OrderByDescending(j => j.FinishedUtc ?? j.CreatedUtc).ToList();
+
+    private JobRecord? Selected => _selectedId is null ? null : _jobs.FirstOrDefault(j => j.Id == _selectedId);
+
+    protected override void OnInitialized() => Load();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Only once interactive: a prerendered instance is thrown away and must not subscribe.
+        if (!firstRender)
+            return;
+        _throttle = new JobEventThrottle(Events, () => InvokeAsync(Refresh));
+        // Elapsed times move without an event; tick once a second while something runs.
+        _ticker = new Timer(_ => Tick(), null, 1000, 1000);
+    }
+
+    private void Tick()
+    {
+        if (Running.Count == 0)
+            return;
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (Exception)
+        {
+            // A timer thread must never throw: the page may be going away as it ticks, and an
+            // exception here would take the server down rather than this one render.
+        }
+    }
+
+    private void Refresh()
+    {
+        Load();
+        StateHasChanged();
+    }
+
+    private void Load()
+    {
+        _jobs = Queue.List();
+        _lanes = Enum.GetValues<JobLane>().Reverse().Select(Queue.Status).ToList();
+        if (_selectedId is null || Selected is null)
+            _selectedId = Running.FirstOrDefault()?.Id ?? _jobs.FirstOrDefault()?.Id;
+
+        // A finished job's log no longer changes: read it from disk once, not on every event.
+        var selected = Selected;
+        string? finishedKey = selected is { } s && s.State.IsFinished() ? $"{s.Id}/{s.Attempt}/{s.FinishedUtc:O}" : null;
+        if (finishedKey is null || finishedKey != _tailKey)
+        {
+            _tail = selected is null
+                ? new List<string>()
+                : Queue.LogTail(selected.Id, TailLines).Select(Redactor.Redact).ToList();
+        }
+
+        _tailKey = finishedKey;
+    }
+
+    private void Select(string jobId)
+    {
+        _selectedId = jobId;
+        Load();
+    }
+
+    private void Cancel(string jobId)
+    {
+        _message = Queue.Cancel(jobId, CurrentUser.Id).Message;
+        Load();
+    }
+
+    private void Retry(string jobId)
+    {
+        var result = Queue.Retry(jobId, CurrentUser.Id);
+        _message = result.Message;
+        if (result.Done)
+            _selectedId = jobId;
+        Load();
+    }
+
+    private static string ProgressText(JobProgress progress)
+    {
+        if (!progress.HasCounts)
+            return "Starting.";
+        if (progress.Unit == "files")
+        {
+            return progress.TotalKnown
+                ? $"{progress.Done} of {progress.Total} files read"
+                : $"{progress.Done} files read, {progress.Total} found so far";
+        }
+
+        string text = $"{progress.Done} of {progress.Total} {progress.Unit} done: {progress.Succeeded} succeeded, {progress.Failed} failed";
+        return progress.Current is null ? text : $"{text}; now {progress.Current}";
+    }
+
+    private static string Duration(TimeSpan? span)
+    {
+        if (span is not { } value)
+            return "";
+        return value.TotalHours >= 1 ? value.ToString(@"h\:mm\:ss") : value.ToString(@"m\:ss");
+    }
+
+    private static string Time(DateTimeOffset? time) =>
+        time is { } value ? value.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss") + " UTC" : "";
+
+    private static string StateClass(JobState state) => state switch
+    {
+        JobState.Succeeded => "status-ok",
+        JobState.SucceededWithFailures or JobState.Failed or JobState.Interrupted => "status-failed",
+        _ => "status-pending",
+    };
+
+    public void Dispose()
+    {
+        _throttle?.Dispose();
+        _ticker?.Dispose();
+    }
+}

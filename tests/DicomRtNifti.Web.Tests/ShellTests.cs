@@ -10,6 +10,7 @@ using DicomRtNifti.Web.Features.Home;
 using DicomRtNifti.Web.Shell;
 using DicomRtNifti.Web.Tests.Support;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace DicomRtNifti.Web.Tests
@@ -39,7 +40,34 @@ namespace DicomRtNifti.Web.Tests
             { "patient", "mrn", "uid", "series", "study", "accession", "name", "birth", "path", "folder", "file" };
 
         public static IEnumerable<object[]> Placeholders() =>
-            Catalog.All.Where(d => d.Page != typeof(HomePage)).Select(d => new object[] { d.Title });
+            PlaceholderTitles().Select(title => new object[] { title });
+
+        /// <summary>
+        /// The features whose page still renders the scaffold's placeholder. A brief that builds its
+        /// page replaces the placeholder, and the page leaves this list by itself; each page renders
+        /// with the services every feature registers, as Program registers them.
+        /// </summary>
+        private static IReadOnlyList<string> PlaceholderTitles()
+        {
+            var configuration = new ConfigurationBuilder().Build();
+            var titles = new List<string>();
+            foreach (var feature in Catalog.All)
+            {
+                using var context = ComponentHarness.Create();
+                foreach (var registered in Catalog.All)
+                    registered.Feature.ConfigureServices(context.Services, configuration);
+
+                var page = context.Render(builder =>
+                {
+                    builder.OpenComponent(0, feature.Page);
+                    builder.CloseComponent();
+                });
+                if (page.FindComponents<FeatureStub>().Count > 0)
+                    titles.Add(feature.Title);
+            }
+
+            return titles;
+        }
 
         [Fact]
         public void Every_page_of_the_plan_is_a_feature_in_menu_order()
@@ -102,6 +130,16 @@ namespace DicomRtNifti.Web.Tests
             Assert.Equal(
                 new[] { "Cohort", "Reverse and intake", "Server" },
                 menu.FindAll(".nav-section").Select(s => s.TextContent.Trim()));
+        }
+
+        [Fact]
+        public void The_placeholder_check_is_not_vacuous()
+        {
+            var titles = PlaceholderTitles();
+
+            // Pages still to be built keep the placeholder, and built pages have left it.
+            Assert.NotEmpty(titles);
+            Assert.DoesNotContain("Home", titles);
         }
 
         [Theory]

@@ -15,7 +15,8 @@ namespace DicomRtNifti.Web.Tests
     /// One Core, three front-ends (plan section 3.4), enforced by tests rather than review:
     /// the web assembly references no fo-dicom or SimpleITK type, calls none of the Core
     /// functions that would put naming, hashing, manifest or rasterization logic in the web
-    /// layer, and touches the filesystem only inside <see cref="DataRootResolver"/>.
+    /// layer, and touches the filesystem only inside <see cref="DataRootResolver"/> and the server
+    /// state types listed in <see cref="FileSystemAllowed"/>.
     ///
     /// The checks read the compiled assembly's IL rather than its source, so they see Razor
     /// components, lambdas and async methods as compiled, and are not fooled by an alias, a
@@ -25,8 +26,19 @@ namespace DicomRtNifti.Web.Tests
     {
         private static readonly Assembly Web = typeof(Program).Assembly;
 
-        /// <summary>The only types whose code may call a filesystem API.</summary>
-        private static readonly Type[] FileSystemAllowed = { typeof(DataRootResolver) };
+        /// <summary>
+        /// The only types whose code may call a filesystem API: the resolver, and the three types
+        /// that keep server state (the job store, the per-project job locks, the audit log). Every
+        /// path those three touch comes from <see cref="DataRootResolver.ResolveServerPath"/>, so
+        /// the resolver's checks still stand between them and the disk.
+        /// </summary>
+        private static readonly Type[] FileSystemAllowed =
+        {
+            typeof(DataRootResolver),
+            typeof(DicomRtNifti.Web.Jobs.JobStore),
+            typeof(DicomRtNifti.Web.Jobs.ProjectLocks),
+            typeof(DicomRtNifti.Web.Audit.AuditLog),
+        };
 
         private static readonly HashSet<string> FileSystemTypes = new HashSet<string>(StringComparer.Ordinal)
         {

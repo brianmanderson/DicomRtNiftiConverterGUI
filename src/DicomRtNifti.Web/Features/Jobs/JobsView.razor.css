@@ -1,0 +1,90 @@
+/* The Jobs page. Scoped to this component; no inline styles (the content security policy). */
+
+.job-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    padding: 0.7rem 0.9rem;
+    margin: 0 0 0.8rem;
+}
+
+.job-head {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+
+.job-kind {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.job-card progress {
+    width: 100%;
+    margin: 0.5rem 0 0.2rem;
+}
+
+.job-progress, .job-meta {
+    font-size: 0.9rem;
+}
+
+.job-meta {
+    color: var(--muted);
+}
+
+.job-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+td.job-actions {
+    margin-top: 0;
+}
+
+button {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.15rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 0.3rem;
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+}
+
+button:hover {
+    background: var(--bg);
+}
+
+button.job-cancel {
+    border-color: var(--bad);
+    color: var(--bad);
+}
+
+.job-details {
+    margin-top: 1.4rem;
+}
+
+h3 {
+    font-size: 1rem;
+    margin: 1.2rem 0 0.4rem;
+}
+
+.job-log {
+    background: #1f2328;
+    color: #f0f3f6;
+    padding: 0.7rem 0.9rem;
+    border-radius: 0.4rem;
+    max-height: 28rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0.4rem 0;
+}
+
+.jobs-show-all {
+    margin-top: 0.5rem;
+}
