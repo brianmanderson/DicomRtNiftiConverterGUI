@@ -33,6 +33,13 @@ namespace DicomRtNifti.Core.Tests
     /// tests. They assert only on which SLICES are occupied, never on the in-plane
     /// shape, so they are independent of the X/Y scanline-fill convention.
     /// </para>
+    ///
+    /// <para>
+    /// <c>CLOSED_NONPLANAR</c> is not one of the five Contour Geometric Type Enumerated
+    /// Values (PS3.3 §C.8.8.6), so every RTSTRUCT these tests write is deliberately
+    /// non-conformant. The service reads the value for tolerance only; these tests pin
+    /// that tolerant path, not a standard behaviour.
+    /// </para>
     /// </summary>
     public class RtStructNonplanarSliceTests
     {

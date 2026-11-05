@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Most tests avoid the SimpleITK native deliberately (see CLAUDE.md), but the
-       CLOSED_NONPLANAR slice-placement tests must call the real RtStructMaskService,
+       CLOSED_NONPLANAR (non-standard value) slice-placement tests must call the real RtStructMaskService,
        which takes an itk.simple.Image as its reference geometry. Importing the same
        props the src/ projects use references the managed wrapper and copies whichever
        per-OS native is staged in SitkDir next to the test output, so the DllImport
