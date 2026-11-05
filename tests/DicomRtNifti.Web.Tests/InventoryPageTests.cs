@@ -146,9 +146,11 @@ namespace DicomRtNifti.Web.Tests
             Assert.Contains("No such file in this series.", page.Find(".inv-inspector").TextContent);
             Assert.DoesNotContain(host.Folders.Root, page.Markup, StringComparison.OrdinalIgnoreCase);
 
-            // The study inspector shows the RT objects the tree does not, with their link rules.
+            // The study inspector shows the RT objects the tree does not, with their link rules. The
+            // tags tab loads off the renderer (Task.Run) and its last render can still be finishing,
+            // so the click's render may land after Click() returns: wait for it, as for any async render.
             ByKey(page, imaged.Key).QuerySelector(".inv-label").Click();
-            Assert.Equal("Study inspector", page.Find(".inv-inspector-head").TextContent);
+            page.WaitForAssertion(() => Assert.Equal("Study inspector", page.Find(".inv-inspector-head").TextContent), TimeSpan.FromSeconds(10));
             string study = page.Find(".inv-inspector").TextContent;
             Assert.Contains("Planning structures · 2 ROI(s) · linked to [CT] CT series, by referenced series UID", study);
             Assert.Contains("2 frames of reference", study);
