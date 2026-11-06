@@ -18,8 +18,9 @@ on:
 
 env:
   SIMPLEITK_BASE_URL: "https://github.com/SimpleITK/SimpleITK/releases/download/v2.5.0"
-  # rtmask-conformance pin (SHA, not branch/tag) so the gate is reproducible.
-  RTMASK_CONFORMANCE_REF: "c1ef60874c5b2d8e291c927ec8a9f212d903fd07"
+  # rtmask-conformance pin (SHA, not branch/tag) so the gate is reproducible. Keep it equal to the
+  # research repo's external/RTMaskConformanceTest gitlink: both gates pin the commit archived as v0.1.0.
+  RTMASK_CONFORMANCE_REF: "27c3c4790c408dde05ee4be8497541adb99cdd20"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
