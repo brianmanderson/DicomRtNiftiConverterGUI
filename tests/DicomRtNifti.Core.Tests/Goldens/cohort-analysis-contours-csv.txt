@@ -1,0 +1,50 @@
+== analysis_series.csv ==
+patient_id,study_uid,series_uid,modality,series_description,instance_count,slice_count,unpositioned_slices,pixel_spacing_row_mm,pixel_spacing_col_mm,spacing_x_mm,spacing_y_mm,spacing_z_mm,slice_spacing_uniform,slice_spacing_values_mm,spacing_error_factor,z_min_mm,z_max_mm,extent_mm,slice_thickness_mm,rows,columns,fov_x_mm,fov_y_mm,plane,axis_aligned,normal_tilt_deg,rescale_slope,rescale_intercept,rescale_varies,number_of_frames,modality_counts,rtstructs,default_rtstruct,rtdoses,flags
+"CN_01","3.1.1","3.1.1.1","CT","CT",5,5,0,1,1,1,1,2,true,"2",1,0,8,8,1,16,16,16,16,"axial",true,0,,,false,,"CT=5",1,"3.1.1.3",2,"ROI_EMPTY;ROI_DEGENERATE;ROI_OFF_PLANE;ROI_OUTSIDE_FOV;DOSE_NOT_ALIGNED;DOSE_NOT_COVERING_ROI"
+"CN_02","3.2.1","3.2.1.1","CT","CT",3,3,0,1,1,1,1,1,true,"1",1,0,2,2,1,16,16,16,16,"axial",true,0,,,false,,"CT=3",1,"3.2.1.3",0,"RT_UNREADABLE"
+== analysis_rois.csv ==
+patient_id,study_uid,series_uid,structure_set_uid,default_structure_set,roi_name,canonical_name,associated,output_name,kept_if_only_associated,duplicate
+"CN_01","3.1.1","3.1.1.1","3.1.1.3",true,"Body","Body",false,"Body",true,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3",true,"GTV","GTV",false,"GTV",true,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3",true,"Lost","Lost",false,"Lost",true,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3",true,"Shifted","Shifted",false,"Shifted",true,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3",true,"Line","Line",false,"Line",true,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3",true,"Nothing","Nothing",false,"Nothing",true,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3",true,"Broken","Broken",false,"Broken",true,false
+"CN_02","3.2.1","3.2.1.1","3.2.1.3",true,"Target","Target",false,"Target",true,false
+== analysis_roi_names.csv ==
+roi_name,series,patients,structure_sets,normalized,canonical_name,associated,dropped_if_only_associated
+"Body",1,1,1,"body","Body",false,0
+"Broken",1,1,1,"broken","Broken",false,0
+"GTV",1,1,1,"gtv","GTV",false,0
+"Line",1,1,1,"line","Line",false,0
+"Lost",1,1,1,"lost","Lost",false,0
+"Nothing",1,1,1,"nothing","Nothing",false,0
+"Shifted",1,1,1,"shifted","Shifted",false,0
+"Target",1,1,1,"target","Target",false,0
+== analysis_flags.csv ==
+code,severity,patient_id,study_uid,series_uid,object_uid,roi,message
+"ROI_OUTSIDE_FOV","warning","CN_01","3.1.1","3.1.1.1","3.1.1.3","Lost","structure set 3.1.1.3, ROI 'Lost': 1 of 1 usable contour(s) lie wholly outside the voxels of series 3.1.1.1 (16 x 16, z -1 to 9 mm): the structure set may be matched to the wrong image series, or its contours lie outside the image extent."
+"ROI_OFF_PLANE","warning","CN_01","3.1.1","3.1.1.1","3.1.1.3","Shifted","structure set 3.1.1.3, ROI 'Shifted': 1 planar contour(s) are not on one z plane within 0.05 mm of an image slice of series 3.1.1.1; the rasterizer fills a planar contour on its nearest slice."
+"ROI_DEGENERATE","warning","CN_01","3.1.1","3.1.1.1","3.1.1.3","Line","structure set 3.1.1.3, ROI 'Line': all 1 usable contour(s) are degenerate (a closed contour of fewer than three points or no area, or an open contour of one point) [types: CLOSED_PLANAR]."
+"ROI_EMPTY","warning","CN_01","3.1.1","3.1.1.1","3.1.1.3","Nothing","structure set 3.1.1.3, ROI 'Nothing': no contour has a point (no contour references it), so an export writes no mask for it."
+"ROI_EMPTY","warning","CN_01","3.1.1","3.1.1.1","3.1.1.3","Broken","structure set 3.1.1.3, ROI 'Broken': no contour has a point (1 contour(s): parse-failed=1, too-few-points=0), so an export writes no mask for it."
+"DOSE_NOT_COVERING_ROI","warning","CN_01","3.1.1","3.1.1.1","3.1.1.5","Body","RTDOSE 3.1.1.5: ROI 'Body' extends outside the dose grid (0% of its contour points inside); a DVH over it misses dose."
+"DOSE_NOT_COVERING_ROI","warning","CN_01","3.1.1","3.1.1.1","3.1.1.5","Lost","RTDOSE 3.1.1.5: ROI 'Lost' extends outside the dose grid (0% of its contour points inside); a DVH over it misses dose."
+"DOSE_NOT_ALIGNED","warning","CN_01","3.1.1","3.1.1.1","3.1.1.6",,"RTDOSE 3.1.1.6: its rows and columns do not run along series 3.1.1.1's; the dose grid is rotated against the image."
+"DOSE_NOT_COVERING_ROI","warning","CN_01","3.1.1","3.1.1.1","3.1.1.6","Body","RTDOSE 3.1.1.6: ROI 'Body' extends outside the dose grid (0% of its contour points inside); a DVH over it misses dose."
+"DOSE_NOT_COVERING_ROI","warning","CN_01","3.1.1","3.1.1.1","3.1.1.6","Lost","RTDOSE 3.1.1.6: ROI 'Lost' extends outside the dose grid (0% of its contour points inside); a DVH over it misses dose."
+"RT_UNREADABLE","serious","CN_02","3.2.1","3.2.1.1","3.2.1.3",,"structure set 3.2.1.3: its contour data could not be read in full (Unexpected VR found for DICOM fragment sequence: SQ); a conversion of it fails."
+== analysis_roi_contours.csv ==
+patient_id,study_uid,series_uid,structure_set_uid,roi_name,contours,usable_contours,parse_failed,too_few_points,degenerate_contours,points,geometric_types,planes,z_min_mm,z_max_mm,z_extent_mm,bounds_min_x_mm,bounds_min_y_mm,bounds_min_z_mm,bounds_max_x_mm,bounds_max_y_mm,bounds_max_z_mm,grid_checked,slices_with_contours,off_plane_contours,outside_fov_contours,partly_outside_fov_contours,empty,degenerate
+"CN_01","3.1.1","3.1.1.1","3.1.1.3","Body",5,5,0,0,0,20,"CLOSED_PLANAR=5",5,0,8,8,-5,-5,0,20,20,8,true,5,0,0,5,false,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3","GTV",2,2,0,0,0,8,"CLOSED_PLANAR=2",2,2,4,2,4,4,2,9,9,4,true,2,0,0,0,false,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3","Lost",1,1,0,0,0,4,"CLOSED_PLANAR=1",1,4,4,0,503,503,4,510,510,4,true,0,0,1,0,false,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3","Shifted",1,1,0,0,0,4,"CLOSED_PLANAR=1",1,3,3,0,4,4,3,9,9,3,true,1,1,0,0,false,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3","Line",1,1,0,0,1,2,"CLOSED_PLANAR=1",1,4,4,0,2,2,4,9,9,4,true,1,0,0,0,false,true
+"CN_01","3.1.1","3.1.1.1","3.1.1.3","Nothing",0,0,0,0,0,0,"",0,,,,,,,,,,true,0,0,0,0,true,false
+"CN_01","3.1.1","3.1.1.1","3.1.1.3","Broken",1,0,1,0,0,0,"CLOSED_PLANAR=1",0,,,,,,,,,,true,0,0,0,0,true,false
+== analysis_doses.csv ==
+patient_id,study_uid,series_uid,dose_uid,readable,dose_units,dose_type,dose_summation_type,rows,columns,frames,voxel_x_mm,voxel_y_mm,voxel_z_mm,max_dose,orientation_matches_image,same_grid_as_image,rois_checked,rois_not_covered
+"CN_01","3.1.1","3.1.1.1","3.1.1.5",true,"GY","PHYSICAL","PLAN",8,8,5,2,2,2,0.05,true,false,5,"Body;Lost"
+"CN_01","3.1.1","3.1.1.1","3.1.1.6",true,"GY","PHYSICAL","PLAN",16,16,5,1,1,2,0.05,false,false,5,"Body;Lost"

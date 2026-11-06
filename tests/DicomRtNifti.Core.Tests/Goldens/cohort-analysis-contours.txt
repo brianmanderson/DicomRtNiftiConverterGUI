@@ -1,0 +1,1044 @@
+{
+  "schema": "dicomrtnifti.cohort-analysis/1",
+  "tier": "contours",
+  "anonymized": false,
+  "input_root": "<ROOT>/in",
+  "associations": null,
+  "output_spacing": null,
+  "summary": {
+    "patients": 2,
+    "studies": 2,
+    "image_series": 2,
+    "rtstructs": 2,
+    "rtdoses": 2,
+    "other_objects": 0,
+    "flags_by_severity": {
+      "serious": 1,
+      "warning": 10,
+      "info": 0
+    },
+    "flags_by_code": {
+      "GEOM_NONUNIFORM_Z": 0,
+      "GEOM_UNPOSITIONED": 0,
+      "GEOM_OBLIQUE": 0,
+      "GEOM_MIXED_ORIENTATION": 0,
+      "GEOM_MODALITY_MINORITY": 0,
+      "LINK_FALLBACK": 0,
+      "LINK_UNLINKED": 0,
+      "LINK_FOR_MISMATCH": 0,
+      "LINK_REFERENCED_SERIES_ABSENT": 0,
+      "LINK_MULTIPLE_FRAMES": 0,
+      "RT_MULTIPLE_STRUCTS": 0,
+      "ROI_DUPLICATE_NAME": 0,
+      "ROI_UNASSOCIATED": 0,
+      "RT_UNREADABLE": 1,
+      "ROI_EMPTY": 2,
+      "ROI_DEGENERATE": 1,
+      "ROI_OFF_PLANE": 1,
+      "ROI_OUTSIDE_FOV": 1,
+      "DOSE_NOT_ALIGNED": 1,
+      "DOSE_NOT_COVERING_ROI": 4
+    }
+  },
+  "geometry": {
+    "image_series": 2,
+    "with_positions": 2,
+    "uniform": 2,
+    "non_uniform_within_tolerance": 0,
+    "non_uniform_material": 0,
+    "with_unpositioned_slices": 0,
+    "planes": {
+      "axial": 2,
+      "coronal": 0,
+      "sagittal": 0,
+      "oblique": 0,
+      "unknown": 0
+    },
+    "pixel_spacing_x_mm": {
+      "series": 2,
+      "min": 1.0,
+      "median": 1.0,
+      "max": 1.0,
+      "values": [
+        {
+          "value": 1.0,
+          "series": 2
+        }
+      ]
+    },
+    "pixel_spacing_y_mm": {
+      "series": 2,
+      "min": 1.0,
+      "median": 1.0,
+      "max": 1.0,
+      "values": [
+        {
+          "value": 1.0,
+          "series": 2
+        }
+      ]
+    },
+    "slice_spacing_mm": {
+      "series": 2,
+      "min": 1.0,
+      "median": 1.5,
+      "max": 2.0,
+      "values": [
+        {
+          "value": 1.0,
+          "series": 1
+        },
+        {
+          "value": 2.0,
+          "series": 1
+        }
+      ]
+    },
+    "slice_count": {
+      "series": 2,
+      "min": 3.0,
+      "median": 4.0,
+      "max": 5.0,
+      "values": [
+        {
+          "value": 3.0,
+          "series": 1
+        },
+        {
+          "value": 5.0,
+          "series": 1
+        }
+      ]
+    },
+    "extent_z_mm": {
+      "series": 2,
+      "min": 2.0,
+      "median": 5.0,
+      "max": 8.0,
+      "values": [
+        {
+          "value": 2.0,
+          "series": 1
+        },
+        {
+          "value": 8.0,
+          "series": 1
+        }
+      ]
+    },
+    "grids": [
+      {
+        "rows": 16,
+        "columns": 16,
+        "series": 2
+      }
+    ]
+  },
+  "series": [
+    {
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "modality": "CT",
+      "series_description": "CT",
+      "geometry": {
+        "instance_count": 5,
+        "slice_count": 5,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          1.0,
+          1.0
+        ],
+        "spacing": [
+          1.0,
+          1.0,
+          2.0
+        ],
+        "slice_spacing": 2.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          2.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 8.0,
+        "extent_mm": 8.0,
+        "slice_thickness": 1.0,
+        "rows": 16,
+        "columns": 16,
+        "field_of_view_mm": [
+          16.0,
+          16.0
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": null,
+        "rescale_intercept": null,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 5
+        }
+      },
+      "links": {
+        "rtstructs": [
+          {
+            "series_uid": "3.1.1.3",
+            "series_description": "structures",
+            "match_rule": "ReferencedSeriesUid",
+            "roi_count": 7,
+            "frame_of_reference_match": true,
+            "contours": {
+              "readable": true,
+              "error": null,
+              "rois": 7,
+              "rois_with_contours": 6,
+              "duplicate_contour_items": 0,
+              "orphan_contour_items": 0
+            }
+          }
+        ],
+        "default_rtstruct": "3.1.1.3"
+      },
+      "rois": [
+        {
+          "structure_set_uid": "3.1.1.3",
+          "name": "Body",
+          "canonical_name": "Body",
+          "associated": false,
+          "output_name": "Body",
+          "kept_if_only_associated": true,
+          "duplicate": false,
+          "contours": {
+            "contours": 5,
+            "usable_contours": 5,
+            "parse_failed": 0,
+            "too_few_points": 0,
+            "degenerate_contours": 0,
+            "points": 20,
+            "geometric_types": {
+              "CLOSED_PLANAR": 5
+            },
+            "planes": 5,
+            "z_min": 0.0,
+            "z_max": 8.0,
+            "z_extent_mm": 8.0,
+            "bounds_min_mm": [
+              -5.0,
+              -5.0,
+              0.0
+            ],
+            "bounds_max_mm": [
+              20.0,
+              20.0,
+              8.0
+            ],
+            "grid_checked": true,
+            "slices_with_contours": 5,
+            "off_plane_contours": 0,
+            "outside_fov_contours": 0,
+            "partly_outside_fov_contours": 5,
+            "empty": false,
+            "degenerate": false
+          }
+        },
+        {
+          "structure_set_uid": "3.1.1.3",
+          "name": "GTV",
+          "canonical_name": "GTV",
+          "associated": false,
+          "output_name": "GTV",
+          "kept_if_only_associated": true,
+          "duplicate": false,
+          "contours": {
+            "contours": 2,
+            "usable_contours": 2,
+            "parse_failed": 0,
+            "too_few_points": 0,
+            "degenerate_contours": 0,
+            "points": 8,
+            "geometric_types": {
+              "CLOSED_PLANAR": 2
+            },
+            "planes": 2,
+            "z_min": 2.0,
+            "z_max": 4.0,
+            "z_extent_mm": 2.0,
+            "bounds_min_mm": [
+              4.0,
+              4.0,
+              2.0
+            ],
+            "bounds_max_mm": [
+              9.0,
+              9.0,
+              4.0
+            ],
+            "grid_checked": true,
+            "slices_with_contours": 2,
+            "off_plane_contours": 0,
+            "outside_fov_contours": 0,
+            "partly_outside_fov_contours": 0,
+            "empty": false,
+            "degenerate": false
+          }
+        },
+        {
+          "structure_set_uid": "3.1.1.3",
+          "name": "Lost",
+          "canonical_name": "Lost",
+          "associated": false,
+          "output_name": "Lost",
+          "kept_if_only_associated": true,
+          "duplicate": false,
+          "contours": {
+            "contours": 1,
+            "usable_contours": 1,
+            "parse_failed": 0,
+            "too_few_points": 0,
+            "degenerate_contours": 0,
+            "points": 4,
+            "geometric_types": {
+              "CLOSED_PLANAR": 1
+            },
+            "planes": 1,
+            "z_min": 4.0,
+            "z_max": 4.0,
+            "z_extent_mm": 0.0,
+            "bounds_min_mm": [
+              503.0,
+              503.0,
+              4.0
+            ],
+            "bounds_max_mm": [
+              510.0,
+              510.0,
+              4.0
+            ],
+            "grid_checked": true,
+            "slices_with_contours": 0,
+            "off_plane_contours": 0,
+            "outside_fov_contours": 1,
+            "partly_outside_fov_contours": 0,
+            "empty": false,
+            "degenerate": false
+          }
+        },
+        {
+          "structure_set_uid": "3.1.1.3",
+          "name": "Shifted",
+          "canonical_name": "Shifted",
+          "associated": false,
+          "output_name": "Shifted",
+          "kept_if_only_associated": true,
+          "duplicate": false,
+          "contours": {
+            "contours": 1,
+            "usable_contours": 1,
+            "parse_failed": 0,
+            "too_few_points": 0,
+            "degenerate_contours": 0,
+            "points": 4,
+            "geometric_types": {
+              "CLOSED_PLANAR": 1
+            },
+            "planes": 1,
+            "z_min": 3.0,
+            "z_max": 3.0,
+            "z_extent_mm": 0.0,
+            "bounds_min_mm": [
+              4.0,
+              4.0,
+              3.0
+            ],
+            "bounds_max_mm": [
+              9.0,
+              9.0,
+              3.0
+            ],
+            "grid_checked": true,
+            "slices_with_contours": 1,
+            "off_plane_contours": 1,
+            "outside_fov_contours": 0,
+            "partly_outside_fov_contours": 0,
+            "empty": false,
+            "degenerate": false
+          }
+        },
+        {
+          "structure_set_uid": "3.1.1.3",
+          "name": "Line",
+          "canonical_name": "Line",
+          "associated": false,
+          "output_name": "Line",
+          "kept_if_only_associated": true,
+          "duplicate": false,
+          "contours": {
+            "contours": 1,
+            "usable_contours": 1,
+            "parse_failed": 0,
+            "too_few_points": 0,
+            "degenerate_contours": 1,
+            "points": 2,
+            "geometric_types": {
+              "CLOSED_PLANAR": 1
+            },
+            "planes": 1,
+            "z_min": 4.0,
+            "z_max": 4.0,
+            "z_extent_mm": 0.0,
+            "bounds_min_mm": [
+              2.0,
+              2.0,
+              4.0
+            ],
+            "bounds_max_mm": [
+              9.0,
+              9.0,
+              4.0
+            ],
+            "grid_checked": true,
+            "slices_with_contours": 1,
+            "off_plane_contours": 0,
+            "outside_fov_contours": 0,
+            "partly_outside_fov_contours": 0,
+            "empty": false,
+            "degenerate": true
+          }
+        },
+        {
+          "structure_set_uid": "3.1.1.3",
+          "name": "Nothing",
+          "canonical_name": "Nothing",
+          "associated": false,
+          "output_name": "Nothing",
+          "kept_if_only_associated": true,
+          "duplicate": false,
+          "contours": {
+            "contours": 0,
+            "usable_contours": 0,
+            "parse_failed": 0,
+            "too_few_points": 0,
+            "degenerate_contours": 0,
+            "points": 0,
+            "geometric_types": {},
+            "planes": 0,
+            "z_min": null,
+            "z_max": null,
+            "z_extent_mm": null,
+            "bounds_min_mm": null,
+            "bounds_max_mm": null,
+            "grid_checked": true,
+            "slices_with_contours": 0,
+            "off_plane_contours": 0,
+            "outside_fov_contours": 0,
+            "partly_outside_fov_contours": 0,
+            "empty": true,
+            "degenerate": false
+          }
+        },
+        {
+          "structure_set_uid": "3.1.1.3",
+          "name": "Broken",
+          "canonical_name": "Broken",
+          "associated": false,
+          "output_name": "Broken",
+          "kept_if_only_associated": true,
+          "duplicate": false,
+          "contours": {
+            "contours": 1,
+            "usable_contours": 0,
+            "parse_failed": 1,
+            "too_few_points": 0,
+            "degenerate_contours": 0,
+            "points": 0,
+            "geometric_types": {
+              "CLOSED_PLANAR": 1
+            },
+            "planes": 0,
+            "z_min": null,
+            "z_max": null,
+            "z_extent_mm": null,
+            "bounds_min_mm": null,
+            "bounds_max_mm": null,
+            "grid_checked": true,
+            "slices_with_contours": 0,
+            "off_plane_contours": 0,
+            "outside_fov_contours": 0,
+            "partly_outside_fov_contours": 0,
+            "empty": true,
+            "degenerate": false
+          }
+        }
+      ],
+      "dose": [
+        {
+          "series_uid": "3.1.1.5",
+          "series_description": "dose",
+          "match_rule": "FrameOfReferenceUid",
+          "file_count": 1,
+          "linked_series": 1,
+          "frame_of_reference_match": true,
+          "audit": {
+            "dose_units": "GY",
+            "dose_type": "PHYSICAL",
+            "dose_summation_type": "PLAN",
+            "rows": 8,
+            "columns": 8,
+            "frames": 5,
+            "voxel_size_mm": [
+              2.0,
+              2.0,
+              2.0
+            ],
+            "image_voxel_size_mm": [
+              1.0,
+              1.0,
+              2.0
+            ],
+            "max_dose": 0.05,
+            "extent_min_mm": [
+              0.0,
+              0.0,
+              -1.0
+            ],
+            "extent_max_mm": [
+              16.0,
+              16.0,
+              9.0
+            ],
+            "orientation_matches_image": true,
+            "same_grid_as_image": false,
+            "roi_coverage": [
+              {
+                "roi": "Body",
+                "points_inside": 0.0,
+                "covered": false
+              },
+              {
+                "roi": "GTV",
+                "points_inside": 1.0,
+                "covered": true
+              },
+              {
+                "roi": "Lost",
+                "points_inside": 0.0,
+                "covered": false
+              },
+              {
+                "roi": "Shifted",
+                "points_inside": 1.0,
+                "covered": true
+              },
+              {
+                "roi": "Line",
+                "points_inside": 1.0,
+                "covered": true
+              }
+            ]
+          }
+        },
+        {
+          "series_uid": "3.1.1.6",
+          "series_description": "dose",
+          "match_rule": "FrameOfReferenceUid",
+          "file_count": 1,
+          "linked_series": 1,
+          "frame_of_reference_match": true,
+          "audit": {
+            "dose_units": "GY",
+            "dose_type": "PHYSICAL",
+            "dose_summation_type": "PLAN",
+            "rows": 16,
+            "columns": 16,
+            "frames": 5,
+            "voxel_size_mm": [
+              1.0,
+              1.0,
+              2.0
+            ],
+            "image_voxel_size_mm": [
+              1.0,
+              1.0,
+              2.0
+            ],
+            "max_dose": 0.05,
+            "extent_min_mm": [
+              -0.5,
+              -0.5,
+              -1.0
+            ],
+            "extent_max_mm": [
+              15.5,
+              15.5,
+              9.0
+            ],
+            "orientation_matches_image": false,
+            "same_grid_as_image": false,
+            "roi_coverage": [
+              {
+                "roi": "Body",
+                "points_inside": 0.0,
+                "covered": false
+              },
+              {
+                "roi": "GTV",
+                "points_inside": 1.0,
+                "covered": true
+              },
+              {
+                "roi": "Lost",
+                "points_inside": 0.0,
+                "covered": false
+              },
+              {
+                "roi": "Shifted",
+                "points_inside": 1.0,
+                "covered": true
+              },
+              {
+                "roi": "Line",
+                "points_inside": 1.0,
+                "covered": true
+              }
+            ]
+          }
+        }
+      ],
+      "flags": [
+        "ROI_EMPTY",
+        "ROI_DEGENERATE",
+        "ROI_OFF_PLANE",
+        "ROI_OUTSIDE_FOV",
+        "DOSE_NOT_ALIGNED",
+        "DOSE_NOT_COVERING_ROI"
+      ]
+    },
+    {
+      "patient_id": "CN_02",
+      "study_uid": "3.2.1",
+      "series_uid": "3.2.1.1",
+      "modality": "CT",
+      "series_description": "CT",
+      "geometry": {
+        "instance_count": 3,
+        "slice_count": 3,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          1.0,
+          1.0
+        ],
+        "spacing": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "slice_spacing": 1.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          1.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 2.0,
+        "extent_mm": 2.0,
+        "slice_thickness": 1.0,
+        "rows": 16,
+        "columns": 16,
+        "field_of_view_mm": [
+          16.0,
+          16.0
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": null,
+        "rescale_intercept": null,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 3
+        }
+      },
+      "links": {
+        "rtstructs": [
+          {
+            "series_uid": "3.2.1.3",
+            "series_description": "structures",
+            "match_rule": "ReferencedSeriesUid",
+            "roi_count": 1,
+            "frame_of_reference_match": true,
+            "contours": {
+              "readable": false,
+              "error": "Unexpected VR found for DICOM fragment sequence: SQ",
+              "rois": 0,
+              "rois_with_contours": 0,
+              "duplicate_contour_items": 0,
+              "orphan_contour_items": 0
+            }
+          }
+        ],
+        "default_rtstruct": "3.2.1.3"
+      },
+      "rois": [
+        {
+          "structure_set_uid": "3.2.1.3",
+          "name": "Target",
+          "canonical_name": "Target",
+          "associated": false,
+          "output_name": "Target",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        }
+      ],
+      "dose": [],
+      "flags": [
+        "RT_UNREADABLE"
+      ]
+    }
+  ],
+  "roi_naming": {
+    "names": [
+      {
+        "name": "Body",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "body",
+        "canonical_name": "Body",
+        "associated": false
+      },
+      {
+        "name": "Broken",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "broken",
+        "canonical_name": "Broken",
+        "associated": false
+      },
+      {
+        "name": "GTV",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "gtv",
+        "canonical_name": "GTV",
+        "associated": false
+      },
+      {
+        "name": "Line",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "line",
+        "canonical_name": "Line",
+        "associated": false
+      },
+      {
+        "name": "Lost",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "lost",
+        "canonical_name": "Lost",
+        "associated": false
+      },
+      {
+        "name": "Nothing",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "nothing",
+        "canonical_name": "Nothing",
+        "associated": false
+      },
+      {
+        "name": "Shifted",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "shifted",
+        "canonical_name": "Shifted",
+        "associated": false
+      },
+      {
+        "name": "Target",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "target",
+        "canonical_name": "Target",
+        "associated": false
+      }
+    ],
+    "clusters": [],
+    "coverage": {
+      "patients_with_rois": 2,
+      "canonical": [
+        {
+          "canonical_name": "Body",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "Broken",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "GTV",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "Line",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "Lost",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "Nothing",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "Shifted",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "Target",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        }
+      ],
+      "patients": [
+        {
+          "patient_id": "CN_01",
+          "canonical_names": [
+            "Body",
+            "Broken",
+            "GTV",
+            "Line",
+            "Lost",
+            "Nothing",
+            "Shifted"
+          ]
+        },
+        {
+          "patient_id": "CN_02",
+          "canonical_names": [
+            "Target"
+          ]
+        }
+      ]
+    },
+    "uncovered": [],
+    "dropped_if_only_associated": []
+  },
+  "linkage": {
+    "rule_counts": {
+      "RTSTRUCT": {
+        "ReferencedSeriesUid": 2,
+        "FrameOfReferenceUid": 0,
+        "LargestSeriesFallback": 0,
+        "None": 0
+      },
+      "RTDOSE": {
+        "ReferencedSeriesUid": 0,
+        "FrameOfReferenceUid": 2,
+        "LargestSeriesFallback": 0,
+        "None": 0
+      }
+    },
+    "fallback": [],
+    "unlinked": [],
+    "for_mismatch": [],
+    "referenced_series_absent": [],
+    "multi_struct_series": [],
+    "shared_doses": [],
+    "series_without_rtstruct": 0,
+    "series_without_rtdose": 1,
+    "frames_per_study": [
+      {
+        "patient_id": "CN_01",
+        "study_uid": "3.1.1",
+        "image_series": 1,
+        "frames": 1,
+        "image_series_without_frame": 0
+      },
+      {
+        "patient_id": "CN_02",
+        "study_uid": "3.2.1",
+        "image_series": 1,
+        "frames": 1,
+        "image_series_without_frame": 0
+      }
+    ],
+    "other_objects": []
+  },
+  "flags": [
+    {
+      "code": "ROI_OUTSIDE_FOV",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.3",
+      "roi": "Lost",
+      "message": "structure set 3.1.1.3, ROI 'Lost': 1 of 1 usable contour(s) lie wholly outside the voxels of series 3.1.1.1 (16 x 16, z -1 to 9 mm): the structure set may be matched to the wrong image series, or its contours lie outside the image extent."
+    },
+    {
+      "code": "ROI_OFF_PLANE",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.3",
+      "roi": "Shifted",
+      "message": "structure set 3.1.1.3, ROI 'Shifted': 1 planar contour(s) are not on one z plane within 0.05 mm of an image slice of series 3.1.1.1; the rasterizer fills a planar contour on its nearest slice."
+    },
+    {
+      "code": "ROI_DEGENERATE",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.3",
+      "roi": "Line",
+      "message": "structure set 3.1.1.3, ROI 'Line': all 1 usable contour(s) are degenerate (a closed contour of fewer than three points or no area, or an open contour of one point) [types: CLOSED_PLANAR]."
+    },
+    {
+      "code": "ROI_EMPTY",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.3",
+      "roi": "Nothing",
+      "message": "structure set 3.1.1.3, ROI 'Nothing': no contour has a point (no contour references it), so an export writes no mask for it."
+    },
+    {
+      "code": "ROI_EMPTY",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.3",
+      "roi": "Broken",
+      "message": "structure set 3.1.1.3, ROI 'Broken': no contour has a point (1 contour(s): parse-failed=1, too-few-points=0), so an export writes no mask for it."
+    },
+    {
+      "code": "DOSE_NOT_COVERING_ROI",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.5",
+      "roi": "Body",
+      "message": "RTDOSE 3.1.1.5: ROI 'Body' extends outside the dose grid (0% of its contour points inside); a DVH over it misses dose."
+    },
+    {
+      "code": "DOSE_NOT_COVERING_ROI",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.5",
+      "roi": "Lost",
+      "message": "RTDOSE 3.1.1.5: ROI 'Lost' extends outside the dose grid (0% of its contour points inside); a DVH over it misses dose."
+    },
+    {
+      "code": "DOSE_NOT_ALIGNED",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.6",
+      "roi": null,
+      "message": "RTDOSE 3.1.1.6: its rows and columns do not run along series 3.1.1.1's; the dose grid is rotated against the image."
+    },
+    {
+      "code": "DOSE_NOT_COVERING_ROI",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.6",
+      "roi": "Body",
+      "message": "RTDOSE 3.1.1.6: ROI 'Body' extends outside the dose grid (0% of its contour points inside); a DVH over it misses dose."
+    },
+    {
+      "code": "DOSE_NOT_COVERING_ROI",
+      "severity": "warning",
+      "patient_id": "CN_01",
+      "study_uid": "3.1.1",
+      "series_uid": "3.1.1.1",
+      "object_uid": "3.1.1.6",
+      "roi": "Lost",
+      "message": "RTDOSE 3.1.1.6: ROI 'Lost' extends outside the dose grid (0% of its contour points inside); a DVH over it misses dose."
+    },
+    {
+      "code": "RT_UNREADABLE",
+      "severity": "serious",
+      "patient_id": "CN_02",
+      "study_uid": "3.2.1",
+      "series_uid": "3.2.1.1",
+      "object_uid": "3.2.1.3",
+      "roi": null,
+      "message": "structure set 3.2.1.3: its contour data could not be read in full (Unexpected VR found for DICOM fragment sequence: SQ); a conversion of it fails."
+    }
+  ]
+}

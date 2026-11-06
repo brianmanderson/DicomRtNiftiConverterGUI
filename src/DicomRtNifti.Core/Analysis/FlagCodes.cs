@@ -42,8 +42,9 @@ namespace DicomRtNifti.Core.Analysis
     /// The fixed, documented list of flag codes the cohort analysis raises
     /// (<c>dicomrtnifti.cohort-analysis/1</c>). A code is a contract: scripts filter on it, so a
     /// code is never renamed or reused, and a new one is added here, in README's table and in a
-    /// test of its own. Codes the contours and raster tiers will raise (ROI_EMPTY,
-    /// ROI_OFF_PLANE, DOSE_NOT_ALIGNED, ...) are added by the briefs that build those tiers.
+    /// test of its own. A code's tier is the cheapest that raises it, and a document's
+    /// summary.flags_by_code lists only the codes its tier can raise, so the header tier's
+    /// document did not change when the contours tier's codes arrived.
     ///
     /// The flags that mirror a desktop-app badge use the badge's own predicate
     /// (<see cref="SeriesFlags"/>), so the web, the GUI and the CLI can never disagree about a
@@ -67,6 +68,13 @@ namespace DicomRtNifti.Core.Analysis
         public const string RtMultipleStructs = "RT_MULTIPLE_STRUCTS";
         public const string RoiDuplicateName = "ROI_DUPLICATE_NAME";
         public const string RoiUnassociated = "ROI_UNASSOCIATED";
+        public const string RtUnreadable = "RT_UNREADABLE";
+        public const string RoiEmpty = "ROI_EMPTY";
+        public const string RoiDegenerate = "ROI_DEGENERATE";
+        public const string RoiOffPlane = "ROI_OFF_PLANE";
+        public const string RoiOutsideFov = "ROI_OUTSIDE_FOV";
+        public const string DoseNotAligned = "DOSE_NOT_ALIGNED";
+        public const string DoseNotCoveringRoi = "DOSE_NOT_COVERING_ROI";
 
         /// <summary>Every code, in the order a series' flag list and README's table give them.</summary>
         public static IReadOnlyList<FlagDefinition> All { get; } = new[]
@@ -97,12 +105,30 @@ namespace DicomRtNifti.Core.Analysis
                 "A structure set lists one ROI name more than once; an export keeps the name for the lowest ROINumber and suffixes the others."),
             new FlagDefinition(RoiUnassociated, FlagSeverity.Info, AnalysisTierNames.Header,
                 "With an association set: an ROI name no association covers. --only-associated-rois drops it; without that flag it is exported under its own name."),
+            new FlagDefinition(RtUnreadable, FlagSeverity.Serious, AnalysisTierNames.Contours,
+                "A linked structure set's contour data, or a linked dose, could not be read in full; a conversion of it fails."),
+            new FlagDefinition(RoiEmpty, FlagSeverity.Warning, AnalysisTierNames.Contours,
+                "An ROI has no contour with a point (none at all, or every one unparseable or too short), so an export writes no mask for it."),
+            new FlagDefinition(RoiDegenerate, FlagSeverity.Warning, AnalysisTierNames.Contours,
+                "Every usable contour of an ROI is degenerate: a closed contour of fewer than three points or no area, or an open contour of one point."),
+            new FlagDefinition(RoiOffPlane, FlagSeverity.Warning, AnalysisTierNames.Contours,
+                "Planar contours of an ROI do not lie on one z plane, or their plane is more than 0.05 mm from every image slice; they are filled on the nearest slice."),
+            new FlagDefinition(RoiOutsideFov, FlagSeverity.Warning, AnalysisTierNames.Contours,
+                "Contours of an ROI lie wholly outside the image's voxels, in-plane or in z: the wrong image series, or structures beyond the scan."),
+            new FlagDefinition(DoseNotAligned, FlagSeverity.Warning, AnalysisTierNames.Contours,
+                "A linked dose grid's rows and columns do not run along the image's: the grid is rotated against the image series."),
+            new FlagDefinition(DoseNotCoveringRoi, FlagSeverity.Warning, AnalysisTierNames.Contours,
+                "An ROI of the default structure set has contour points outside a linked dose grid, so a DVH over it misses dose."),
         };
 
         private static readonly Dictionary<string, FlagDefinition> ByCode = All.ToDictionary(d => d.Code);
 
         /// <summary>The definition of <paramref name="code"/>; throws for a code not in <see cref="All"/>.</summary>
         public static FlagDefinition Get(string code) => ByCode[code];
+
+        /// <summary>Whether a document of <paramref name="tier"/> can raise <paramref name="definition"/>'s code.</summary>
+        public static bool RaisedAt(FlagDefinition definition, AnalysisTier tier) =>
+            AnalysisTierNames.TryParse(definition.Tier, out var cheapest) && cheapest <= tier;
 
         /// <summary>Position of <paramref name="code"/> in <see cref="All"/>, for ordering.</summary>
         internal static int OrderOf(string code)

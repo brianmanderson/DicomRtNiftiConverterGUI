@@ -11,7 +11,7 @@ namespace DicomRtNifti.Core.Analysis
         /// <summary>The scan's own model plus values read from the headers it already opens. Costs nothing more.</summary>
         Header = 0,
 
-        /// <summary>Adds a second, full parse of each structure set's contours and of the dose headers. Not yet available.</summary>
+        /// <summary>Adds a second, full parse of each linked structure set's contours and of each linked dose.</summary>
         Contours = 1,
 
         /// <summary>Adds a decode and rasterization of every series, the cost of --cohort-manifest. Not yet available.</summary>
@@ -52,9 +52,9 @@ namespace DicomRtNifti.Core.Analysis
         }
 
         /// <summary>
-        /// True for the tiers this build computes. The contours tier arrives with brief W4-I and
-        /// the raster tier with W4-K; until then both are refused before any scan runs.
+        /// True for the tiers this build computes. The raster tier arrives with brief W4-K; until
+        /// then it is refused before any scan runs.
         /// </summary>
-        public static bool IsAvailable(AnalysisTier tier) => tier == AnalysisTier.Header;
+        public static bool IsAvailable(AnalysisTier tier) => tier <= AnalysisTier.Contours;
     }
 }
