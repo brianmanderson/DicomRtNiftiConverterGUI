@@ -1,3 +1,4 @@
+using DicomRtNifti.Web.Features.Export;
 using DicomRtNifti.Web.Shell;
 using DicomRtNifti.Web.State;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -26,5 +27,7 @@ public sealed class InventoryFeature : IWebFeature
     {
         ScanStateServices.Add(services);
         services.TryAddSingleton<InspectorTagReader>();
+        // Not TryAdd: Export registers a stand-in with TryAdd, and this one must win in either order.
+        services.AddScoped<IInventorySelection, InventoryExportSelection>();
     }
 }
