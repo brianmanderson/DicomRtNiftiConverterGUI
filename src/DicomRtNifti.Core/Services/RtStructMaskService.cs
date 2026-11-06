@@ -12,8 +12,12 @@ namespace DicomRtNifti.Core.Services
 {
     /// <summary>
     /// Rasterizes RT Struct contours into binary 3D mask volumes.
-    /// Supports all DICOM contour geometry types: CLOSED_PLANAR, OPEN_PLANAR,
-    /// OPEN_NONPLANAR, CLOSED_NONPLANAR, and POINT.
+    /// Contour Geometric Type (3006,0042) has five Enumerated Values (PS3.3 §C.8.8.6):
+    /// POINT, OPEN_PLANAR, OPEN_NONPLANAR, CLOSED_PLANAR and CLOSEDPLANAR_XOR. Four are
+    /// dispatched; CLOSEDPLANAR_XOR is deliberately not, because clinical RTSTRUCTs encode
+    /// hollow shapes as several CLOSED_PLANAR contours read even-odd. CLOSED_NONPLANAR is
+    /// also dispatched, but it is NOT a DICOM value — an RTSTRUCT carrying it is invalid —
+    /// and is read only to tolerate non-conformant input.
     /// </summary>
     public class RtStructMaskService
     {
@@ -279,13 +283,15 @@ namespace DicomRtNifti.Core.Services
                             handled = RasterizeOpenNonplanar(contourData, referenceImage, maskData, rows, cols, slices);
                             break;
                         case "CLOSED_NONPLANAR":
+                            // Not a DICOM Enumerated Value; read for tolerance only.
                             handled = RasterizeClosedNonplanar(contourData, referenceImage, maskData, rows, cols, slices);
                             break;
                         case "POINT":
                             handled = RasterizePoint(contourData, referenceImage, maskData, rows, cols, slices);
                             break;
                         default:
-                            // Unknown geometry type — skip
+                            // Unknown geometry type — skip. This includes the standard
+                            // CLOSEDPLANAR_XOR, which is not dispatched by design.
                             handled = false;
                             break;
                     }
@@ -430,6 +436,7 @@ namespace DicomRtNifti.Core.Services
 
         // ────────────────────────────────────────────────────────────────
         //  CLOSED_NONPLANAR — closed polygon spanning multiple slices
+        //  (non-standard value, read for tolerance; see the class summary)
         //  Slice the 3D polygon at each axial plane it intersects,
         //  then scanline-fill the resulting cross-section.
         // ────────────────────────────────────────────────────────────────

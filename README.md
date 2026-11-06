@@ -2,7 +2,7 @@
 
 A cross-platform C# **.NET 10** toolkit that converts DICOM radiotherapy data - CT/MR/PT images, RT Structures, and RT Dose - to NIfTI (`.nii.gz`) format, and performs the reverse (mask -> RTSTRUCT, NIfTI -> DICOM image series). It ships as an **Avalonia desktop GUI** (`DicomRtNifti.App`) and a **headless CLI** (`DicomRtNifti.Cli`) that share one core conversion library (`DicomRtNifti.Core`), and runs on Windows, Linux, and macOS.
 
-The rasterization core handles the five clinically-used DICOM `ContourGeometricType` values - `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT` - and exposes both forward (RTSTRUCT -> mask) and reverse (mask -> RTSTRUCT) directions through a headless CLI. The rare `CLOSED_PLANAR_XOR` type tag (DICOM 2020 supplement) is deliberately not implemented because clinical RTSTRUCTs encode hollow shapes via the multi-contour even-odd convention instead.
+The rasterization core reads four of the five DICOM `ContourGeometricType` Enumerated Values (PS3.3 §C.8.8.6) - `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `POINT` - plus the non-standard value `CLOSED_NONPLANAR`, and exposes both forward (RTSTRUCT -> mask) and reverse (mask -> RTSTRUCT) directions through a headless CLI. `CLOSED_NONPLANAR` is not a DICOM value (an RTSTRUCT carrying it is invalid, and a reader that rejects it is behaving correctly); it is read only to tolerate non-conformant input. The fifth standard value, `CLOSEDPLANAR_XOR` (added by CP-2037, first in PS3.3 2021a), is deliberately not implemented because clinical RTSTRUCTs encode hollow shapes via the multi-contour even-odd convention instead.
 
 Methodology borrows from [Dicom_RT_and_Images_to_Mask](https://github.com/brianmanderson/Dicom_RT_and_Images_to_Mask) (DicomRTTool); this implementation extends coverage beyond `CLOSED_PLANAR`-only and adds the reverse direction.
 
@@ -90,7 +90,7 @@ It serves `http://localhost:5180`.
 
 - Recursive DICOM folder scanning with automatic Patient/Study/Series grouping
 - CT/MR/PT image series export to `image.nii.gz` via SimpleITK (with optional resampling to a fixed voxel spacing)
-- RT Struct contour rasterization to per-ROI binary mask `.nii.gz` files, supporting the five clinically-used `ContourGeometricType` values: `CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `CLOSED_NONPLANAR`, `POINT`. Hollow shapes are handled via the multi-contour `CLOSED_PLANAR` convention with even-odd XOR fill, the dominant clinical encoding; the explicit `CLOSED_PLANAR_XOR` type tag is not dispatched separately
+- RT Struct contour rasterization to per-ROI binary mask `.nii.gz` files, supporting four of the five standard `ContourGeometricType` values (`CLOSED_PLANAR`, `OPEN_PLANAR`, `OPEN_NONPLANAR`, `POINT`) plus the non-standard `CLOSED_NONPLANAR`, read for tolerance only. Hollow shapes are handled via the multi-contour `CLOSED_PLANAR` convention with even-odd XOR fill, the dominant clinical encoding; the standard XOR value `CLOSEDPLANAR_XOR` is not dispatched
 - Reverse direction: mask -> RTSTRUCT writer (`RtStructWriterService`) and NIfTI volume -> DICOM image series (`NiftiImageWriterService`)
 - RT Dose export to `doses/{SeriesDescription}.nii.gz` (one file per dose, filename sanitized) with DoseGridScaling applied
 - Optional per-series `metadata.json` sidecar (DICOM -> NIfTI): a tabbed **Images / Structures / Dose** picker selects DICOM attributes and computed values (voxel size, image dimensions, ROI names, max dose, ...), written as a sectioned, friendly-name-keyed JSON
