@@ -64,7 +64,7 @@ namespace DicomRtNifti.App.Views
             if (_vm == null) { new DicomToNiftiWindow().Show(); return; }
 
             var vm = new MainViewModel(
-                _vm.ScannerService, _vm.ConversionService, _vm.MaskService, _vm.SettingsService, _vm.FolderPicker);
+                _vm.ScannerService, _vm.ConversionService, _vm.SettingsService, _vm.FolderPicker);
             new DicomToNiftiWindow { DataContext = vm }.Show();
         }
 

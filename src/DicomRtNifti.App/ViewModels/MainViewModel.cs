@@ -7,10 +7,12 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
+using DicomRtNifti.Core.CommandLine;
+using DicomRtNifti.Core.Documents;
 using DicomRtNifti.Core.Models;
 using DicomRtNifti.Core.Services;
 using DicomRtNifti.App.Services;
@@ -19,24 +21,35 @@ using DicomRtNifti.App.Views;
 namespace DicomRtNifti.App.ViewModels
 {
     /// <summary>
-    /// Main ViewModel for the forward (DICOM -> NIfTI) workflow. Ported from WPF; the scan /
-    /// convert / metadata logic is unchanged. Cross-platform changes: CommunityToolkit commands
-    /// (RefreshCommands() raises CanExecuteChanged), IFolderPicker instead of WinForms dialogs,
-    /// async ShowDialog for the OutputSpacing / RoiSelection / Settings / ROI-association /
-    /// anonymization-key dialogs, and an OS-switched folder reveal. The Help and Export Options
-    /// windows open non-modally via Show(); ROI associations load from disk and apply during export.
+    /// Main ViewModel for the forward (DICOM -> NIfTI) workflow. Cross-platform changes from the
+    /// WPF port: CommunityToolkit commands (RefreshCommands() raises CanExecuteChanged),
+    /// IFolderPicker instead of WinForms dialogs, async ShowDialog for the OutputSpacing /
+    /// RoiSelection / Settings / ROI-association / anonymization-key dialogs, and an OS-switched
+    /// folder reveal. The Help and Export Options windows open non-modally via Show(); ROI
+    /// associations load from disk and apply during export.
     ///
-    /// Every export toggle is written to settings.json the moment it changes, and the input and
-    /// output folders to gui_state.json (<see cref="GuiStateStore"/>), so a window closed without
-    /// converting still reopens as it was left. Selecting a patient, study or series in the tree
-    /// shows it in the inspector panel (<see cref="PatientInspectorViewModel"/>,
-    /// <see cref="StudyInspectorViewModel"/>, <see cref="SeriesInspectorViewModel"/>).
+    /// It owns no export logic. Convert Selected and Export Manifest Only turn the window's state
+    /// into a <see cref="CohortExportOptions"/> (<see cref="ExportOptionsFor"/>), let
+    /// <see cref="CohortExportService.BuildPlan"/> decide what is written where, show that plan
+    /// (<see cref="ExportPlanViewModel"/>), and run it through
+    /// <see cref="CohortExportService.ExecuteAsync"/> or
+    /// <see cref="CohortExportService.ComputeManifestAsync"/>: the CLI's cohort modes, so the two
+    /// front-ends name, anonymize, select and write alike (W3-D.2).
+    ///
+    /// Every export toggle is written to settings.json the moment it changes, the series-selection
+    /// controls and the input and output folders to gui_state.json (<see cref="GuiStateStore"/>),
+    /// so a window closed without converting still reopens as it was left. Selecting a patient,
+    /// study or series in the tree shows it in the inspector panel
+    /// (<see cref="PatientInspectorViewModel"/>, <see cref="StudyInspectorViewModel"/>,
+    /// <see cref="SeriesInspectorViewModel"/>).
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
+        /// <summary>The manifest Export Manifest Only writes, beside Convert Selected's export_manifest.csv.</summary>
+        public const string SurveyManifestFileName = "export_manifest_meta.csv";
+
         private readonly DicomScannerService _scannerService;
-        private readonly NiftiConversionService _conversionService;
-        private readonly RtStructMaskService _maskService;
+        private readonly CohortExportService _cohortExportService;
         private readonly SettingsService _settingsService;
         private readonly IFolderPicker _folderPicker;
         private readonly GuiStateStore _guiState;
@@ -54,6 +67,10 @@ namespace DicomRtNifti.App.ViewModels
         private CancellationTokenSource _cts;
         private AppSettings _settings;
         private List<RoiAssociation> _associations;
+
+        // The last scan, which the tree shows and every plan is built from, and the folder it read.
+        private DicomScanResult _scan;
+        private string _scannedFolder;
 
         // The non-modal Export Options companion window, tracked so a second click re-focuses the
         // open window instead of stacking duplicates. Null whenever the window is closed.
@@ -74,20 +91,22 @@ namespace DicomRtNifti.App.ViewModels
         private List<string> _metadataImageTagKeywords = new List<string>();
         private List<string> _metadataStructureTagKeywords = new List<string>();
         private List<string> _metadataDoseTagKeywords = new List<string>();
+        private bool _requireStructures;
+        private bool _requireDose;
+        private string _seriesDescriptionFilter = "";
+        private string _structDescriptionFilter = "";
 
         private HashSet<string> _selectedRoiNames;
 
         public MainViewModel(
             DicomScannerService scannerService,
             NiftiConversionService conversionService,
-            RtStructMaskService maskService,
             SettingsService settingsService,
             IFolderPicker folderPicker,
             GuiStateStore guiState = null)
         {
             _scannerService = scannerService;
-            _conversionService = conversionService;
-            _maskService = maskService;
+            _cohortExportService = new CohortExportService(conversionService);
             _settingsService = settingsService;
             _folderPicker = folderPicker;
             _guiState = guiState ?? new GuiStateStore();
@@ -131,6 +150,10 @@ namespace DicomRtNifti.App.ViewModels
                 _outputFolder = gui.LastOutputFolder;
             else if (!string.IsNullOrEmpty(_settings.DefaultOutputDirectory))
                 _outputFolder = _settings.DefaultOutputDirectory;
+            _requireStructures = gui.RequireStructures;
+            _requireDose = gui.RequireDose;
+            _seriesDescriptionFilter = gui.SeriesDescriptionFilter ?? "";
+            _structDescriptionFilter = gui.StructDescriptionFilter ?? "";
 
             _exportImages = _settings.ExportImages;
             _includeStructures = _settings.IncludeStructures;
@@ -293,6 +316,61 @@ namespace DicomRtNifti.App.ViewModels
             set { if (_exportDicomMetadata == value) return; _exportDicomMetadata = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); PersistSetting(s => s.ExportDicomMetadata = value); }
         }
 
+        // The series-selection controls (Export Options): CohortExportOptions' RequireStructures,
+        // RequireDose and description filters, persisted to gui_state.json on change.
+        public bool RequireStructures
+        {
+            get { return _requireStructures; }
+            set { if (_requireStructures == value) return; _requireStructures = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); PersistGuiState(s => s.RequireStructures = value); }
+        }
+        public bool RequireDose
+        {
+            get { return _requireDose; }
+            set { if (_requireDose == value) return; _requireDose = value; OnPropertyChanged(); OnPropertyChanged(nameof(ExportOptionsSummary)); PersistGuiState(s => s.RequireDose = value); }
+        }
+
+        /// <summary>Only series whose SeriesDescription contains this (case-insensitive) are exported; empty for all.</summary>
+        public string SeriesDescriptionFilter
+        {
+            get { return _seriesDescriptionFilter; }
+            set
+            {
+                value = value ?? "";
+                if (_seriesDescriptionFilter == value) return;
+                _seriesDescriptionFilter = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ExportOptionsSummary));
+                PersistGuiState(s => s.SeriesDescriptionFilter = value);
+            }
+        }
+
+        /// <summary>
+        /// Only series with a linked structure set whose SeriesDescription contains this
+        /// (case-insensitive) are exported, with that structure set; empty for all.
+        /// </summary>
+        public string StructDescriptionFilter
+        {
+            get { return _structDescriptionFilter; }
+            set
+            {
+                value = value ?? "";
+                if (_structDescriptionFilter == value) return;
+                _structDescriptionFilter = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ExportOptionsSummary));
+                PersistGuiState(s => s.StructDescriptionFilter = value);
+            }
+        }
+
+        /// <summary>
+        /// The window this view-model's dialogs open over when no window is active (a headless
+        /// session has no desktop lifetime to ask): the forward window, which sets it to itself.
+        /// </summary>
+        public Window DialogOwner { get; set; }
+
+        /// <summary>The owner for a dialog: the active window (Export Options, say), else <see cref="DialogOwner"/>.</summary>
+        private Window Owner => AppWindows.Active ?? DialogOwner;
+
         /// <summary>
         /// One-line digest of the non-default Export Options, shown next to the Export Options
         /// button so hidden state (which lives in a separate window) is visible at a glance.
@@ -302,6 +380,10 @@ namespace DicomRtNifti.App.ViewModels
             get
             {
                 var parts = new List<string>();
+                if (RequireStructures || RequireDose
+                    || !string.IsNullOrWhiteSpace(SeriesDescriptionFilter)
+                    || !string.IsNullOrWhiteSpace(StructDescriptionFilter))
+                    parts.Add("series filter");
                 if (OnlyExportSpecificRois) parts.Add("ROI filter");
                 if (SpecifyOutputSpacing)
                     parts.Add(string.Format(CultureInfo.InvariantCulture, "{0:0.###}×{1:0.###}×{2:0.###} mm",
@@ -387,16 +469,32 @@ namespace DicomRtNifti.App.ViewModels
             SelectedTreeItem = null;
             Patients.Clear();
             AllDiscoveredRoiNames.Clear();
+            _scan = null;
+            _scannedFolder = null;
             ProgressValue = 0;
             RememberFolder(InputFolder, s => s.LastInputFolder = InputFolder);
 
+            // The status line follows the scanner's log; the bar its structured counts. Reads
+            // finish on many threads, so two counts can arrive out of order: keep the high-water
+            // marks (the last event is always the final count).
             var progress = new Progress<string>(msg => StatusText = msg);
+            int filesRead = 0, filesFound = 0;
+            var scanProgress = new Progress<ScanProgress>(p =>
+            {
+                filesRead = Math.Max(filesRead, p.FilesProcessed);
+                filesFound = Math.Max(filesFound, p.FilesFound);
+                if (filesFound > 0)
+                    ProgressValue = 100.0 * Math.Min(filesRead, filesFound) / filesFound;
+            });
 
             try
             {
                 AppendLog($"Scanning {InputFolder}...");
+                string folder = InputFolder;
                 var scanResult = await Task.Run(() =>
-                    _scannerService.ScanFolderAsync(InputFolder, progress, _cts.Token)).ConfigureAwait(true);
+                    _scannerService.ScanFolderAsync(folder, progress, _cts.Token, scanProgress)).ConfigureAwait(true);
+                _scan = scanResult;
+                _scannedFolder = folder;
 
                 foreach (var patient in scanResult.Patients)
                     Patients.Add(new PatientGroupViewModel(patient));
@@ -460,27 +558,16 @@ namespace DicomRtNifti.App.ViewModels
         }
 
         /// <summary>
-        /// The geometry warnings a conversion of <paramref name="model"/> earns, in the CLI's order:
-        /// skipped unpositioned slices first, then non-uniform spacing, which judges the series
-        /// without them. Shared by Convert Selected and Export Manifest Only so the two say the
-        /// same thing about the same series.
+        /// Every ROI name of every linked structure set in the scan, not only the first set of each
+        /// series, since any of them can be picked for export.
         /// </summary>
-        private void LogGeometryWarnings(DicomSeriesGroup model, double[] targetSpacing)
-        {
-            string warning;
-            if (SeriesGeometryProbe.TryBuildMissingPositionWarning(model, out warning))
-                AppendLog("  " + warning);
-            if (SeriesGeometryProbe.TryBuildNonUniformSpacingWarning(model, targetSpacing, out warning))
-                AppendLog("  " + warning);
-        }
-
         private void AggregateDiscoveredRoiNames()
         {
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var patient in Patients)
                 foreach (var study in patient.Studies)
                     foreach (var series in study.ImageSeries)
-                        foreach (var roiName in series.RoiNames)
+                        foreach (var roiName in series.AllRoiNames)
                             names.Add(roiName);
 
             AllDiscoveredRoiNames.Clear();
@@ -490,7 +577,8 @@ namespace DicomRtNifti.App.ViewModels
 
         /// <summary>
         /// Counts how many series each discovered ROI name appears in (case-insensitive, keeping the
-        /// first-seen casing). Feeds the ROI Associations browser so it can show "Name (count)".
+        /// first-seen casing), over every linked structure set. Feeds the ROI Associations browser
+        /// so it can show "Name (count)".
         /// </summary>
         private Dictionary<string, int> ComputeDiscoveredRoiCounts()
         {
@@ -498,291 +586,201 @@ namespace DicomRtNifti.App.ViewModels
             foreach (var patient in Patients)
                 foreach (var study in patient.Studies)
                     foreach (var series in study.ImageSeries)
-                        foreach (var roiName in series.RoiNames)
+                        foreach (var roiName in series.AllRoiNames)
                             counts[roiName] = counts.TryGetValue(roiName, out int c) ? c + 1 : 1;
             return counts;
         }
 
-        private async Task ExecuteConvertAsync()
-        {
-            if (string.IsNullOrEmpty(OutputFolder))
-            {
-                AppendLog("Error: Please select an output folder.");
-                return;
-            }
-            if (!Directory.Exists(OutputFolder))
-                Directory.CreateDirectory(OutputFolder);
-            RememberFolder(OutputFolder, s => s.LastOutputFolder = OutputFolder);
+        private Task ExecuteConvertAsync() => RunCohortAsync(CohortMode.Convert);
 
-            var selectedSeries = new List<SeriesGroupViewModel>();
+        private Task ExecuteExportMetaDataAsync() => RunCohortAsync(CohortMode.Manifest);
+
+        /// <summary>
+        /// The image series the window would export: every ticked series of every ticked patient,
+        /// in tree order. A series ticked under an unticked patient is not exported.
+        /// </summary>
+        public List<SeriesGroupViewModel> SelectedSeries()
+        {
+            var selected = new List<SeriesGroupViewModel>();
             foreach (var patient in Patients)
             {
                 if (!patient.IsSelected) continue;
                 foreach (var study in patient.Studies)
                     foreach (var series in study.ImageSeries)
                         if (series.IsSelected)
-                            selectedSeries.Add(series);
+                            selected.Add(series);
             }
+            return selected;
+        }
 
-            if (selectedSeries.Count == 0)
+        /// <summary>
+        /// The window's state as the <see cref="CohortExportOptions"/> CohortExportService runs:
+        /// the ticked patients and series, each picked structure set, the Require switches and
+        /// description filters, the Data to export toggles, the ROI associations and selection
+        /// ("Limit export to selected ROIs" maps to <see cref="CohortExportOptions.OnlyAssociatedRois"/>
+        /// and, with ROIs selected, to <see cref="CohortExportOptions.RoiSelection"/>), the output
+        /// spacing, anonymization and key location, and the metadata tags when the sidecar is on.
+        /// A mapping, not a decision: what the options mean is Core's.
+        /// </summary>
+        public CohortExportOptions ExportOptionsFor(CohortMode mode)
+        {
+            var selected = SelectedSeries();
+            return new CohortExportOptions
             {
-                AppendLog("No series selected for export.");
+                InputRoot = _scannedFolder ?? InputFolder,
+                OutputRoot = OutputFolder,
+                // The ticked patients bound the plan, so an unticked patient's series are not listed
+                // as skipped; within them, the ticked series.
+                PatientIds = Patients.Where(p => p.IsSelected)
+                    .Select(p => p.Model.PatientID ?? "")
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                SeriesInstanceUids = selected.Select(s => s.Model.SeriesInstanceUID ?? "").ToList(),
+                SeriesDescriptionFilter = Blank(SeriesDescriptionFilter),
+                StructDescriptionFilter = Blank(StructDescriptionFilter),
+                StructureSetUids = selected
+                    .Where(s => s.ChosenStructureSet != null)
+                    .Select(s => s.ChosenStructureSet.SeriesInstanceUID ?? "")
+                    .ToList(),
+                RequireStructures = RequireStructures,
+                RequireDose = RequireDose,
+                ExportImages = ExportImages,
+                ExportStructures = IncludeStructures,
+                ExportDoses = IncludeDose,
+                Associations = _associations ?? new List<RoiAssociation>(),
+                OnlyAssociatedRois = OnlyExportSpecificRois,
+                RoiSelection = OnlyExportSpecificRois && _selectedRoiNames != null
+                    ? _selectedRoiNames.ToList()
+                    : new List<string>(),
+                OutputSpacing = SpecifyOutputSpacing
+                    ? new[] { OutputSpacingX, OutputSpacingY, OutputSpacingZ }
+                    : null,
+                Anonymize = AnonymizeExport,
+                KeyPath = Blank(AnonymizationKeyPath),
+                Salt = _settings.HashSalt,
+                ImageKeywords = ExportDicomMetadata ? new List<string>(_metadataImageTagKeywords) : new List<string>(),
+                StructureKeywords = ExportDicomMetadata ? new List<string>(_metadataStructureTagKeywords) : new List<string>(),
+                DoseKeywords = ExportDicomMetadata ? new List<string>(_metadataDoseTagKeywords) : new List<string>(),
+                ManifestFileName = mode == CohortMode.Convert ? ExportManifestService.DefaultFileName : SurveyManifestFileName,
+            };
+        }
+
+        private static string Blank(string text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+
+        /// <summary>
+        /// Convert Selected (<see cref="CohortMode.Convert"/>) and Export Manifest Only
+        /// (<see cref="CohortMode.Manifest"/>): plan the window's selection, show the plan, and on
+        /// the user's go-ahead run it through CohortExportService, with the log taking the service's
+        /// own messages and the progress bar and status line its structured events.
+        /// </summary>
+        private async Task RunCohortAsync(CohortMode mode)
+        {
+            bool convert = mode == CohortMode.Convert;
+            string noun = convert ? "Conversion" : "Metadata export";
+
+            if (string.IsNullOrEmpty(OutputFolder))
+            {
+                AppendLog("Error: Please select an output folder.");
+                StatusText = "Please select an output folder.";
                 return;
             }
+            if (_scan == null || SelectedSeries().Count == 0)
+            {
+                // An empty series selection would mean "every series" to the service.
+                AppendLog("No series selected for export.");
+                StatusText = "No series selected.";
+                return;
+            }
+
+            if (convert)
+            {
+                _settings.ExportImages = ExportImages;
+                _settings.IncludeStructures = IncludeStructures;
+                _settings.IncludeDose = IncludeDose;
+                _settings.OnlyExportSpecificRois = OnlyExportSpecificRois;
+                _settings.AnonymizeExport = AnonymizeExport;
+                _settings.SpecifyOutputSpacing = SpecifyOutputSpacing;
+                _settings.OutputSpacingX = OutputSpacingX;
+                _settings.OutputSpacingY = OutputSpacingY;
+                _settings.OutputSpacingZ = OutputSpacingZ;
+                _settings.ExportDicomMetadata = ExportDicomMetadata;
+                _settings.MetadataImageTagKeywords = _metadataImageTagKeywords;
+                _settings.MetadataStructureTagKeywords = _metadataStructureTagKeywords;
+                _settings.MetadataDoseTagKeywords = _metadataDoseTagKeywords;
+                SaveSettingsGuarded();
+            }
+
+            _associations = LoadAssociationsGuarded();
+            var options = ExportOptionsFor(mode);
+
+            // The plan to review, hashed (when anonymizing) with the key read where the run will
+            // write it and saved nowhere, as the CLI's --dry-run does: reviewing writes nothing.
+            ExportPlanViewModel review;
+            try
+            {
+                AnonymizationService previewKey = null;
+                string keyFile = null, legacyKeyWarning = null;
+                if (options.Anonymize)
+                    previewKey = ReadOnlyAnonymizationKey.OpenForExport(
+                        options.OutputRoot, options.KeyPath, options.Salt, out keyFile, out legacyKeyWarning);
+                var plan = CohortExportService.BuildPlan(_scan, options, previewKey);
+                review = new ExportPlanViewModel(mode, plan, options, previewKey, keyFile, legacyKeyWarning);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is InvalidDataException || ex is InvalidOperationException)
+            {
+                AppendLog($"Cannot open the anonymization key: {ex.Message}");
+                StatusText = $"{noun} not started.";
+                return;
+            }
+
+            if (!await ShowPlanAsync(review).ConfigureAwait(true))
+            {
+                AppendLog($"{noun} not started: the plan was closed without running it.");
+                StatusText = "Ready";
+                return;
+            }
+
+            Directory.CreateDirectory(OutputFolder);
+            RememberFolder(OutputFolder, s => s.LastOutputFolder = OutputFolder);
 
             IsConverting = true;
             _cts = new CancellationTokenSource();
             ProgressValue = 0;
 
-            _settings.ExportImages = ExportImages;
-            _settings.IncludeStructures = IncludeStructures;
-            _settings.IncludeDose = IncludeDose;
-            _settings.OnlyExportSpecificRois = OnlyExportSpecificRois;
-            _settings.AnonymizeExport = AnonymizeExport;
-            _settings.SpecifyOutputSpacing = SpecifyOutputSpacing;
-            _settings.OutputSpacingX = OutputSpacingX;
-            _settings.OutputSpacingY = OutputSpacingY;
-            _settings.OutputSpacingZ = OutputSpacingZ;
-            _settings.ExportDicomMetadata = ExportDicomMetadata;
-            _settings.MetadataImageTagKeywords = _metadataImageTagKeywords;
-            _settings.MetadataStructureTagKeywords = _metadataStructureTagKeywords;
-            _settings.MetadataDoseTagKeywords = _metadataDoseTagKeywords;
-            SaveSettingsGuarded();
-
-            _associations = LoadAssociationsGuarded();
-
-            double[] targetSpacing = SpecifyOutputSpacing
-                ? new[] { OutputSpacingX, OutputSpacingY, OutputSpacingZ }
-                : null;
-
-            var effectiveAssociations = _associations;
-            bool effectiveExportUnmatched = !OnlyExportSpecificRois;
-
-            if (OnlyExportSpecificRois && _selectedRoiNames != null && _selectedRoiNames.Count > 0)
-            {
-                var filtered = new List<RoiAssociation>();
-                var coveredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var assoc in _associations)
-                {
-                    if (_selectedRoiNames.Contains(assoc.CanonicalName))
-                    {
-                        filtered.Add(assoc);
-                        coveredNames.Add(assoc.CanonicalName);
-                    }
-                }
-                foreach (var name in _selectedRoiNames)
-                {
-                    if (!coveredNames.Contains(name))
-                        filtered.Add(new RoiAssociation { CanonicalName = name, Aliases = new List<string> { name } });
-                }
-                effectiveAssociations = filtered;
-                effectiveExportUnmatched = false;
-            }
-
-            IProgress<string> progress = new Progress<string>(msg => { StatusText = msg; AppendLog(msg); });
+            // Both channels post to this thread in the order the run sends them: the log is the
+            // service's (the CLI's stderr), the bar and status line its structured events.
+            IProgress<string> log = new Progress<string>(AppendLog);
+            IProgress<CohortProgress> events = new Progress<CohortProgress>(e => ShowProgress(e, convert));
 
             try
             {
-                int total = selectedSeries.Count;
-                int completed = 0;
+                // Beside the export or at the chosen key location, never inside it (#54). The plan is
+                // built again against the key the run saves, so the mappings it records are the
+                // ones written; the hashes are the reviewed ones (they are deterministic).
+                AnonymizationService anon = options.Anonymize ? OpenAnonymizationKey() : null;
+                var runPlan = CohortExportService.BuildPlan(_scan, options, anon);
+                LogPlan(runPlan, convert);
 
-                AnonymizationService anonService = null;
-                MetadataDeidentifier metadataDeidentifier = null;
-                if (AnonymizeExport)
-                {
-                    // Beside the export or at the chosen key location, never inside it (#54). A
-                    // location inside the export throws here, before any file is written.
-                    anonService = OpenAnonymizationKey();
-                    // The rule CohortExportService applies to the CLI's cohort export (W2-E, #53).
-                    metadataDeidentifier = new MetadataDeidentifier(anonService);
-                }
+                var token = _cts.Token;
+                var result = await Task.Run(() => convert
+                    ? _cohortExportService.ExecuteAsync(runPlan, options, anon, log, token, events)
+                    : _cohortExportService.ComputeManifestAsync(runPlan, options, anon, log, token, events), token)
+                    .ConfigureAwait(true);
 
-                var spacingPerSeries = new Dictionary<string, double[]>();
-                var roiVolumesPerSeries = new Dictionary<string, Dictionary<string, double>>();
+                LogResult(result, convert);
 
-                int failed = 0;
-                var exported = new List<SeriesGroupViewModel>();
-
-                foreach (var seriesVm in selectedSeries)
-                {
-                    _cts.Token.ThrowIfCancellationRequested();
-                    var model = seriesVm.Model;
-                    string seriesUid = model.SeriesInstanceUID;
-                    string displayLabel = $"series {completed + failed + 1} of {total}";
-
-                    // A series that cannot be converted (a structure set whose contours do not parse,
-                    // an unreadable slice) is reported and skipped, and the rest of the selection still
-                    // exports. The CLI's cohort export has always done this; here one bad file used to
-                    // end the whole run before the manifest was written.
-                    try
-                    {
-                        var (patientId, studyUid) = ResolveIds(seriesVm);
-
-                        string outputDir;
-                        if (AnonymizeExport && anonService != null)
-                        {
-                            // Per-identifier hashes: a patient's datasets all nest under one patient-hash
-                            // folder; each study/series gets its own hash. Hashes are already safe, but
-                            // sanitize defensively so every exported segment is valid on Windows.
-                            string pHash = WindowsPathSanitizer.SanitizeName(anonService.GetPatientHash(patientId));
-                            string stHash = WindowsPathSanitizer.SanitizeName(anonService.GetStudyHash(studyUid));
-                            string seHash = WindowsPathSanitizer.SanitizeName(anonService.GetSeriesHash(seriesUid));
-                            outputDir = Path.Combine(OutputFolder, pHash, stHash, seHash);
-                            displayLabel = $"{pHash}/{stHash}/{seHash}";
-                        }
-                        else
-                        {
-                            string seriesLabel = string.IsNullOrEmpty(model.SeriesDescription)
-                                ? model.SeriesInstanceUID.Substring(0, Math.Min(8, model.SeriesInstanceUID.Length))
-                                : model.SeriesDescription;
-                            string dateLabel = string.IsNullOrEmpty(model.SeriesDate) ? "" : model.SeriesDate + "_";
-                            outputDir = Path.Combine(OutputFolder,
-                                WindowsPathSanitizer.SanitizeName(patientId),
-                                WindowsPathSanitizer.SanitizeName(dateLabel + seriesLabel));
-                            displayLabel = patientId + "/" + seriesLabel;
-                        }
-
-                        Directory.CreateDirectory(outputDir);
-
-                        // Mixed slice gaps are flattened to one spacing on the way into NIfTI. The CLI
-                        // has said so on its single-series modes for a while; the GUI — where nobody is
-                        // reading stderr — said nothing on any path. Log it and carry on: the export is
-                        // still the best available answer and the geometry written is untouched.
-                        LogGeometryWarnings(model, targetSpacing);
-
-                        // The image and, with structures, the masks from one load of the series.
-                        var structureSet = IncludeStructures ? model.LinkedRtStruct : null;
-                        double[] seriesSpacing = null;
-                        Dictionary<string, double> roiVolumes = null;
-
-                        if (ExportImages || structureSet != null)
-                        {
-                            progress.Report(ExportImages && structureSet != null
-                                ? $"Converting images and rasterizing structures: {displayLabel}"
-                                : ExportImages
-                                    ? $"Converting images: {displayLabel}"
-                                    : $"Rasterizing structures: {displayLabel}");
-                            var conversion = await Task.Run(() =>
-                                _conversionService.ConvertSeries(
-                                    model, outputDir, ExportImages, structureSet,
-                                    effectiveAssociations, effectiveExportUnmatched,
-                                    false, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
-                            seriesSpacing = conversion.Spacing;
-                            roiVolumes = conversion.RoiVolumes;
-                        }
-
-                        if (seriesSpacing == null)
-                            seriesSpacing = await Task.Run(() => _conversionService.GetImageSpacing(model)).ConfigureAwait(true);
-
-                        if (targetSpacing != null)
-                            seriesSpacing = (double[])targetSpacing.Clone();
-
-                        spacingPerSeries[seriesUid] = seriesSpacing;
-
-                        // The conversion returns volumes keyed by the exported (canonical-or-raw) mask name,
-                        // so the manifest columns come straight from what was actually written — keeping the
-                        // CSV in lock-step with the masks and with the forgiving association matching.
-                        if (roiVolumes != null)
-                            roiVolumesPerSeries[seriesUid] = roiVolumes;
-
-                        if (IncludeDose && model.LinkedRtDose != null)
-                        {
-                            progress.Report($"Converting dose: {displayLabel}");
-                            await Task.Run(() =>
-                                _conversionService.ConvertDoseToNifti(model.LinkedRtDose, outputDir, progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
-                        }
-
-                        // Sidecar metadata.json: a section per modality (image tags from the series' first
-                        // slice, structure tags from the linked RTSTRUCT, dose tags from the linked RTDOSE).
-                        // Independent of the per-modality export toggles (outputDir always exists) and of
-                        // ExportImages. An anonymized export de-identifies it: PatientID / StudyInstanceUID /
-                        // SeriesInstanceUID carry this export's hashes, so the sidecar still joins to the
-                        // folders and manifest, and identifying values are written as null.
-                        if (ExportDicomMetadata &&
-                            (_metadataImageTagKeywords.Count > 0 || _metadataStructureTagKeywords.Count > 0 ||
-                             _metadataDoseTagKeywords.Count > 0))
-                        {
-                            try
-                            {
-                                var request = new MetadataExportRequest
-                                {
-                                    ImageFilePaths = model.FilePaths,
-                                    StructureFilePath = (model.LinkedRtStruct != null && model.LinkedRtStruct.FilePaths.Count > 0)
-                                        ? model.LinkedRtStruct.FilePaths[0] : null,
-                                    DoseFilePath = (model.LinkedRtDose != null && model.LinkedRtDose.FilePaths.Count > 0)
-                                        ? model.LinkedRtDose.FilePaths[0] : null,
-                                    ImageKeywords = _metadataImageTagKeywords,
-                                    StructureKeywords = _metadataStructureTagKeywords,
-                                    DoseKeywords = _metadataDoseTagKeywords,
-                                    ImageVoxelSpacing = seriesSpacing
-                                };
-                                string metaPath = Path.Combine(outputDir, "metadata.json");
-                                await Task.Run(() =>
-                                    DicomMetadataExtractor.WriteMetadataJson(request, metaPath, metadataDeidentifier), _cts.Token).ConfigureAwait(true);
-                                progress.Report($"Wrote metadata.json: {displayLabel}");
-                            }
-                            catch (Exception ex)
-                            {
-                                AppendLog($"  metadata.json failed for {displayLabel}: {ex.Message}");
-                            }
-                        }
-
-                        exported.Add(seriesVm);
-                        completed++;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        failed++;
-                        spacingPerSeries.Remove(seriesUid);
-                        roiVolumesPerSeries.Remove(seriesUid);
-                        AppendLog($"  FAILED {displayLabel}: {ex.Message}");
-                    }
-                    ProgressValue = (double)(completed + failed) / total * 100;
-                }
-
-                var manifestRows = BuildManifestRows(
-                    exported,
-                    AnonymizeExport ? anonService : null,
-                    spacingPerSeries,
-                    roiVolumesPerSeries);
-
-                if (AnonymizeExport && anonService != null)
-                    anonService.Save();
-
-                var allExportedRoiNames = new List<string>();
-                if (IncludeStructures)
-                {
-                    var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var volDict in roiVolumesPerSeries.Values)
-                        foreach (var roiName in volDict.Keys)
-                            if (roiNameSet.Add(roiName))
-                                allExportedRoiNames.Add(roiName);
-                }
-
-                WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames);
-
-                AppendLog($"Conversion complete. {completed} series exported to {OutputFolder}" +
-                          (failed > 0 ? $"; {failed} failed and are not in the manifest (see FAILED above)." : ""));
-                if (anonService != null)
-                    AppendLog($"Anonymization key (outside the export; keep it, do not share it): {anonService.KeyFilePath}");
-                StatusText = failed > 0 ? $"Conversion complete; {failed} series failed." : "Conversion complete.";
-
-                if (_settings.AutoOpenAfterConversion)
+                if (convert && _settings.AutoOpenAfterConversion)
                     RevealFolder(OutputFolder);
             }
             catch (OperationCanceledException)
             {
-                AppendLog("Conversion cancelled.");
+                AppendLog($"{noun} cancelled.");
                 StatusText = "Cancelled.";
             }
             catch (Exception ex)
             {
-                AppendLog($"Conversion error: {ex.Message}");
-                StatusText = "Conversion failed.";
+                AppendLog($"{noun} error: {ex.Message}");
+                StatusText = $"{noun} failed.";
             }
             finally
             {
@@ -793,176 +791,79 @@ namespace DicomRtNifti.App.ViewModels
             }
         }
 
-        private async Task ExecuteExportMetaDataAsync()
+        /// <summary>Shows the plan modally; true when the user runs it.</summary>
+        private Task<bool> ShowPlanAsync(ExportPlanViewModel review)
         {
-            if (string.IsNullOrEmpty(OutputFolder))
+            var owner = Owner;
+            if (owner == null)
             {
-                StatusText = "Please select an output folder.";
-                return;
+                AppendLog("There is no window to show the export plan in.");
+                return Task.FromResult(false);
             }
-            Directory.CreateDirectory(OutputFolder);
-            RememberFolder(OutputFolder, s => s.LastOutputFolder = OutputFolder);
+            return new ExportPlanWindow { DataContext = review }.ShowDialog<bool>(owner);
+        }
 
-            var selectedSeries = new List<SeriesGroupViewModel>();
-            foreach (var patient in Patients)
+        /// <summary>The status line and progress bar, from the run's structured events.</summary>
+        private void ShowProgress(CohortProgress e, bool convert)
+        {
+            switch (e.Phase)
             {
-                if (!patient.IsSelected) continue;
-                foreach (var study in patient.Studies)
-                    foreach (var series in study.ImageSeries)
-                        if (series.IsSelected) selectedSeries.Add(series);
+                case CohortProgressPhase.SeriesStarted:
+                    StatusText = $"{(convert ? "Converting" : "Surveying")} series {e.SeriesIndex} of {e.SeriesCount}: {e.SeriesLabel}";
+                    break;
+                case CohortProgressPhase.SeriesFinished:
+                    if (e.SeriesCount > 0)
+                        ProgressValue = 100.0 * e.SeriesIndex / e.SeriesCount;
+                    break;
+                case CohortProgressPhase.Completed:
+                    ProgressValue = 100;
+                    break;
             }
+        }
 
-            if (selectedSeries.Count == 0)
-            {
-                StatusText = "No series selected.";
-                return;
-            }
+        /// <summary>What the run is about to do, as the CLI's cohort modes print it, and every series it leaves out.</summary>
+        private void LogPlan(CohortExportPlan plan, bool convert)
+        {
+            AppendLog($"{(convert ? "Converting" : "Surveying")} {plan.Series.Count} series into {OutputFolder} " +
+                      $"({plan.Skipped.Count} skipped, {plan.UnlinkedRtObjects.Count} unlinked RT objects)");
+            foreach (var skipped in plan.Skipped)
+                AppendLog($"  skipped {skipped.PatientId}/{ExportPlanViewModel.Short(skipped.SeriesInstanceUid)} " +
+                          $"({skipped.Modality} {skipped.SeriesDescription}): {skipped.Reason}");
+        }
 
-            IsConverting = true;
-            _cts = new CancellationTokenSource();
-            _associations = LoadAssociationsGuarded();
+        /// <summary>
+        /// The run's outcome in the log and the status line: what was written, every series that
+        /// failed with its message, and where the key went.
+        /// </summary>
+        private void LogResult(CohortExportResult result, bool convert)
+        {
+            string noun = convert ? "Conversion" : "Metadata export";
+            AppendLog($"Wrote manifest: {Path.Combine(result.OutputRoot, result.ManifestCsv)}");
 
-            double[] targetSpacing = SpecifyOutputSpacing
-                ? new[] { OutputSpacingX, OutputSpacingY, OutputSpacingZ }
-                : null;
+            // A series' error names its series; the run's own (an ROI selection that matched no
+            // ROI anywhere) names none, and the service has already logged it as a warning.
+            var failures = result.Errors
+                .Where(e => !string.IsNullOrEmpty(e.SeriesUid) || !string.IsNullOrEmpty(e.PatientId))
+                .ToList();
+            bool runWarning = result.Errors.Count > failures.Count;
+            int failed = result.FailedCount;
 
-            var effectiveAssociations = _associations;
-            bool effectiveExportUnmatched = !OnlyExportSpecificRois;
+            AppendLog(convert
+                ? $"Conversion complete. {result.SucceededCount} series exported to {OutputFolder}" +
+                  (failed > 0 ? $"; {failed} failed and are not in the manifest:" : "")
+                : $"Metadata export complete. {result.SucceededCount} series processed." +
+                  (failed > 0 ? $" {failed} failed and are not in the manifest:" : ""));
+            foreach (var failure in failures)
+                AppendLog($"  FAILED {failure.PatientId}/{ExportPlanViewModel.Short(failure.SeriesUid)}: {failure.Message}");
 
-            if (OnlyExportSpecificRois && _selectedRoiNames != null && _selectedRoiNames.Count > 0)
-            {
-                var filtered = new List<RoiAssociation>();
-                var coveredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var assoc in _associations)
-                {
-                    if (_selectedRoiNames.Contains(assoc.CanonicalName))
-                    {
-                        filtered.Add(assoc);
-                        coveredNames.Add(assoc.CanonicalName);
-                    }
-                }
-                foreach (var name in _selectedRoiNames)
-                    if (!coveredNames.Contains(name))
-                        filtered.Add(new RoiAssociation { CanonicalName = name, Aliases = new List<string> { name } });
-                effectiveAssociations = filtered;
-                effectiveExportUnmatched = false;
-            }
+            if (result.Anonymized && !string.IsNullOrEmpty(result.AnonymizationKey))
+                AppendLog($"Anonymization key (outside the export; keep it, do not share it): {result.AnonymizationKey}");
 
-            IProgress<string> progress = new Progress<string>(msg => { StatusText = msg; AppendLog(msg); });
-
-            try
-            {
-                int total = selectedSeries.Count;
-                int completed = 0;
-                var spacingPerSeries = new Dictionary<string, double[]>();
-                var roiVolumesPerSeries = new Dictionary<string, Dictionary<string, double>>();
-
-                int failed = 0;
-                var processed = new List<SeriesGroupViewModel>();
-
-                foreach (var seriesVm in selectedSeries)
-                {
-                    _cts.Token.ThrowIfCancellationRequested();
-                    var model = seriesVm.Model;
-                    var (patientId, _) = ResolveIds(seriesVm);
-                    string seriesUid = model.SeriesInstanceUID;
-
-                    string displayLabel = $"{patientId}/{seriesUid.Substring(0, Math.Min(8, seriesUid.Length))}";
-
-                    // As in Convert Selected: a series that cannot be read is reported and skipped.
-                    try
-                    {
-                        // The manifest's spacing columns and ROI volumes come from the same flattened
-                        // grid a conversion would write, so this survey earns the same warning.
-                        LogGeometryWarnings(model, targetSpacing);
-
-                        // Spacing and, with structures, the ROI volumes from one load of the series.
-                        var structureSet = IncludeStructures ? model.LinkedRtStruct : null;
-                        progress.Report(structureSet != null
-                            ? $"Reading spacing and computing volumes: {displayLabel}"
-                            : $"Reading spacing: {displayLabel}");
-                        var survey = await Task.Run(() =>
-                            _conversionService.SurveySeries(
-                                model, structureSet,
-                                effectiveAssociations, effectiveExportUnmatched,
-                                progress, _cts.Token, targetSpacing)).ConfigureAwait(true);
-
-                        double[] seriesSpacing = survey.Spacing;
-                        if (targetSpacing != null)
-                            seriesSpacing = (double[])targetSpacing.Clone();
-                        spacingPerSeries[seriesUid] = seriesSpacing;
-
-                        if (structureSet != null)
-                        {
-                            var roiVolumes = survey.RoiVolumes;
-
-                            if (roiVolumes != null && roiVolumes.Count > 0)
-                            {
-                                roiVolumesPerSeries[seriesUid] = roiVolumes;
-                                AppendLog($"  Found {roiVolumes.Count} ROI(s) for {displayLabel}: {string.Join(", ", roiVolumes.Keys)}");
-                            }
-                        }
-
-                        processed.Add(seriesVm);
-                        completed++;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        failed++;
-                        spacingPerSeries.Remove(seriesUid);
-                        roiVolumesPerSeries.Remove(seriesUid);
-                        AppendLog($"  FAILED {displayLabel}: {ex.Message}");
-                    }
-                    ProgressValue = (int)(100.0 * (completed + failed) / total);
-                }
-
-                // Honor the Anonymize toggle for metadata export too: when on, the manifest's
-                // PatientID/StudyUID/SeriesUID columns carry hashes and the key file is written/extended.
-                AnonymizationService anonService = null;
-                if (AnonymizeExport)
-                    anonService = OpenAnonymizationKey();
-
-                var manifestRows = BuildManifestRows(processed, anonService, spacingPerSeries, roiVolumesPerSeries);
-
-                if (anonService != null)
-                    anonService.Save();
-
-                var allExportedRoiNames = new List<string>();
-                var roiNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var volDict in roiVolumesPerSeries.Values)
-                    foreach (var roiName in volDict.Keys)
-                        if (roiNameSet.Add(roiName))
-                            allExportedRoiNames.Add(roiName);
-
-                WriteCsvManifest(manifestRows, OutputFolder, allExportedRoiNames, "export_manifest_meta.csv");
-
-                AppendLog($"Metadata export complete. {completed} series processed." +
-                          (failed > 0 ? $" {failed} failed and are not in the manifest (see FAILED above)." : ""));
-                if (anonService != null)
-                    AppendLog($"Anonymization key (outside the export; keep it, do not share it): {anonService.KeyFilePath}");
-                StatusText = failed > 0 ? $"Metadata export complete; {failed} series failed." : "Metadata export complete.";
-            }
-            catch (OperationCanceledException)
-            {
-                AppendLog("Metadata export cancelled.");
-                StatusText = "Cancelled.";
-            }
-            catch (Exception ex)
-            {
-                AppendLog($"Metadata export error: {ex.Message}");
-                StatusText = "Metadata export failed.";
-            }
-            finally
-            {
-                IsConverting = false;
-                _cts?.Dispose();
-                _cts = null;
-                RefreshCommands();
-            }
+            StatusText = failed > 0
+                ? $"{noun} complete; {failed} series failed."
+                : runWarning
+                    ? $"{noun} complete, with a warning (see the log)."
+                    : $"{noun} complete.";
         }
 
         private void ToggleSelectAllPatients() => AllPatientsSelected = !AllPatientsSelected;
@@ -972,7 +873,7 @@ namespace DicomRtNifti.App.ViewModels
         private async Task OpenOutputSpacingAsync()
         {
             var window = new OutputSpacingWindow(OutputSpacingX, OutputSpacingY, OutputSpacingZ);
-            bool ok = await window.ShowDialog<bool>(AppWindows.Active);
+            bool ok = await window.ShowDialog<bool>(Owner);
             if (ok)
             {
                 OutputSpacingX = window.SpacingX;
@@ -1006,7 +907,7 @@ namespace DicomRtNifti.App.ViewModels
             var vm = new RoiSelectionViewModel(discoveredNames, _associations, _selectedRoiNames, perPatientRoiNames);
             var window = new RoiSelectionWindow { DataContext = vm };
 
-            if (await window.ShowDialog<bool>(AppWindows.Active))
+            if (await window.ShowDialog<bool>(Owner))
             {
                 _selectedRoiNames = vm.GetSelectedRoiNames();
                 int deselectedCount = 0;
@@ -1054,7 +955,7 @@ namespace DicomRtNifti.App.ViewModels
             }
 
             var window = new SettingsWindow(_settingsService, _settings);
-            if (await window.ShowDialog<bool>(AppWindows.Active))
+            if (await window.ShowDialog<bool>(Owner))
             {
                 _settings = LoadSettingsGuarded();
                 if (!string.IsNullOrEmpty(_settings.DefaultOutputDirectory) && string.IsNullOrEmpty(OutputFolder))
@@ -1068,7 +969,7 @@ namespace DicomRtNifti.App.ViewModels
             // series each was found in) so the user can double-click discovered names into an alias set.
             var vm = new RoiAssociationViewModel(_settingsService, ComputeDiscoveredRoiCounts());
             var window = new RoiAssociationWindow { DataContext = vm };
-            await window.ShowDialog<bool>(AppWindows.Active);
+            await window.ShowDialog<bool>(Owner);
 
             // The editor persists on Save; reload so a subsequent export/ROI-selection picks up edits.
             _associations = LoadAssociationsGuarded();
@@ -1101,7 +1002,7 @@ namespace DicomRtNifti.App.ViewModels
 
             var vm = new AnonymizationKeyEditorViewModel(keyFilePath, _settings.HashSalt);
             var window = new AnonymizationKeyEditorWindow { DataContext = vm };
-            if (await window.ShowDialog<bool>(AppWindows.Active))
+            if (await window.ShowDialog<bool>(Owner))
                 AppendLog($"Anonymization key saved: {keyFilePath}");
         }
 
@@ -1121,7 +1022,7 @@ namespace DicomRtNifti.App.ViewModels
             _exportOptionsWindow = new ExportOptionsWindow { DataContext = this };
             _exportOptionsWindow.Closed += (_, _) => _exportOptionsWindow = null;
 
-            var owner = AppWindows.Active;
+            var owner = Owner;
             if (owner != null)
                 _exportOptionsWindow.Show(owner);
             else
@@ -1138,7 +1039,7 @@ namespace DicomRtNifti.App.ViewModels
             var vm = new MetadataTagSelectionViewModel(
                 _metadataImageTagKeywords, _metadataStructureTagKeywords, _metadataDoseTagKeywords);
             var window = new MetadataTagSelectionWindow { DataContext = vm };
-            if (await window.ShowDialog<bool>(AppWindows.Active))
+            if (await window.ShowDialog<bool>(Owner))
             {
                 _metadataImageTagKeywords = vm.ImagesSection.GetSelectedKeywords();
                 _metadataStructureTagKeywords = vm.StructuresSection.GetSelectedKeywords();
@@ -1156,7 +1057,7 @@ namespace DicomRtNifti.App.ViewModels
         private void OpenHelp()
         {
             var help = new DicomToNiftiHelpWindow();
-            var owner = AppWindows.Active;
+            var owner = Owner;
             if (owner != null)
                 help.Show(owner);
             else
@@ -1175,17 +1076,6 @@ namespace DicomRtNifti.App.ViewModels
                     Process.Start(new ProcessStartInfo("xdg-open", folder) { UseShellExecute = true });
             }
             catch { /* best-effort convenience */ }
-        }
-
-        /// <summary>
-        /// Writes the export manifest CSV via <see cref="ExportManifestService"/>, which merges
-        /// into an existing file rather than overwriting it so a cohort can grow across runs.
-        /// </summary>
-        private void WriteCsvManifest(List<ManifestRow> rows, string outputFolder, List<string> roiColumnNames = null, string fileName = ExportManifestService.DefaultFileName)
-        {
-            string csvPath = ExportManifestService.Write(
-                Path.Combine(outputFolder, fileName), rows, roiColumnNames);
-            AppendLog($"Wrote manifest: {csvPath}");
         }
 
         private void AppendLog(string message)
@@ -1285,12 +1175,20 @@ namespace DicomRtNifti.App.ViewModels
                 NoteGuiStateNotSaved(error);
         }
 
+        /// <summary>Records one changed series-selection control in gui_state.json straight away.</summary>
+        private void PersistGuiState(Action<GuiState> change)
+        {
+            string error;
+            if (!_guiState.Update(change, out error))
+                NoteGuiStateNotSaved(error);
+        }
+
         private void NoteGuiStateNotSaved(string reason)
         {
             if (_guiStateErrorLogged)
                 return;
             _guiStateErrorLogged = true;
-            AppendLog("Last-used folders will not be remembered: " + reason);
+            AppendLog("Last-used folders and series filters will not be remembered: " + reason);
         }
 
         /// <summary>
@@ -1307,57 +1205,6 @@ namespace DicomRtNifti.App.ViewModels
             if (legacyKeyWarning != null)
                 AppendLog("  Warning: " + legacyKeyWarning);
             return service;
-        }
-
-        /// <summary>
-        /// Finds the owning patient ID and study UID for a series by walking the patient hierarchy.
-        /// Returns ("Unknown", "") if the series is not found under any loaded patient.
-        /// </summary>
-        private (string patientId, string studyUid) ResolveIds(SeriesGroupViewModel seriesVm)
-        {
-            foreach (var p in Patients)
-                foreach (var s in p.Studies)
-                    if (s.ImageSeries.Contains(seriesVm))
-                        return (p.Model.PatientID, s.Model.StudyInstanceUID);
-            return ("Unknown", "");
-        }
-
-        /// <summary>
-        /// Builds one manifest row per series. When <paramref name="anon"/> is non-null the
-        /// PatientID/StudyUID/SeriesUID columns carry the anonymization hashes; otherwise they carry
-        /// the real identifiers. Spacing and ROI volumes are attached by the raw SeriesInstanceUID.
-        /// </summary>
-        private List<ManifestRow> BuildManifestRows(
-            IEnumerable<SeriesGroupViewModel> series,
-            AnonymizationService anon,
-            Dictionary<string, double[]> spacingPerSeries,
-            Dictionary<string, Dictionary<string, double>> roiVolumesPerSeries)
-        {
-            var rows = new List<ManifestRow>();
-            foreach (var seriesVm in series)
-            {
-                var (pid, suid) = ResolveIds(seriesVm);
-                string seriesUid = seriesVm.Model.SeriesInstanceUID;
-
-                var row = new ManifestRow
-                {
-                    PatientID = anon != null ? anon.GetPatientHash(pid) : pid,
-                    StudyUID = anon != null ? anon.GetStudyHash(suid) : suid,
-                    SeriesUID = anon != null ? anon.GetSeriesHash(seriesUid) : seriesUid,
-                };
-
-                if (spacingPerSeries != null && spacingPerSeries.TryGetValue(seriesUid, out double[] spacing))
-                {
-                    row.SpacingX = spacing[0];
-                    row.SpacingY = spacing[1];
-                    row.SpacingZ = spacing[2];
-                }
-                if (roiVolumesPerSeries != null && roiVolumesPerSeries.TryGetValue(seriesUid, out Dictionary<string, double> volumes))
-                    row.RoiVolumes = volumes;
-
-                rows.Add(row);
-            }
-            return rows;
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

@@ -76,7 +76,7 @@ namespace DicomRtNifti.App.Tests
                 Assert.True(vm.ConvertSelectedCommand.CanExecute(null));
                 Screenshots.Capture(window, "06_dicom_to_nifti_scanned");
 
-                await vm.ConvertSelectedCommand.ExecuteAsync(null);
+                await PlanReview.RunAsync(() => vm.ConvertSelectedCommand.ExecuteAsync(null));
                 Dispatcher.UIThread.RunJobs();
 
                 _out.WriteLine(vm.LogText);

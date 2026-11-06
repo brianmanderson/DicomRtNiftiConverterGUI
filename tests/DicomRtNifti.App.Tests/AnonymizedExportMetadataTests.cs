@@ -245,8 +245,11 @@ namespace DicomRtNifti.App.Tests
                     },
                     expectComplete: false);
 
-                Assert.Contains("Conversion error", convertLog);
+                // Refused while planning, before the plan is shown (W3-D.2; it was a "Conversion
+                // error" once the run had started).
+                Assert.Contains("Cannot open the anonymization key", convertLog);
                 Assert.Contains("inside the export folder", convertLog);
+                Assert.DoesNotContain("Conversion complete", convertLog);
                 Assert.Empty(Directory.GetFileSystemEntries(cohort.OutputFolder));
                 Assert.False(File.Exists(cohort.SiblingKeyPath));
             }
@@ -333,7 +336,10 @@ namespace DicomRtNifti.App.Tests
                 configure?.Invoke(vm);
                 int logStart = vm.LogText.Length;
                 Assert.True(vm.ConvertSelectedCommand.CanExecute(null));
-                await vm.ConvertSelectedCommand.ExecuteAsync(null);
+                if (expectComplete)
+                    await PlanReview.RunAsync(() => vm.ConvertSelectedCommand.ExecuteAsync(null));
+                else
+                    await PlanReview.WithoutPlanAsync(() => vm.ConvertSelectedCommand.ExecuteAsync(null));
                 Dispatcher.UIThread.RunJobs();
 
                 // The log, not StatusText: the last "Wrote metadata.json" progress message is

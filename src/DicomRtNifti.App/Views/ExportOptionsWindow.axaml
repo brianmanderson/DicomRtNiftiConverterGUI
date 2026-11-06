@@ -12,7 +12,7 @@
     <Border Grid.Row="0" Background="{DynamicResource AppAccentBrush}" Padding="16,10">
       <StackPanel>
         <TextBlock Text="Export Options" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AppOnAccentText}"/>
-        <TextBlock Text="ROI filtering, output spacing, and anonymization. Stays open while you work."
+        <TextBlock Text="Series selection, ROI filtering, output spacing, and anonymization. Stays open while you work."
                    Foreground="{DynamicResource AppOnAccentSubtitle}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
@@ -22,6 +22,25 @@
             CornerRadius="4" Margin="12,12,12,0" Padding="16">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
+          <TextBlock Text="Series selection (narrows the ticked series)" FontWeight="SemiBold" FontSize="13"
+                     Foreground="{DynamicResource AppHeadingText}" Margin="4,4,4,2"/>
+          <CheckBox x:Name="RequireStructuresCheckBox" Content="Require a structure set (skip series without an RT-STRUCT)"
+                    IsChecked="{Binding RequireStructures}" Margin="4,4" FontSize="13"/>
+          <CheckBox x:Name="RequireDoseCheckBox" Content="Require a dose (skip series without an RT-DOSE)"
+                    IsChecked="{Binding RequireDose}" Margin="4,4" FontSize="13"/>
+          <TextBlock Text="Series description contains" FontSize="12"
+                     Foreground="{DynamicResource AppHeadingText}" Margin="4,8,4,2"/>
+          <TextBox x:Name="SeriesDescriptionFilterBox" Text="{Binding SeriesDescriptionFilter, UpdateSourceTrigger=LostFocus}"
+                   Watermark="Empty: every description" FontSize="12" Margin="4,0,4,4"/>
+          <TextBlock Text="Structure set description contains" FontSize="12"
+                     Foreground="{DynamicResource AppHeadingText}" Margin="4,4,4,2"/>
+          <TextBox x:Name="StructDescriptionFilterBox" Text="{Binding StructDescriptionFilter, UpdateSourceTrigger=LostFocus}"
+                   Watermark="Empty: every structure set" FontSize="12" Margin="4,0,4,4"/>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AppMutedText}" Margin="4,0,4,0"
+                     Text="Of the series ticked in the tree, only those that pass every rule here are exported; matching is case-insensitive. A series with several structure sets exports the one the structure-set filter matches, unless you pick one on its row in the tree. Convert Selected lists every series these rules skip, with the reason, before it starts."/>
+
+          <Separator Margin="0,12"/>
+
           <TextBlock Text="ROI renaming (always applies)" FontWeight="SemiBold" FontSize="13"
                      Foreground="{DynamicResource AppHeadingText}" Margin="4,4,4,2"/>
           <Button Content="Edit ROI Associations..." Command="{Binding ManageAssociationsCommand}"
@@ -36,7 +55,7 @@
                   IsEnabled="{Binding OnlyExportSpecificRois}"
                   Padding="12,8" Margin="4,4,4,12" FontSize="13"/>
           <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AppMutedText}" Margin="4,0,4,0"
-                     Text="When checked, only ROIs matching associations are exported. Use 'Select ROIs for Export' to choose which to include. Patients missing all selected ROIs are automatically de-selected."/>
+                     Text="When checked, only ROIs matching associations are exported. Use 'Select ROIs for Export' to choose which to include: a selected name keeps its association's aliases, a name no association carries matches itself, and every other ROI is dropped. Patients missing all selected ROIs are automatically de-selected."/>
 
           <Separator Margin="0,12"/>
 

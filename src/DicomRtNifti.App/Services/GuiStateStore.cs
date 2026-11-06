@@ -6,11 +6,13 @@ using Newtonsoft.Json;
 namespace DicomRtNifti.App.Services
 {
     /// <summary>
-    /// Window state the GUI restores on the next launch: the folders last used in each window and
-    /// the reverse window's three Convert toggles. None of it is a preference the CLI or Core
+    /// Window state the GUI restores on the next launch: the folders last used in each window,
+    /// the reverse window's three Convert toggles, and the forward window's series-selection
+    /// controls (the Require switches and the description filters, which Export Options gained in
+    /// W3-D.2 and which have no settings field). None of it is a preference the CLI or Core
     /// reads, so it lives beside <c>settings.json</c> in the GUI's own <c>gui_state.json</c>
     /// rather than in <see cref="DicomRtNifti.Core.Models.AppSettings"/>. The forward window's
-    /// export toggles already have settings fields and stay there.
+    /// older export toggles already have settings fields and stay there.
     /// </summary>
     public class GuiState
     {
@@ -20,6 +22,10 @@ namespace DicomRtNifti.App.Services
         public bool ReverseConvertImage { get; set; } = true;
         public bool ReverseConvertStructures { get; set; } = true;
         public bool ReverseConvertDoses { get; set; } = true;
+        public bool RequireStructures { get; set; }
+        public bool RequireDose { get; set; }
+        public string SeriesDescriptionFilter { get; set; } = "";
+        public string StructDescriptionFilter { get; set; } = "";
     }
 
     /// <summary>

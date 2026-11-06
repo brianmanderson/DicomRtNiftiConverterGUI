@@ -40,6 +40,11 @@ namespace DicomRtNifti.App.Tests
                 vm.AnonymizeExport = true;
                 vm.SpecifyOutputSpacing = true;
                 vm.ExportDicomMetadata = true;
+                // The series-selection controls (W3-D.2) have no settings field: gui_state.json.
+                vm.RequireStructures = true;
+                vm.RequireDose = true;
+                vm.SeriesDescriptionFilter = "planning";
+                vm.StructDescriptionFilter = "clinical";
 
                 // On disk already: nothing was converted.
                 var saved = new SettingsService().LoadSettings();
@@ -53,6 +58,10 @@ namespace DicomRtNifti.App.Tests
                 var gui = new GuiStateStore().Load();
                 Assert.Equal(testCase.InputFolder, gui.LastInputFolder);
                 Assert.Equal(testCase.OutputFolder, gui.LastOutputFolder);
+                Assert.True(gui.RequireStructures);
+                Assert.True(gui.RequireDose);
+                Assert.Equal("planning", gui.SeriesDescriptionFilter);
+                Assert.Equal("clinical", gui.StructDescriptionFilter);
 
                 first.Close();
                 Dispatcher.UIThread.RunJobs();
@@ -67,6 +76,11 @@ namespace DicomRtNifti.App.Tests
                 Assert.True(next.AnonymizeExport);
                 Assert.True(next.SpecifyOutputSpacing);
                 Assert.True(next.ExportDicomMetadata);
+                Assert.True(next.RequireStructures);
+                Assert.True(next.RequireDose);
+                Assert.Equal("planning", next.SeriesDescriptionFilter);
+                Assert.Equal("clinical", next.StructDescriptionFilter);
+                Assert.Contains("series filter", next.ExportOptionsSummary);
             }
         }
 

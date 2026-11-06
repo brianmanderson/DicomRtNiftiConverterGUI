@@ -115,6 +115,13 @@
                       <TextBlock Text="link guessed"/>
                     </Border>
                   </StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="20,2,0,0" IsVisible="{Binding HasStructureSetChoice}">
+                    <TextBlock Text="[RTSTRUCT]" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AppAccentBrush}"
+                               Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding StructureSetChoices}" SelectedItem="{Binding SelectedStructureSet, Mode=TwoWay}"
+                              FontSize="11" MinWidth="220" MinHeight="24" Padding="6,1" VerticalAlignment="Center"
+                              ToolTip.Tip="This series has several structure sets; the export uses one. Automatic: the one the Export Options structure-set filter matches, else the first."/>
+                  </StackPanel>
                   <Expander Header="ROI Names" Margin="20,2,0,0"
                             IsVisible="{Binding HasLinkedRtStruct}" IsExpanded="{Binding IsExpanded}">
                     <ItemsControl ItemsSource="{Binding RoiNames}" Margin="16,0,0,0">

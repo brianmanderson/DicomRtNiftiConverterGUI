@@ -18,21 +18,22 @@ using Xunit.Abstractions;
 namespace DicomRtNifti.App.Tests
 {
     /// <summary>
-    /// W3-D.1: does <c>CohortExportService.BuildPlan</c> + <c>ExecuteAsync</c> write what the GUI's
-    /// Convert Selected writes? The forward window re-implements output naming, anonymization, the
-    /// export loop and the manifest (MainViewModel.ExecuteConvertAsync) that the service already
-    /// owns; before W3-D.2 moves the window onto the service, this pins where the two agree and
-    /// names where they do not.
+    /// Does the GUI's Convert Selected write what <c>CohortExportService.BuildPlan</c> +
+    /// <c>ExecuteAsync</c> write for the same export stated as the CLI's cohort options? W3-D.1
+    /// pinned where the window's own export loop agreed with the service and named where it did
+    /// not (#50: colliding folders overwritten; #91: only the first dose; #92: manifest ROI columns
+    /// in hash order). W3-D.2 moved the window onto the service, resolving all three in the
+    /// service's favour, so every aspect of every case is asserted equal and none is skipped. What
+    /// is left to catch is a slip in the window's mapping of its controls to options
+    /// (MainViewModel.ExportOptionsFor), which cases 5 to 7 exercise: the ROI selection, a
+    /// structure set picked on the series row, and the Require switches with a description filter.
     ///
     /// Each case synthesizes a cohort, exports it once through each path
     /// (<see cref="ExportParity"/>), and compares, byte for byte: every file and folder under the
     /// output root with its SHA-256, the manifest CSV, and the anonymization key; and the manifest
     /// once more read by column name. Each aspect is its own test, so a case that disagrees on one
-    /// still pins the others.
-    ///
-    /// A disagreement is a finding, filed for W3-D.2 to resolve in favour of the service, and its
-    /// test is skipped with the issue in the reason. It is never written down here as the expected
-    /// result: every assertion below says "the same", and W3-D.2 is done when the skips can go.
+    /// still pins the others. A disagreement is a finding to fix in the window, never an expected
+    /// result written down here.
     ///
     /// Lives in App.Tests because only this project reaches both paths: it references the App
     /// (MainViewModel, driven headless through the real launcher) and, through it, Core
@@ -41,18 +42,6 @@ namespace DicomRtNifti.App.Tests
     /// </summary>
     public class CohortExportParityTests
     {
-        // The findings at main @ 5d8e873. A fact that would fail on one is skipped citing it,
-        // never rewritten to expect the difference; W3-D.2 (#77) resolves each one in favour of
-        // the service and removes its skips.
-        private const string Issues = "https://github.com/brianmanderson/DicomRtNiftiConverterGUI/issues/";
-        private const string CollidingFoldersFinding =
-            "Finding F-c, " + Issues + "50: Convert Selected writes both series into one folder. W3-D.2 (#77) removes this skip.";
-        private const string FirstDoseOnlyFinding =
-            "Finding " + Issues + "91: Convert Selected exports only the first linked RTDOSE. W3-D.2 (#77) removes this skip.";
-        private const string RoiColumnOrderFinding =
-            "Finding " + Issues + "92: Convert Selected orders the manifest's ROI columns by hash-table enumeration, " +
-            "the service by name. W3-D.2 (#77) removes this skip.";
-
         private readonly ITestOutputHelper _out;
 
         public CohortExportParityTests(ITestOutputHelper output) => _out = output;
@@ -72,7 +61,7 @@ namespace DicomRtNifti.App.Tests
         public async Task Default_options_write_the_same_files()
             => AssertSameTree(await DefaultRun());
 
-        [AvaloniaFact(Skip = RoiColumnOrderFinding)]
+        [AvaloniaFact]
         public async Task Default_options_write_the_same_manifest()
             => AssertSameManifest(await DefaultRun());
 
@@ -103,7 +92,7 @@ namespace DicomRtNifti.App.Tests
         public async Task Anonymized_resampled_associated_export_writes_the_same_files()
             => AssertSameTree(await AnonymizedRun());
 
-        [AvaloniaFact(Skip = RoiColumnOrderFinding)]
+        [AvaloniaFact]
         public async Task Anonymized_resampled_associated_export_writes_the_same_manifest()
             => AssertSameManifest(await AnonymizedRun());
 
@@ -120,18 +109,18 @@ namespace DicomRtNifti.App.Tests
         /// <summary>
         /// One patient whose study holds two CT series with the same SeriesDate and the same
         /// SeriesDescription (a planning CT and a re-export, say), of different lengths, each with
-        /// its own structure set. Both plan the folder "&lt;date&gt;_CT series": the service suffixes
-        /// each with a hash of its SeriesInstanceUID, the GUI writes the second into the first
-        /// (F-c). The manifests' cells still agree: both list both series with their own volumes.
+        /// its own structure set. Both plan the folder "&lt;date&gt;_CT series", so each is suffixed
+        /// with a hash of its SeriesInstanceUID. Before W3-D.2 the GUI wrote the second into the
+        /// first (F-c, #50).
         /// </summary>
         private static Task<ParityRun> CollidingRun() => ExportParity.RunOnceAsync(
             "colliding-folders", Cohorts.TwoSeriesWithEqualDateAndDescription, new ExportToggles());
 
-        [AvaloniaFact(Skip = CollidingFoldersFinding)]
+        [AvaloniaFact]
         public async Task Two_series_with_equal_date_and_description_write_the_same_files()
             => AssertSameTree(await CollidingRun());
 
-        [AvaloniaFact(Skip = RoiColumnOrderFinding)]
+        [AvaloniaFact]
         public async Task Two_series_with_equal_date_and_description_write_the_same_manifest()
             => AssertSameManifest(await CollidingRun());
 
@@ -143,24 +132,117 @@ namespace DicomRtNifti.App.Tests
 
         /// <summary>
         /// One CT carrying two structure sets (different ROIs) and two doses (different
-        /// descriptions), all linked to it. Both paths export the first structure set only, which
-        /// agrees (choosing among them is W4-C's); the service exports both doses and the GUI the
-        /// first.
+        /// descriptions), all linked to it. With the series row's picker on Automatic, both paths
+        /// export the first structure set, and both doses. Before W3-D.2 the GUI wrote only the
+        /// first dose (#91).
         /// </summary>
         private static Task<ParityRun> TwoOfEachRun() => ExportParity.RunOnceAsync(
             "two-structure-sets-two-doses", Cohorts.OneSeriesWithTwoStructureSetsAndTwoDoses, new ExportToggles());
 
-        [AvaloniaFact(Skip = FirstDoseOnlyFinding)]
+        [AvaloniaFact]
         public async Task Two_structure_sets_and_two_doses_write_the_same_files()
             => AssertSameTree(await TwoOfEachRun());
 
-        [AvaloniaFact(Skip = RoiColumnOrderFinding)]
+        [AvaloniaFact]
         public async Task Two_structure_sets_and_two_doses_write_the_same_manifest()
             => AssertSameManifest(await TwoOfEachRun());
 
         [AvaloniaFact]
         public async Task Two_structure_sets_and_two_doses_write_the_same_manifest_cells()
             => AssertSameManifestCells(await TwoOfEachRun());
+
+        // ── case 5: Limit export to selected ROIs, with an association ────────────────────
+
+        /// <summary>
+        /// The case-1 cohort with one association (SpinalCord ← Cord) and "Limit export to
+        /// selected ROIs" on, SpinalCord and Target ticked in Select ROIs: the service's
+        /// <c>RoiSelection</c> (the CLI's --rois). The association keeps its alias, Target matches
+        /// itself, and Avoid and Body are dropped. Both patients keep a selected ROI, so Select ROIs
+        /// de-selects neither.
+        /// </summary>
+        private static Task<ParityRun> RoiSelectionRun() => ExportParity.RunOnceAsync(
+            "roi-selection", Cohorts.TwoPatientsWithStructuresAndDose, new ExportToggles
+            {
+                Associations = new List<RoiAssociation>
+                {
+                    new RoiAssociation { CanonicalName = "SpinalCord", Aliases = new List<string> { "Cord" } },
+                },
+                SelectedRois = new List<string> { "SpinalCord", "Target" },
+            });
+
+        [AvaloniaFact]
+        public async Task Selected_rois_write_the_same_files()
+        {
+            var run = await RoiSelectionRun();
+            AssertSameTree(run);
+            Assert.Equal(
+                new[] { "PARITY01/masks/Target.nii.gz", "PARITY02/masks/SpinalCord.nii.gz", "PARITY02/masks/Target.nii.gz" },
+                Masks(run.Gui));
+        }
+
+        [AvaloniaFact]
+        public async Task Selected_rois_write_the_same_manifest()
+            => AssertSameManifest(await RoiSelectionRun());
+
+        // ── case 6: a structure set picked on the series row ──────────────────────────────
+
+        /// <summary>
+        /// The case-4 input with the second structure set (Body, Cord; 2.25.4130) picked on the
+        /// series row: the service's <c>StructureSetUids</c> (the CLI's --struct-series, W4-C).
+        /// The masks are Body and Cord, not case 4's Target and Avoid.
+        /// </summary>
+        private static Task<ParityRun> PickedStructureSetRun() => ExportParity.RunOnceAsync(
+            "picked-structure-set", Cohorts.OneSeriesWithTwoStructureSetsAndTwoDoses, new ExportToggles
+            {
+                PickedStructureSet = "2.25.4130",
+            });
+
+        [AvaloniaFact]
+        public async Task A_picked_structure_set_writes_the_same_files()
+        {
+            var run = await PickedStructureSetRun();
+            AssertSameTree(run);
+            Assert.Equal(new[] { "Body.nii.gz", "Cord.nii.gz" }, Masks(run.Gui).Select(m => m.Substring(m.LastIndexOf('/') + 1)));
+        }
+
+        [AvaloniaFact]
+        public async Task A_picked_structure_set_writes_the_same_manifest()
+            => AssertSameManifest(await PickedStructureSetRun());
+
+        // ── case 7: Require a dose, and a series-description filter ───────────────────────
+
+        /// <summary>
+        /// Three patients: a planning CT with a dose, a CBCT with a dose, and a planning CT with
+        /// none. Require a dose and "Series description contains: planning" keep the first only;
+        /// the plan skips the other two, each with its reason, on both paths.
+        /// </summary>
+        private static Task<ParityRun> SeriesFiltersRun() => ExportParity.RunOnceAsync(
+            "series-filters", Cohorts.ThreeSeriesForTheSeriesFilters, new ExportToggles
+            {
+                RequireDose = true,
+                SeriesDescriptionFilter = "planning",
+                ExpectedSkipped = 2,
+            });
+
+        [AvaloniaFact]
+        public async Task Series_filters_write_the_same_files()
+        {
+            var run = await SeriesFiltersRun();
+            AssertSameTree(run);
+            Assert.All(run.Gui.Tree.Keys, path => Assert.StartsWith("FILTER01/", path));
+        }
+
+        [AvaloniaFact]
+        public async Task Series_filters_write_the_same_manifest()
+            => AssertSameManifest(await SeriesFiltersRun());
+
+        /// <summary>The mask files of an export, relative to its root, in ordinal order.</summary>
+        private static List<string> Masks(ExportSnapshot snapshot) =>
+            snapshot.Tree.Keys
+                .Where(k => k.Contains("/masks/") && k.EndsWith(".nii.gz", StringComparison.Ordinal))
+                .Select(k => k.Substring(0, k.IndexOf('/') + 1) + "masks/" + k.Substring(k.LastIndexOf('/') + 1))
+                .OrderBy(k => k, StringComparer.Ordinal)
+                .ToList();
 
         // ── comparison ─────────────────────────────────────────────────────────────────────
 
@@ -228,7 +310,7 @@ namespace DicomRtNifti.App.Tests
         /// that order decides which series a folder collision lets win and which structure set
         /// and dose are "the first". Only the per-instance SOP UIDs, which no export writes, vary.
         /// </summary>
-        private static class Cohorts
+        internal static class Cohorts
         {
             /// <remarks>
             /// Contours sit on z = 2 and z = 3 mm only: resampled to 1.5 mm, the 4-slice CT keeps
@@ -291,15 +373,44 @@ namespace DicomRtNifti.App.Tests
                 WriteDose(Path.Combine(dir, "RD_2"), patientId, study, Uid(4150), frame, "Plan B dose", seed: 29);
             }
 
+            /// <remarks>
+            /// Only FILTER01 passes both "Series description contains: planning" and Require a
+            /// dose: FILTER02 is a CBCT, and FILTER03 has no dose.
+            /// </remarks>
+            public static void ThreeSeriesForTheSeriesFilters(string input)
+            {
+                foreach (var (patientId, uidBase, description, dose) in new[]
+                         {
+                             ("FILTER01", 7100, "Planning CT", true),
+                             ("FILTER02", 7200, "CBCT day 1", true),
+                             ("FILTER03", 7300, "Planning CT", false),
+                         })
+                {
+                    WritePatient(Path.Combine(input, patientId), patientId, uidBase,
+                        description, dose, Roi("Target", 3, 10, 2), Roi("Body", 1, 14, 3));
+                }
+            }
+
             /// <summary>A CT, a structure set referencing it by SeriesInstanceUID, and one dose on its frame.</summary>
             private static void WritePatient(string dir, string patientId, int uidBase, params KeyValuePair<string, double[]>[] rois)
+                => WritePatient(dir, patientId, uidBase, null, true, rois);
+
+            /// <summary>
+            /// As above, with the CT's SeriesDescription set to <paramref name="description"/> (null
+            /// keeps the writer's "CT series"), and the dose left out unless <paramref name="dose"/>.
+            /// </summary>
+            private static void WritePatient(string dir, string patientId, int uidBase, string description, bool dose,
+                params KeyValuePair<string, double[]>[] rois)
             {
                 string study = Uid(uidBase), ct = Uid(uidBase + 10), frame = Uid(uidBase + 11);
-                DicomTestData.WriteCtSeriesWithPixels(Path.Combine(dir, "CT"), ct, frame,
+                string ctDir = DicomTestData.WriteCtSeriesWithPixels(Path.Combine(dir, "CT"), ct, frame,
                     sliceCount: 4, size: 16, studyUid: study, patientId: patientId);
+                if (description != null)
+                    Stamp(ctDir, DicomTag.SeriesDescription, description);
                 DicomTestData.WriteRtStructWithContours(Path.Combine(dir, "RS"), "rtstruct.dcm",
                     study, Uid(uidBase + 20), frame, rois, patientId: patientId, referencedSeriesUid: ct);
-                WriteDose(Path.Combine(dir, "RD"), patientId, study, Uid(uidBase + 30), frame, "Plan dose", seed: 17);
+                if (dose)
+                    WriteDose(Path.Combine(dir, "RD"), patientId, study, Uid(uidBase + 30), frame, "Plan dose", seed: 17);
             }
 
             /// <summary>A fixed UID under the 2.25 (UUID-derived) root.</summary>
@@ -308,12 +419,14 @@ namespace DicomRtNifti.App.Tests
             private static KeyValuePair<string, double[]> Roi(string name, double min, double max, double z) =>
                 new KeyValuePair<string, double[]>(name, DicomTestData.SquareContour(min, max, z));
 
-            private static void StampSeriesDate(string ctDir, string date)
+            private static void StampSeriesDate(string ctDir, string date) => Stamp(ctDir, DicomTag.SeriesDate, date);
+
+            private static void Stamp(string ctDir, DicomTag tag, string value)
             {
                 foreach (string slice in Directory.GetFiles(ctDir, "*.dcm"))
                 {
                     var file = DicomFile.Open(slice);
-                    file.Dataset.AddOrUpdate(DicomTag.SeriesDate, date);
+                    file.Dataset.AddOrUpdate(tag, value);
                     file.Save(slice);
                 }
             }

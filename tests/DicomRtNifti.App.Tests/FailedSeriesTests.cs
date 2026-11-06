@@ -31,7 +31,7 @@ namespace DicomRtNifti.App.Tests
                     var (window, vm) = await OpenScannedAsync(launcher, root);
                     vm.ExportImages = true;
                     vm.IncludeStructures = true;
-                    await vm.ConvertSelectedCommand.ExecuteAsync(null);
+                    await PlanReview.RunAsync(() => vm.ConvertSelectedCommand.ExecuteAsync(null));
                     Dispatcher.UIThread.RunJobs();
 
                     string output = Path.Combine(root, "out");
@@ -65,7 +65,7 @@ namespace DicomRtNifti.App.Tests
                 {
                     var (window, vm) = await OpenScannedAsync(launcher, root);
                     vm.IncludeStructures = true;
-                    await vm.ExportMetaDataCommand.ExecuteAsync(null);
+                    await PlanReview.RunAsync(() => vm.ExportMetaDataCommand.ExecuteAsync(null));
                     Dispatcher.UIThread.RunJobs();
 
                     Assert.Equal("Metadata export complete; 1 series failed.", vm.StatusText);

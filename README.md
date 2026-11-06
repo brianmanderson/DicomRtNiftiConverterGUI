@@ -66,7 +66,7 @@ the sha shortened to seven characters) and `SimpleITK native: OK` when the nativ
 
 Launch the GUI with `dotnet run --project src/DicomRtNifti.App` (or run the published `DicomRtNifti.App` executable). It opens a launcher with two buttons:
 
-- **DICOM -> NIfTI** - opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`).
+- **DICOM -> NIfTI** - opens the forward window (scan a DICOM archive, export selected patients/series to `image.nii.gz`, per-ROI masks under `masks/`, and RT-DOSE volumes under `doses/{SeriesDescription}.nii.gz`). Convert Selected first shows the export plan: what will be written where, and each skipped series with its reason. The export is the cohort mode's (`--cohort-convert`), so the same choices write the same files from either front-end.
 - **NIfTI -> DICOM** - opens the reverse window (batch-convert folders of `image.nii.gz` / `masks/` / `doses/` back into DICOM image series, RT-STRUCT, and RT-DOSE). Its **Run Server** button turns the same window into a drop-folder watcher for inference-service pipelines. Both mask -> RT-DOSE and watch mode are **GUI-only**; see the reverse-mode note below.
 
 Each directional window has a **Help** button (top right) with the full workflow walkthrough, every control documented, output details, and example folder layouts. The same material is readable outside the app in [`examples/GUI_WALKTHROUGH.md`](examples/GUI_WALKTHROUGH.md), which also maps every control to its CLI flag. The CLI below is the alternative when scripting batch / benchmark runs.
