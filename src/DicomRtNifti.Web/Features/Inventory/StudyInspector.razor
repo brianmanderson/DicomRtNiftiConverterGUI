@@ -1,0 +1,160 @@
+@using DicomRtNifti.Core.Models
+
+@* The study inspector (GUI_WALKTHROUGH "The inspector", Study): everything in the study, including
+   what the tree does not show: RT objects linked to nothing, plans, and the image series each RT
+   object is linked to, with the rule that linked it. *@
+
+<h2 class="inv-inspector-head">Study inspector</h2>
+<InspectorTabs @bind-Tab="_tab" />
+
+@if (_tab == InspectorTabs.Summary)
+{
+    <dl class="facts">
+        <dt>Description</dt>
+        <dd>@Node.Label</dd>
+        <dt>Study date</dt>
+        <dd>@InventoryText.Date(Node.Study.StudyDate)</dd>
+        <dt>Study UID</dt>
+        <dd><code>@InventoryText.OrMissing(Node.Study.StudyInstanceUID)</code></dd>
+        <dt>Image series</dt>
+        <dd>@InventoryTree.DescribeModalityCounts(Node.ImageSeries)</dd>
+        <dt>Frames of reference</dt>
+        <dd>@FramesText</dd>
+    </dl>
+
+    @if (Node.Badges.Count > 0)
+    {
+        <p class="inv-badges">
+            @foreach (var badge in Node.Badges)
+            {
+                <span class="badge inv-flag inv-@badge.Severity" data-code="@badge.Code" title="@badge.Meaning">@badge.Label</span>
+            }
+        </p>
+    }
+    @if (Frames.Count > 1)
+    {
+        <p class="notice notice-pending">
+            The image series in this study span @Frames.Count frames of reference, so they do not share one patient coordinate
+            system. A structure set or dose applies to the series of its own frame; its masks do not overlay a series in another
+            frame without a registration.
+        </p>
+    }
+
+    <h3>Image series</h3>
+    @if (Node.ImageSeries.Count == 0)
+    {
+        <p class="hint">None: the tree lists no series for this study.</p>
+    }
+    <ul class="inv-lines">
+        @foreach (var series in Node.ImageSeries)
+        {
+            <li>
+                <span class="inv-modality">@series.Series.Modality</span> @series.Label ·
+                @series.Series.FilePaths.Count instance(s)@(Frames.Count > 1 ? " · " + FrameLabel(series.Series) : "")
+                @foreach (var badge in series.Badges)
+                {
+                    <span class="badge inv-flag inv-@badge.Severity" data-code="@badge.Code" title="@(badge.Detail ?? badge.Meaning)">@badge.Label</span>
+                }
+            </li>
+        }
+    </ul>
+
+    <h3>RT objects</h3>
+    @if (Node.Objects.Count == 0)
+    {
+        <p class="hint">None.</p>
+    }
+    <ul class="inv-lines">
+        @foreach (var rt in Node.Objects)
+        {
+            <li class="@(rt.IsUnlinked ? "inv-unlinked" : "")">
+                <span class="inv-modality">@InventoryText.OrMissing(rt.Series.Modality)</span>
+                @InventoryText.Describe(rt.Series) · @Detail(rt.Series) · @LinkText(rt)
+                @if (rt.IsUnlinked)
+                {
+                    <span class="badge inv-flag inv-warning">unlinked</span>
+                }
+                else if (rt.IsGuess)
+                {
+                    <span class="badge inv-flag inv-warning">link guessed</span>
+                }
+            </li>
+        }
+    </ul>
+    @if (Node.Objects.Any(o => o.IsUnlinked))
+    {
+        <p class="notice notice-pending">@UnlinkedNote</p>
+    }
+}
+else
+{
+    <DicomTagsTab Level="study" Sources="TagSources" />
+}
+
+@code {
+    /// <summary>The note under an "unlinked" badge, in the GUI's words.</summary>
+    public const string UnlinkedNote =
+        "An RT object badged unlinked is linked to no image series in its study, so no export ever writes it: " +
+        "structures and doses are exported only with the image series they are linked to. The scan leaves an RTSTRUCT " +
+        "or RTDOSE unlinked when its study holds no CT, MR or PT series, which happens when its images are in another " +
+        "study or were not in the input folder.";
+
+    [Parameter, EditorRequired]
+    public StudyNode Node { get; set; } = default!;
+
+    private string _tab = InspectorTabs.Summary;
+
+    // Frames in order of first appearance, so "frame 1" is the first series' frame.
+    private List<string> Frames => Node.ImageSeries
+        .Select(s => s.Series.FrameOfReferenceUID)
+        .Where(f => !string.IsNullOrEmpty(f))
+        .Distinct(StringComparer.Ordinal)
+        .ToList();
+
+    private string FramesText
+    {
+        get
+        {
+            if (Node.ImageSeries.Count == 0)
+                return InventoryText.Missing;
+            int without = Node.ImageSeries.Count(s => string.IsNullOrEmpty(s.Series.FrameOfReferenceUID));
+            string count = Frames.Count == 0 ? "none recorded" : Frames.Count.ToString();
+            return without > 0 && Frames.Count > 0 ? $"{count} ({without} image series carry none)" : count;
+        }
+    }
+
+    private string FrameLabel(DicomSeriesGroup series)
+    {
+        int index = string.IsNullOrEmpty(series.FrameOfReferenceUID) ? -1 : Frames.IndexOf(series.FrameOfReferenceUID);
+        return index < 0 ? "no frame of reference" : $"frame {index + 1}";
+    }
+
+    private static string Detail(DicomSeriesGroup rt) =>
+        rt.Modality == "RTSTRUCT" ? $"{rt.RoiNames.Count} ROI(s)" : $"{rt.FilePaths.Count} file(s)";
+
+    private static string LinkText(RtObjectRow rt)
+    {
+        if (!rt.IsLinkable)
+            return "listed only: the scan links only RTSTRUCT and RTDOSE, and nothing exports this";
+        if (rt.LinkedTo.Count == 0)
+            return "linked to no image series in this study";
+        return "linked to " + string.Join(", ", rt.LinkedTo.Select(t => $"[{InventoryText.OrMissing(t.Modality)}] {InventoryText.Describe(t)}"))
+            + ", by " + InventoryText.Rule(rt.Series.LinkMatchRule);
+    }
+
+    private IReadOnlyList<DicomTagsTab.TagSource> TagSources
+    {
+        get
+        {
+            // The first image slice; only with no image series at all, the first file of an RT object.
+            string? image = Node.ImageSeries.Select(s => s.Series.FilePaths.FirstOrDefault()).FirstOrDefault(f => f is not null);
+            string? path = image ?? Node.Objects.Select(o => o.Series.FilePaths.FirstOrDefault()).FirstOrDefault(f => f is not null);
+            return new[]
+            {
+                new DicomTagsTab.TagSource("Study",
+                    image is not null ? "the first slice of the first image series" : "the first file of the first RT object",
+                    path, DicomTagsTab.StudyKeywords),
+            };
+        }
+    }
+}

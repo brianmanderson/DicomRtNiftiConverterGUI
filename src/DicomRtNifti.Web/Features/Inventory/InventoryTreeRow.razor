@@ -1,0 +1,92 @@
+@using DicomRtNifti.Web.State
+
+@* One row of the Inventory tree: an expander for a patient or study, the selection checkbox (a
+   patient's or study's selects every image series under it), the label that opens the inspector,
+   and the row's badges. Rows are a fixed height, which the virtualized tree relies on. data-key is
+   the row's tree position, not an identifier. *@
+
+<div class="inv-row inv-depth-@Row.Depth @(Row.Key == SelectedKey ? "inv-selected" : "")" role="treeitem" data-key="@Row.Key"
+     aria-level="@(Row.Depth + 1)" aria-expanded="@AriaExpanded">
+    @if (Row.Depth < 2)
+    {
+        <button type="button" class="inv-expander" aria-label="@(IsExpanded ? "Collapse" : "Expand")"
+                @onclick="() => OnToggle.InvokeAsync(Row.Key)">@(IsExpanded ? "▾" : "▸")</button>
+    }
+    else
+    {
+        <span class="inv-expander-gap"></span>
+    }
+    <input type="checkbox" class="inv-check" checked="@IsChecked" disabled="@(SeriesUids.Count == 0)"
+           aria-label="Select for export" @onchange="e => OnCheck.InvokeAsync((Row.Key, e.Value is true))" />
+    <button type="button" class="inv-label" @onclick="() => OnSelect.InvokeAsync(Row.Key)">
+        @switch (Row.Node)
+        {
+            case PatientNode patient:
+                <span class="inv-patient">@patient.Label</span>
+                <span class="inv-count">@patient.Studies.Count study(ies)</span>
+                break;
+            case StudyNode study:
+                <span class="inv-date">@InventoryText.Date(study.Study.StudyDate)</span>
+                <span class="inv-study">@study.Label</span>
+                break;
+            case SeriesNode series:
+                <span class="inv-modality">@series.Series.Modality</span>
+                <span class="inv-series">@series.Label</span>
+                <span class="inv-count">@series.Series.FilePaths.Count</span>
+                break;
+        }
+    </button>
+    @foreach (var (badge, count) in Badges)
+    {
+        <span class="badge inv-flag inv-@badge.Severity" title="@(badge.Detail ?? badge.Meaning)" data-code="@badge.Code">@(count > 1 && Row.Depth == 0 ? $"{count} × {badge.Label}" : badge.Label)</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public InventoryRow Row { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public InventoryTree Tree { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public ScanSelection Selection { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public IReadOnlySet<string> Expanded { get; set; } = default!;
+
+    [Parameter]
+    public string? SelectedKey { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnToggle { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelect { get; set; }
+
+    [Parameter]
+    public EventCallback<(string Key, bool Selected)> OnCheck { get; set; }
+
+    private bool IsExpanded => Expanded.Contains(Row.Key);
+
+    private string? AriaExpanded => Row.Depth < 2 ? (IsExpanded ? "true" : "false") : null;
+
+    private List<string> SeriesUids => Row.Node switch
+    {
+        PatientNode p => p.ImageSeries.Select(s => s.Series.SeriesInstanceUID).ToList(),
+        StudyNode s => s.ImageSeries.Select(x => x.Series.SeriesInstanceUID).ToList(),
+        SeriesNode x => new List<string> { x.Series.SeriesInstanceUID },
+        _ => new List<string>(),
+    };
+
+    private bool IsChecked => SeriesUids is { Count: > 0 } uids && uids.All(Selection.Contains);
+
+    /// <summary>The row's badges: a patient's counted over its studies and series, the others their own.</summary>
+    private IEnumerable<(InventoryBadge Badge, int Count)> Badges => Row.Node switch
+    {
+        PatientNode p => p.BadgeCounts,
+        StudyNode s => s.Badges.Select(b => (b, 1)),
+        SeriesNode x => x.Badges.Select(b => (b, 1)),
+        _ => Enumerable.Empty<(InventoryBadge, int)>(),
+    };
+}

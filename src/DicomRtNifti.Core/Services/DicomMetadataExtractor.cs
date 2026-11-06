@@ -217,6 +217,21 @@ namespace DicomRtNifti.Core.Services
         }
 
         /// <summary>
+        /// <see cref="Extract(DicomDataset, IReadOnlyList{string})"/> over the file at
+        /// <paramref name="path"/>, opened headers only (<see cref="FileReadOption.SkipLargeTags"/>,
+        /// as the desktop inspector's tag grid opens it). For a front-end that must not name a
+        /// fo-dicom type: the web's inspectors.
+        /// </summary>
+        /// <exception cref="FileNotFoundException">There is no file at <paramref name="path"/>.</exception>
+        public static Dictionary<string, object> ExtractFile(string path, IReadOnlyList<string> keywords)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                throw new FileNotFoundException("No DICOM file to read tags from.", path);
+            var dataset = DicomFile.Open(path, FileReadOption.SkipLargeTags).Dataset;
+            return Extract(dataset, keywords);
+        }
+
+        /// <summary>
         /// Builds an ordered keyword → value map for the requested tags. Order follows
         /// <paramref name="keywords"/>; duplicates and unknown keywords are handled gracefully
         /// (unknown keywords map to null). Values are typed per the class summary.

@@ -272,6 +272,47 @@ namespace DicomRtNifti.Core.Tests
         }
 
         [Fact]
+        public void ExtractFile_ReadsTheTagsOfAFile()
+        {
+            string dir = DicomTestData.NewTempDir();
+            string path = Path.Combine(dir, "slice.dcm");
+            new DicomFile(SampleDataset()).Save(path);
+
+            var result = DicomMetadataExtractor.ExtractFile(path, new[] { "PatientID", "Rows", "PatientBirthDate" });
+
+            Assert.Equal(new[] { "PatientID", "Rows", "PatientBirthDate" }, result.Keys);
+            Assert.Equal("PID-1", result["PatientID"]);
+            Assert.Equal(512L, result["Rows"]);
+            Assert.Null(result["PatientBirthDate"]);
+        }
+
+        [Fact]
+        public void ExtractFile_RefusesAMissingFile()
+        {
+            string path = Path.Combine(DicomTestData.NewTempDir(), "absent.dcm");
+
+            var ex = Assert.Throws<FileNotFoundException>(() => DicomMetadataExtractor.ExtractFile(path, new[] { "PatientID" }));
+
+            Assert.Equal(path, ex.FileName);
+        }
+
+        [Fact]
+        public void ExtractFile_EqualsExtract_OverTheSameFile()
+        {
+            string dir = DicomTestData.NewTempDir();
+            string path = Path.Combine(dir, "slice.dcm");
+            new DicomFile(SampleDataset()).Save(path);
+            var keywords = MetadataTagCatalog.CuratedImageKeywords.Concat(new[] { "SliceThickness", "ImageOrientationPatient", "NoSuchKeyword" }).ToList();
+
+            var fromFile = DicomMetadataExtractor.ExtractFile(path, keywords);
+            var fromDataset = DicomMetadataExtractor.Extract(DicomFile.Open(path, FileReadOption.SkipLargeTags).Dataset, keywords);
+
+            Assert.Equal(fromDataset.Keys, fromFile.Keys);
+            foreach (var keyword in keywords)
+                Assert.Equal(fromDataset[keyword], fromFile[keyword]);
+        }
+
+        [Fact]
         public void GetSelectableTags_IncludesScalars_ExcludesSequencesAndBulk()
         {
             var tags = DicomMetadataExtractor.GetSelectableTags();

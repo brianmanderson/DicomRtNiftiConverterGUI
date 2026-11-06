@@ -1,0 +1,156 @@
+/* The Inventory page. Scoped to this component, reaching its child components (the tree rows and
+   the inspectors) through ::deep; no inline styles (the content security policy). */
+
+.inv-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    align-items: end;
+    margin: 0.6rem 0;
+}
+
+.inv-filters label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.inv-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .inv-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.inv-tree {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    max-height: 36rem;
+    overflow-y: auto;
+}
+
+/* 30 px: InventoryView.RowHeight, which the virtualized tree measures by. */
+.inv-tree ::deep .inv-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 30px;
+    padding: 0 0.4rem;
+    white-space: nowrap;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+}
+
+.inv-tree ::deep .inv-row.inv-selected {
+    background: var(--ok-bg);
+}
+
+.inv-tree ::deep .inv-depth-1 {
+    padding-left: 1.6rem;
+}
+
+.inv-tree ::deep .inv-depth-2 {
+    padding-left: 3.2rem;
+}
+
+.inv-tree ::deep .inv-expander,
+.inv-tree ::deep .inv-expander-gap {
+    width: 1.4rem;
+    flex: none;
+}
+
+.inv-tree ::deep .inv-expander,
+.inv-tree ::deep .inv-label {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+.inv-tree ::deep .inv-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    gap: 0.4rem;
+}
+
+::deep .inv-modality, ::deep .inv-date, ::deep .inv-count {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+::deep .inv-flag.inv-serious {
+    border-color: var(--bad);
+    color: var(--bad);
+    background: var(--bad-bg);
+}
+
+::deep .inv-flag.inv-warning {
+    border-color: var(--pending-line);
+    background: var(--pending-bg);
+    color: var(--ink);
+}
+
+.inv-inspector {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    padding: 0.7rem 0.9rem;
+}
+
+::deep .inv-inspector-head {
+    margin-top: 0;
+}
+
+::deep .inv-tabs {
+    display: flex;
+    gap: 0.3rem;
+    margin: 0 0 0.6rem;
+    border-bottom: 1px solid var(--line);
+}
+
+::deep .inv-tab {
+    background: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    padding: 0.2rem 0.7rem;
+    cursor: pointer;
+    font: inherit;
+}
+
+::deep .inv-tab.inv-tab-on {
+    border-color: var(--line);
+    background: var(--bg);
+    font-weight: 600;
+}
+
+::deep .inv-lines {
+    padding-left: 1.1rem;
+}
+
+::deep .inv-lines li {
+    margin: 0.2rem 0;
+}
+
+::deep .inv-roi-names {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+::deep .inv-tags-from {
+    font-weight: normal;
+    font-size: 0.85rem;
+    color: var(--muted);
+}

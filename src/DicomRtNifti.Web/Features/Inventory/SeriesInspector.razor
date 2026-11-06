@@ -1,0 +1,123 @@
+@using DicomRtNifti.Core.Models
+@using DicomRtNifti.Core.Services
+
+@* The series inspector (GUI_WALKTHROUGH "The inspector", Series): the geometry and links the scan
+   already read, through SeriesGeometryProbe; the amber notes are the conversions' own warnings,
+   word for word, as SeriesFlags returns them. *@
+
+<h2 class="inv-inspector-head">Series inspector</h2>
+<InspectorTabs @bind-Tab="_tab" />
+
+@if (_tab == InspectorTabs.Summary)
+{
+    var s = Node.Series;
+    var g = Node.Geometry;
+    <dl class="facts">
+        <dt>Description</dt>
+        <dd>@Node.Label</dd>
+        <dt>Modality</dt>
+        <dd>@InventoryText.OrMissing(s.Modality)</dd>
+        <dt>Series date</dt>
+        <dd>@InventoryText.Date(s.SeriesDate)</dd>
+        <dt>Instances</dt>
+        <dd>@s.FilePaths.Count</dd>
+        <dt>Slice spacing</dt>
+        <dd class="inv-slice-spacing">@(g is null ? InventoryText.Missing : InventoryText.Mm(g.SliceSpacing))</dd>
+        <dt>Distinct gaps</dt>
+        <dd class="inv-gaps">@(g is null || g.DistinctGaps.Length == 0 ? InventoryText.Missing : string.Join(", ", g.DistinctGaps.Select(InventoryText.Number)) + " mm")</dd>
+        <dt>Pixel spacing</dt>
+        <dd>@(s.PixelSpacing is { Length: >= 2 } p ? $"{InventoryText.Number(p[0])} × {InventoryText.Number(p[1])} mm" : InventoryText.Missing)</dd>
+        <dt>Z extent</dt>
+        <dd>@Extent</dd>
+        <dt>Grid</dt>
+        <dd>@(s.Rows is { } rows && s.Columns is { } columns ? $"{rows} × {columns}" : InventoryText.Missing)</dd>
+        <dt>Orientation</dt>
+        <dd>@OrientationText</dd>
+        <dt>Frame of reference</dt>
+        <dd><code>@InventoryText.OrMissing(s.FrameOfReferenceUID)</code></dd>
+        <dt>Series UID</dt>
+        <dd><code>@InventoryText.OrMissing(s.SeriesInstanceUID)</code></dd>
+        <dt>RTSTRUCT</dt>
+        <dd>@InventoryText.Links(Node.LinkedStructs)</dd>
+        <dt>RTDOSE</dt>
+        <dd>@InventoryText.Links(Node.LinkedDoses)</dd>
+    </dl>
+
+    @if (Node.Badges.Count > 0)
+    {
+        <p class="inv-badges">
+            @foreach (var badge in Node.Badges)
+            {
+                <span class="badge inv-flag inv-@badge.Severity" data-code="@badge.Code" title="@badge.Meaning">@badge.Label</span>
+            }
+        </p>
+    }
+    @foreach (var badge in Node.Badges.Where(b => !string.IsNullOrEmpty(b.Detail)))
+    {
+        <p class="notice notice-pending inv-warning-text">@badge.Detail</p>
+    }
+    @if (g is not null && !g.Uniform && !Node.Badges.Any(b => b.Code == DicomRtNifti.Core.Analysis.FlagCodes.GeomNonUniformZ))
+    {
+        <p class="hint inv-within-tolerance">
+            The gaps differ only by rounding, under the 5% volume effect at which a conversion warns, so the series is not badged.
+        </p>
+    }
+
+    @if (Node.LinkedStructs.Count + Node.LinkedDoses.Count > 0)
+    {
+        <h3>Linked RT objects</h3>
+        <ul class="inv-lines">
+            @foreach (var rt in Node.LinkedStructs)
+            {
+                <li>
+                    <span class="inv-modality">RTSTRUCT</span> @InventoryText.Describe(rt) · @rt.RoiNames.Count ROI(s) · by @InventoryText.Rule(rt.LinkMatchRule)
+                    @if (rt.RoiNames.Count > 0)
+                    {
+                        <div class="inv-roi-names">@string.Join(", ", rt.RoiNames)</div>
+                    }
+                </li>
+            }
+            @foreach (var rt in Node.LinkedDoses)
+            {
+                <li><span class="inv-modality">RTDOSE</span> @InventoryText.Describe(rt) · @rt.FilePaths.Count file(s) · by @InventoryText.Rule(rt.LinkMatchRule)</li>
+            }
+        </ul>
+    }
+}
+else
+{
+    <DicomTagsTab Level="series" Sources="TagSources" />
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public SeriesNode Node { get; set; } = default!;
+
+    private string _tab = InspectorTabs.Summary;
+
+    private string Extent =>
+        Node.Geometry is { } g && Node.Series.SlicePositions.Count >= 2
+            ? $"{InventoryText.Number(g.ExtentMm)} mm (z {InventoryText.Number(Node.Series.SlicePositions.Min())} to {InventoryText.Number(Node.Series.SlicePositions.Max())})"
+            : InventoryText.Missing;
+
+    private string OrientationText
+    {
+        get
+        {
+            if (Node.Series.OrientationVaries)
+                return "varies between files";
+            if (Node.Orientation is not { } o)
+                return InventoryText.Missing;
+            return o.AxisAligned ? o.Plane : $"{o.Plane}, slice normal tilted {InventoryText.Number(o.NormalTiltDegrees)}°";
+        }
+    }
+
+    private IReadOnlyList<DicomTagsTab.TagSource> TagSources => new[]
+    {
+        new DicomTagsTab.TagSource("Image", "the series' first slice", Node.Series.FilePaths.FirstOrDefault(), MetadataTagCatalog.CuratedImageKeywords),
+        new DicomTagsTab.TagSource("Structure set", "the first linked RTSTRUCT",
+            Node.LinkedStructs.FirstOrDefault()?.FilePaths.FirstOrDefault(), MetadataTagCatalog.CuratedStructureKeywords),
+        new DicomTagsTab.TagSource("Dose", "the first linked RTDOSE",
+            Node.LinkedDoses.FirstOrDefault()?.FilePaths.FirstOrDefault(), MetadataTagCatalog.CuratedDoseKeywords),
+    };
+}

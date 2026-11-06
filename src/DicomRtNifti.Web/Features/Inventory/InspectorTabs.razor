@@ -1,0 +1,21 @@
+@* The two tabs every inspector level has: the summary, and the curated DICOM tags. *@
+
+<div class="inv-tabs" role="tablist">
+    <button type="button" role="tab" class="inv-tab @(Tab == Summary ? "inv-tab-on" : "")" aria-selected="@(Tab == Summary ? "true" : "false")"
+            @onclick="() => Pick(Summary)">Summary</button>
+    <button type="button" role="tab" class="inv-tab @(Tab == Tags ? "inv-tab-on" : "")" aria-selected="@(Tab == Tags ? "true" : "false")"
+            @onclick="() => Pick(Tags)">DICOM tags</button>
+</div>
+
+@code {
+    public const string Summary = "summary";
+    public const string Tags = "tags";
+
+    [Parameter]
+    public string Tab { get; set; } = Summary;
+
+    [Parameter]
+    public EventCallback<string> TabChanged { get; set; }
+
+    private Task Pick(string tab) => TabChanged.InvokeAsync(tab);
+}

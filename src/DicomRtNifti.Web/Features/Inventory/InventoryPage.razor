@@ -1,3 +1,18 @@
 @page "/inventory"
+@inject FeatureCatalog Catalog
 
-<FeatureStub Feature="typeof(InventoryFeature)" DeliveredBy="W4-G" />
+@* Plan section 4.3. The body is InventoryView, which carries the page's scoped styles, so this
+   page's own markup stays plain. *@
+
+<PageTitle>Inventory · DicomRtNifti</PageTitle>
+
+<h1>Inventory</h1>
+<p class="summary">@_feature.Feature.Summary</p>
+
+<InventoryView />
+
+@code {
+    private FeatureDescriptor _feature = default!;
+
+    protected override void OnInitialized() => _feature = Catalog.For(typeof(InventoryFeature));
+}
