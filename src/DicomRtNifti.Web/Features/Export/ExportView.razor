@@ -1,0 +1,317 @@
+@using System.Globalization
+@using DicomRtNifti.Core.CommandLine
+@using DicomRtNifti.Core.Models
+@using DicomRtNifti.Core.Services
+@using DicomRtNifti.Web.Audit
+@using DicomRtNifti.Web.State
+@inject ExportSession Session
+@inject IInventorySelection Selection
+@inject ExportCommandBuilder Builder
+@inject ProjectStore Projects
+@inject UserPreferences Preferences
+@inject PathRedactor Redactor
+@inject ICurrentUser CurrentUser
+@inject NavigationManager Navigation
+
+@* The body of Export setup (plan section 4.6). Every field is a CohortExportOptions field, grouped
+   as the desktop app's Export Options window groups them; the text fields are checked by Core
+   (TryParseSpacing, MetadataKeywordValidator) as they are typed, and the whole command by Core's
+   grammar (ExportCommandBuilder), whose message is shown as Core words it. The salt is never a
+   field: it is the project's (D-36). The page writes nothing but a preset, when one is saved. *@
+
+<ExportTarget Changed="Recompute" />
+
+@if (_message is not null)
+{
+    <div class="notice export-message" role="status">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="notice notice-failed export-error" role="alert">@_error</div>
+}
+
+<fieldset class="export-group export-presets">
+    <legend>Preset</legend>
+    @if (!Preferences.IsConfigured)
+    {
+        <p class="hint">Presets need Web:StateRoot on the server.</p>
+    }
+    else
+    {
+        <label>
+            Load
+            <select class="preset-choose" value="" @onchange="LoadPreset">
+                <option value="">(choose a preset)</option>
+                @foreach (string preset in _presets)
+                {
+                    <option value="@preset">@preset</option>
+                }
+            </select>
+        </label>
+        <label>
+            Save as
+            <input class="preset-name" @bind="_presetName" placeholder="preset name" />
+        </label>
+        <button class="preset-save" @onclick="SavePreset">Save preset</button>
+    }
+</fieldset>
+
+<fieldset class="export-group">
+    <legend>Selection</legend>
+    <p class="export-selection">@SelectionText</p>
+    <label>Series description contains <input class="opt-series-description" value="@O.SeriesDescriptionFilter" @onchange="e => Text(e, v => O.SeriesDescriptionFilter = v)" /></label>
+    <label>Structure set description contains <input class="opt-struct-description" value="@O.StructDescriptionFilter" @onchange="e => Text(e, v => O.StructDescriptionFilter = v)" /></label>
+    <label><input type="checkbox" class="opt-prefer-largest" checked="@O.PreferLargestSeries" @onchange="e => Flag(e, v => O.PreferLargestSeries = v)" /> Prefer the largest series in each study</label>
+    <label><input type="checkbox" class="opt-require-structures" checked="@O.RequireStructures" @onchange="e => Flag(e, v => O.RequireStructures = v)" /> Require a structure set</label>
+    <label><input type="checkbox" class="opt-require-dose" checked="@O.RequireDose" @onchange="e => Flag(e, v => O.RequireDose = v)" /> Require a dose</label>
+</fieldset>
+
+<fieldset class="export-group">
+    <legend>What to write (conversion)</legend>
+    <label><input type="checkbox" class="opt-images" checked="@O.ExportImages" @onchange="e => Flag(e, v => O.ExportImages = v)" /> Images</label>
+    <label><input type="checkbox" class="opt-structures" checked="@O.ExportStructures" @onchange="e => Flag(e, v => O.ExportStructures = v)" /> Structures (masks)</label>
+    <label><input type="checkbox" class="opt-doses" checked="@O.ExportDoses" @onchange="e => Flag(e, v => O.ExportDoses = v)" /> Doses</label>
+</fieldset>
+
+<fieldset class="export-group">
+    <legend>ROIs</legend>
+    <p class="hint">The association set is chosen above; edit it, and pick ROIs by coverage, on <a href="curation">ROI curation</a>.</p>
+    <label><input type="checkbox" class="opt-only-associated" checked="@O.OnlyAssociatedRois" @onchange="e => Flag(e, v => O.OnlyAssociatedRois = v)" /> Export only associated ROIs</label>
+    <label>
+        ROI selection (canonical names, comma-separated; empty for all)
+        <input class="opt-rois" value="@string.Join(",", O.RoiSelection)" @onchange="e => Text(e, v => O.RoiSelection = CohortExportOptions.ParseKeywordList(v))" />
+    </label>
+</fieldset>
+
+<fieldset class="export-group">
+    <legend>Geometry</legend>
+    <label>
+        Output spacing X,Y,Z in mm (empty keeps each series' grid)
+        <input class="opt-spacing" value="@_spacingText" @onchange="SpacingChanged" placeholder="native" />
+    </label>
+    @if (_spacingError is not null)
+    {
+        <p class="target-problem opt-spacing-error">@_spacingError</p>
+    }
+</fieldset>
+
+<fieldset class="export-group">
+    <legend>Privacy</legend>
+    <label><input type="checkbox" class="opt-anonymize" checked="@O.Anonymize" @onchange="e => Flag(e, v => O.Anonymize = v)" disabled="@(!Projects.CanAnonymize)" /> Anonymize (hash identifiers; the key is written outside the export)</label>
+    @if (!Projects.CanAnonymize)
+    {
+        <p class="hint">Anonymized exports need Web:KeyRoot on the server.</p>
+    }
+    else if (O.Anonymize)
+    {
+        <p class="export-salt">@SaltText</p>
+    }
+</fieldset>
+
+<fieldset class="export-group">
+    <legend>Metadata sidecar (conversion)</legend>
+    @foreach (var section in Sections)
+    {
+        <label>
+            @section.Label (DICOM keywords, or @string.Join(", ", section.Computed.Select(c => c.Key)))
+            <input class="@section.Css" value="@_keywordText[section.Index]" @onchange="e => KeywordsChanged(section, e)" />
+        </label>
+        @if (_keywordError[section.Index] is { } keywordError)
+        {
+            <p class="target-problem @(section.Css)-error">@keywordError</p>
+        }
+    }
+</fieldset>
+
+<fieldset class="export-group">
+    <legend>Run</legend>
+    <label>Manifest file name <input class="opt-manifest" value="@O.ManifestFileName" @onchange="e => Text(e, v => O.ManifestFileName = v ?? new CohortExportOptions().ManifestFileName)" /></label>
+    <label><input type="checkbox" class="opt-volumes" checked="@O.ComputeVolumes" @onchange="e => Flag(e, v => O.ComputeVolumes = v)" /> Compute ROI volumes (survey)</label>
+    <label><input type="checkbox" class="opt-fail-fast" checked="@O.FailFast" @onchange="e => Flag(e, v => O.FailFast = v)" /> Stop at the first failed series</label>
+</fieldset>
+
+<h2>Command</h2>
+@foreach (var command in new[] { _convert, _survey })
+{
+    if (command is null)
+        continue;
+    <h3>@(command.Mode == CohortMode.Convert ? "Conversion" : "Survey (manifest only)")</h3>
+    @if (command.Cli is not null)
+    {
+        <div class="cli"><pre><code class="@(command.Mode == CohortMode.Convert ? "export-cli-convert" : "export-cli-survey")">@command.Cli</code></pre></div>
+    }
+    @foreach (string problem in command.Problems)
+    {
+        <p class="target-problem export-problem">@Redactor.Redact(problem)</p>
+    }
+}
+@if (_convert?.Cli?.Contains(ExportCommandBuilder.SaltToken) == true)
+{
+    <p class="hint export-salt-note">@ExportCommandBuilder.SaltToken stands for the project's salt, recorded only in its key file.</p>
+}
+<button class="export-review" @onclick="Review" disabled="@(_convert?.Cli is null)">Review the plan</button>
+
+@code {
+    private sealed record KeywordSection(int Index, string Label, string Css, IReadOnlyList<ComputedMetadataOption> Computed);
+
+    private static readonly KeywordSection[] Sections =
+    {
+        new(0, "Image", "opt-image-tags", MetadataTagCatalog.ImageComputedOptions),
+        new(1, "Structure", "opt-structure-tags", MetadataTagCatalog.StructureComputedOptions),
+        new(2, "Dose", "opt-dose-tags", MetadataTagCatalog.DoseComputedOptions),
+    };
+
+    private ExportCommand? _convert;
+    private ExportCommand? _survey;
+    private IReadOnlyList<string> _presets = Array.Empty<string>();
+    private string? _presetName;
+    private string _spacingText = "";
+    private string? _spacingError;
+    private readonly string[] _keywordText = { "", "", "" };
+    private readonly string?[] _keywordError = new string?[3];
+    private string? _message;
+    private string? _error;
+
+    private CohortExportOptions O => Session.Options;
+
+    private string SelectionText
+    {
+        get
+        {
+            int patients = Selection.PatientIds.Count, series = Selection.SeriesInstanceUids.Count;
+            if (patients == 0 && series == 0)
+                return "Every series in the cohort folder (nothing is selected in Inventory).";
+            return $"From Inventory: {patients} patient(s), {series} series, {Selection.StructureSetUids.Count} structure-set choice(s).";
+        }
+    }
+
+    private string SaltText => _convert?.Salt switch
+    {
+        { Problem: { } problem } => Redactor.Redact(problem),
+        { Pending: true } => "This project has no key yet: its salt is drawn at random when its first anonymized job is submitted, and recorded only in its key file.",
+        { Salt: not null } => "The project's own salt, from its key file, is used. The public default salt is never offered.",
+        _ => "",
+    };
+
+    protected override void OnInitialized()
+    {
+        _spacingText = O.OutputSpacing is null ? "" : string.Join(",", O.OutputSpacing.Select(v => v.ToString("R", CultureInfo.InvariantCulture)));
+        _keywordText[0] = string.Join(",", O.ImageKeywords);
+        _keywordText[1] = string.Join(",", O.StructureKeywords);
+        _keywordText[2] = string.Join(",", O.DoseKeywords);
+        _presets = Preferences.IsConfigured ? Preferences.Presets(CurrentUser.Id) : Array.Empty<string>();
+        Recompute();
+    }
+
+    private void Recompute()
+    {
+        _convert = Builder.Build(Session, Selection, CohortMode.Convert);
+        _survey = Builder.Build(Session, Selection, CohortMode.Manifest);
+    }
+
+    private void Changed()
+    {
+        Session.NotifyChanged();
+        Recompute();
+    }
+
+    private void Flag(ChangeEventArgs e, Action<bool> set)
+    {
+        set(e.Value is true);
+        Changed();
+    }
+
+    private void Text(ChangeEventArgs e, Action<string?> set)
+    {
+        string value = e.Value?.ToString() ?? "";
+        set(value.Length == 0 ? null : value);
+        Changed();
+    }
+
+    private void SpacingChanged(ChangeEventArgs e)
+    {
+        _spacingText = (e.Value?.ToString() ?? "").Trim();
+        _spacingError = null;
+        if (_spacingText.Length == 0)
+            O.OutputSpacing = null;
+        else if (CohortExportOptions.TryParseSpacing(_spacingText, out var spacing, out string error))
+            O.OutputSpacing = spacing;
+        else
+            _spacingError = "Output spacing: " + error;
+        Changed();
+    }
+
+    private void KeywordsChanged(KeywordSection section, ChangeEventArgs e)
+    {
+        string text = e.Value?.ToString() ?? "";
+        _keywordText[section.Index] = text;
+        _keywordError[section.Index] = null;
+        if (!MetadataKeywordValidator.TryValidate(text, section.Computed, out var keywords, out string error))
+        {
+            _keywordError[section.Index] = $"{section.Label} keywords: {error}";
+            return;
+        }
+
+        switch (section.Index)
+        {
+            case 0: O.ImageKeywords = keywords; break;
+            case 1: O.StructureKeywords = keywords; break;
+            default: O.DoseKeywords = keywords; break;
+        }
+
+        Changed();
+    }
+
+    private void LoadPreset(ChangeEventArgs e)
+    {
+        _message = null;
+        _error = null;
+        string name = e.Value?.ToString() ?? "";
+        if (name.Length == 0)
+            return;
+        try
+        {
+            UserPreferences.Apply(Preferences.Load(CurrentUser.Id, name), O);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or ArgumentException)
+        {
+            _error = Redactor.Redact(ex.Message);
+            return;
+        }
+
+        _presetName = name;
+        OnInitialized();
+        Session.NotifyChanged();
+        _message = $"Loaded preset '{name}'.";
+    }
+
+    private void SavePreset()
+    {
+        _message = null;
+        _error = null;
+        if (UserPreferences.CheckPresetName(_presetName) is { } refused)
+        {
+            _error = refused;
+            return;
+        }
+
+        try
+        {
+            Preferences.Save(CurrentUser.Id, _presetName!, O);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _error = "The preset could not be written: " + Redactor.Redact(ex.Message);
+            return;
+        }
+
+        _presets = Preferences.Presets(CurrentUser.Id);
+        _message = $"Saved preset '{_presetName}'.";
+    }
+
+    private void Review()
+    {
+        Session.PlanMode = CohortMode.Convert;
+        Navigation.NavigateTo("plan");
+    }
+}
