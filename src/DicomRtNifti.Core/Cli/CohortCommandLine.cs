@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using DicomRtNifti.Core.Analysis;
 using DicomRtNifti.Core.Documents;
 using DicomRtNifti.Core.Models;
 using DicomRtNifti.Core.Services;
@@ -12,12 +13,16 @@ using DicomRtNifti.Core.Services;
 // type inside DicomRtNifti.Core.*, where `Cli.HeadlessRunner` would then stop resolving.
 namespace DicomRtNifti.Core.CommandLine
 {
-    /// <summary>The three cohort modes, in the order a command line that names several picks them.</summary>
+    /// <summary>
+    /// The cohort modes, in the order a command line that names several picks them. New modes
+    /// are appended, so the values the earlier ones carry never change.
+    /// </summary>
     public enum CohortMode
     {
         Scan,
         Manifest,
         Convert,
+        Analyze,
     }
 
     /// <summary>
@@ -53,6 +58,12 @@ namespace DicomRtNifti.Core.CommandLine
         /// (<see cref="Documents.CohortPlanDocument"/>), and write nothing.
         /// </summary>
         public bool DryRun { get; set; }
+
+        /// <summary>--tier on --cohort-analyze: how much the analysis reads. Header unless given.</summary>
+        public AnalysisTier Tier { get; set; } = AnalysisTier.Header;
+
+        /// <summary>--csv-out on --cohort-analyze: also write the analysis' tables into this folder. Null when not given.</summary>
+        public string CsvOutPath { get; set; }
     }
 
     /// <summary>
@@ -115,7 +126,14 @@ namespace DicomRtNifti.Core.CommandLine
         public const string ScanFlag = "--cohort-scan";
         public const string ManifestFlag = "--cohort-manifest";
         public const string ConvertFlag = "--cohort-convert";
+        public const string AnalyzeFlag = "--cohort-analyze";
         public const string DryRunFlag = "--dry-run";
+
+        /// <summary><see cref="CohortCommand.Tier"/>: header, contours or raster (header and contours are available; raster is not yet).</summary>
+        public const string TierFlag = "--tier";
+
+        /// <summary><see cref="CohortCommand.CsvOutPath"/>: the folder the analysis' tables are written into.</summary>
+        public const string CsvOutFlag = "--csv-out";
 
         /// <summary><see cref="CohortExportOptions.SeriesInstanceUids"/>: export only these image series.</summary>
         public const string SeriesFlag = "--series";
@@ -135,6 +153,7 @@ namespace DicomRtNifti.Core.CommandLine
                 case CohortMode.Scan: return ScanFlag;
                 case CohortMode.Manifest: return ManifestFlag;
                 case CohortMode.Convert: return ConvertFlag;
+                case CohortMode.Analyze: return AnalyzeFlag;
                 default: throw new ArgumentOutOfRangeException(nameof(mode));
             }
         }
@@ -145,7 +164,7 @@ namespace DicomRtNifti.Core.CommandLine
 
         /// <summary>
         /// Parses a cohort command line whose mode is one of its flags, taking scan, then manifest,
-        /// then convert when several are present.
+        /// then convert, then analyze when several are present.
         /// </summary>
         /// <exception cref="CommandLineUsageException">No cohort mode, or see the other overload.</exception>
         public static CohortCommand Parse(string[] args, IProgress<string> log = null)
@@ -156,7 +175,7 @@ namespace DicomRtNifti.Core.CommandLine
                     return Parse(mode, args, log);
             }
             throw new CommandLineUsageException(
-                $"A cohort command line needs {ScanFlag}, {ManifestFlag}, or {ConvertFlag}.");
+                $"A cohort command line needs {ScanFlag}, {ManifestFlag}, {ConvertFlag}, or {AnalyzeFlag}.");
         }
 
         /// <summary>
@@ -184,6 +203,24 @@ namespace DicomRtNifti.Core.CommandLine
                 };
                 ParseAnonymization(args, command.Options);
                 command.JsonOutPath = CommandLineArgs.OptionalArg(args, "--json-out");
+                return command;
+            }
+
+            if (mode == CohortMode.Analyze)
+            {
+                // The analysis converts nothing either: it takes the input, the anonymization
+                // options (the key at --key-path read, never written, as --cohort-scan does), and
+                // the associations its ROI naming resolves against.
+                command.Options = new CohortExportOptions
+                {
+                    InputRoot = CommandLineArgs.RequireArg(args, "--input"),
+                    Anonymize = CommandLineArgs.HasFlag(args, "--anonymize"),
+                };
+                command.Tier = ParseTier(args);
+                ParseAnonymization(args, command.Options);
+                ParseAssociations(args, command, log);
+                command.JsonOutPath = CommandLineArgs.OptionalArg(args, "--json-out");
+                command.CsvOutPath = CommandLineArgs.OptionalArg(args, CsvOutFlag);
                 return command;
             }
 
@@ -225,15 +262,7 @@ namespace DicomRtNifti.Core.CommandLine
                 options.OutputSpacing = spacing;
             }
 
-            string associationsPath = CommandLineArgs.OptionalArg(args, "--associations");
-            if (!string.IsNullOrEmpty(associationsPath))
-            {
-                if (!File.Exists(associationsPath))
-                    throw new CommandLineUsageException($"Associations file not found: {associationsPath}");
-                options.Associations = new SettingsService().ImportAssociations(associationsPath);
-                command.AssociationsPath = associationsPath;
-                log?.Report($"Loaded {options.Associations.Count} ROI association(s)");
-            }
+            ParseAssociations(args, command, log);
 
             if (mode == CohortMode.Convert)
             {
@@ -256,6 +285,42 @@ namespace DicomRtNifti.Core.CommandLine
             command.JsonOutPath = CommandLineArgs.OptionalArg(args, "--json-out");
             command.DryRun = CommandLineArgs.HasFlag(args, DryRunFlag);
             return command;
+        }
+
+        /// <summary>--associations: reads the file into the command's options, and says so on <paramref name="log"/>.</summary>
+        private static void ParseAssociations(string[] args, CohortCommand command, IProgress<string> log)
+        {
+            string associationsPath = CommandLineArgs.OptionalArg(args, "--associations");
+            if (!string.IsNullOrEmpty(associationsPath))
+            {
+                if (!File.Exists(associationsPath))
+                    throw new CommandLineUsageException($"Associations file not found: {associationsPath}");
+                command.Options.Associations = new SettingsService().ImportAssociations(associationsPath);
+                command.AssociationsPath = associationsPath;
+                log?.Report($"Loaded {command.Options.Associations.Count} ROI association(s)");
+            }
+        }
+
+        /// <summary>
+        /// --tier: a tier name, ignoring case; header when absent. A tier this build does not
+        /// compute yet is refused here, before any scan, like any other argument it cannot act on.
+        /// </summary>
+        private static AnalysisTier ParseTier(string[] args)
+        {
+            string text = CommandLineArgs.OptionalArg(args, TierFlag);
+            if (text == null)
+                return AnalysisTier.Header;
+            if (!AnalysisTierNames.TryParse(text, out var tier))
+            {
+                throw new CommandLineUsageException(
+                    $"{TierFlag}: expected {AnalysisTierNames.Header}, {AnalysisTierNames.Contours} or {AnalysisTierNames.Raster}; got '{text}'.");
+            }
+            if (!AnalysisTierNames.IsAvailable(tier))
+            {
+                throw new CommandLineUsageException(
+                    $"{TierFlag} {AnalysisTierNames.Of(tier)} is not yet available; only {TierFlag} {AnalysisTierNames.Header} and {TierFlag} {AnalysisTierNames.Contours} are.");
+            }
+            return tier;
         }
 
         /// <summary>--salt and --key-path; the latter only with --anonymize.</summary>
@@ -354,7 +419,44 @@ namespace DicomRtNifti.Core.CommandLine
                 RequireDefault(mode, !o.FailFast, "--fail-fast");
                 RequireDefault(mode, o.ManifestFileName == Defaults.ManifestFileName, "a manifest name");
                 RequireDefault(mode, !command.DryRun, DryRunFlag);
+                RequireAnalysisDefaults(mode, command);
                 AddPath(args, "--json-out", command.JsonOutPath, presenter);
+                return args.ToArray();
+            }
+
+            if (mode == CohortMode.Analyze)
+            {
+                RequireDefault(mode, o.OutputRoot == null, "an output folder");
+                RequireSurveyAndExportDefaults(mode, o);
+                RequireDefault(mode, !o.OnlyAssociatedRois, "--only-associated-rois");
+                RequireDefault(mode, o.OutputSpacing == null, "an output spacing");
+                RequireDefault(mode, IsEmpty(o.PatientIds), "a patient filter");
+                RequireDefault(mode, IsEmpty(o.SeriesInstanceUids), "a series selection");
+                RequireDefault(mode, IsEmpty(o.StructureSetUids), "a structure-set choice");
+                RequireDefault(mode, IsEmpty(o.RoiSelection), "an ROI selection");
+                RequireDefault(mode, o.SeriesDescriptionFilter == null, "a series-description filter");
+                RequireDefault(mode, o.StructDescriptionFilter == null, "a structure-set-description filter");
+                RequireDefault(mode, !o.PreferLargestSeries, "--prefer-largest-series");
+                RequireDefault(mode, !o.RequireStructures, "--require-structures");
+                RequireDefault(mode, !o.RequireDose, "--require-dose");
+                RequireDefault(mode, !o.FailFast, "--fail-fast");
+                RequireDefault(mode, o.ManifestFileName == Defaults.ManifestFileName, "a manifest name");
+                RequireDefault(mode, !command.DryRun, DryRunFlag);
+                if (!AnalysisTierNames.IsAvailable(command.Tier))
+                {
+                    throw new ArgumentException(
+                        $"{TierFlag} {AnalysisTierNames.Of(command.Tier)} is not yet available, so no command line can carry it.", nameof(command));
+                }
+
+                if (command.Tier != AnalysisTier.Header)
+                {
+                    args.Add(TierFlag);
+                    args.Add(AnalysisTierNames.Of(command.Tier));
+                }
+                AddAssociations(args, command, presenter);
+                AddAnonymization(args, o, presenter);
+                AddPath(args, "--json-out", command.JsonOutPath, presenter);
+                AddPath(args, CsvOutFlag, command.CsvOutPath, presenter);
                 return args.ToArray();
             }
 
@@ -363,12 +465,7 @@ namespace DicomRtNifti.Core.CommandLine
             args.Add("--output");
             args.Add(presenter(o.OutputRoot));
 
-            if (command.AssociationsPath != null)
-                AddPath(args, "--associations", command.AssociationsPath, presenter);
-            else if (!IsEmpty(o.Associations))
-                throw new ArgumentException(
-                    "The options carry ROI associations but not the file they came from; render a " +
-                    nameof(CohortCommand) + " with " + nameof(CohortCommand.AssociationsPath) + ".", nameof(command));
+            AddAssociations(args, command, presenter);
             AddFlag(args, "--only-associated-rois", o.OnlyAssociatedRois);
             AddList(args, RoisFlag, o.RoiSelection, "ROI names");
             if (o.OutputSpacing != null)
@@ -414,9 +511,28 @@ namespace DicomRtNifti.Core.CommandLine
                 AddFlag(args, "--no-volumes", !o.ComputeVolumes);
             }
 
+            RequireAnalysisDefaults(mode, command);
             AddFlag(args, DryRunFlag, command.DryRun);
             AddPath(args, "--json-out", command.JsonOutPath, presenter);
             return args.ToArray();
+        }
+
+        /// <summary>The associations file, or a refusal when the options carry associations without one.</summary>
+        private static void AddAssociations(List<string> args, CohortCommand command, PathPresenter presenter)
+        {
+            if (command.AssociationsPath != null)
+                AddPath(args, "--associations", command.AssociationsPath, presenter);
+            else if (!IsEmpty(command.Options.Associations))
+                throw new ArgumentException(
+                    "The options carry ROI associations but not the file they came from; render a " +
+                    nameof(CohortCommand) + " with " + nameof(CohortCommand.AssociationsPath) + ".", nameof(command));
+        }
+
+        /// <summary>What only --cohort-analyze can say.</summary>
+        private static void RequireAnalysisDefaults(CohortMode mode, CohortCommand command)
+        {
+            RequireDefault(mode, command.Tier == AnalysisTier.Header, TierFlag);
+            RequireDefault(mode, command.CsvOutPath == null, CsvOutFlag);
         }
 
         private static void AddAnonymization(List<string> args, CohortExportOptions o, PathPresenter presenter)

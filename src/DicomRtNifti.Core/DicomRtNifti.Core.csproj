@@ -12,6 +12,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="DicomRtNifti.Cli" />
     <InternalsVisibleTo Include="DicomRtNifti.App" />
+    <InternalsVisibleTo Include="DicomRtNifti.Web" />
     <InternalsVisibleTo Include="DicomRtNifti.Core.Tests" />
   </ItemGroup>
 

@@ -1,0 +1,40 @@
+/* The Audit page. Scoped to this component; no inline styles (the content security policy). */
+
+.audit-filter {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+}
+
+select, button {
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 0.3rem;
+    background: var(--panel);
+    color: var(--ink);
+}
+
+button {
+    cursor: pointer;
+    margin-top: 0.6rem;
+}
+
+.audit-time {
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+}
+
+.audit-kind, .audit-detail {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.audit-cli code {
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}

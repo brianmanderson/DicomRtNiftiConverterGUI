@@ -380,6 +380,98 @@ is a full worked example.
 Run `--help` for the option list. It does not yet list `--dry-run`, `--series`, `--struct-series`
 or `--rois`, which are described above.
 
+## Cohort analysis
+
+`--cohort-analyze` answers the questions to ask of an archive before converting it: which structure
+sets were attached by a guess, which series have mixed slice gaps or tilted slices, how consistently
+the ROIs are named, and what an association set would cover or drop. It converts nothing and prints
+one `dicomrtnifti.cohort-analysis/1` JSON document on stdout. It is a mode and a document of its own
+(decision D-34), so `--cohort-scan` stays the cheap inventory and no existing document changes.
+
+```bash
+# Header tier: costs nothing beyond the scan
+DicomRtNifti.Cli --cohort-analyze --input ARCHIVE
+
+# Contours tier: also reads every linked structure set's contours and every linked dose
+DicomRtNifti.Cli --cohort-analyze --input ARCHIVE --tier contours
+
+# ROI naming against an association set, and the flat tables as CSV
+DicomRtNifti.Cli --cohort-analyze --input ARCHIVE --associations associations.json --csv-out TABLES
+
+# Without identifiers: the hashes an anonymized export with the same salt writes
+DicomRtNifti.Cli --cohort-analyze --input ARCHIVE --anonymize --salt "my-cohort-salt" --json-out analysis.json
+```
+
+- **Tiers.** `--tier header` (the default) reads the scanner's model plus values from the headers
+  it already opens: orientation, rows and columns, rescale, number of frames, the per-instance
+  modality tally. `--tier contours` adds a full read of every linked structure set's contour data
+  and of every linked dose, and one image header per series for its in-plane position, with no
+  SimpleITK and no rasterization: for each ROI its contour count, usable contours, points,
+  geometric types, z planes, z extent and bounding box, and, on a series whose slice normal is the
+  z axis, the slices it touches, its off-plane contours and its contours wholly or partly outside
+  the field of view (`rois[].contours`); for each structure set whether it read and its repeated
+  or orphan contour items (`links.rtstructs[].contours`); for each dose its units, type, summation,
+  grid size, voxel size against the image's, maximum, extent, whether its orientation and its
+  voxels match the image, and how much of each default-set ROI lies inside it (`dose[].audit`).
+  These are measures of the contour data, not a prediction of what the rasterizer accepts: it
+  rejects only contours more than a grid's width away and fills a planar contour on its nearest
+  slice, so a contour reported outside the field of view in z can still be filled onto the top or
+  bottom slice. `--tier raster` (a rasterization per series, the cost of `--cohort-manifest`) is
+  refused with exit 2 until it is built. A tier only adds: the header tier's fields are the same at
+  every tier, and `summary.flags_by_code` lists the codes the tier can raise.
+- **The document.** `summary` (counts, flags by severity and by code), `geometry` (per measure
+  across the cohort: series count, min, median, max, and series per value), `series` (one entry per
+  CT, MR or PT series: `geometry`, `orientation`, `header`, `links`, every ROI of every linked
+  structure set, every linked dose, and the series' flag codes), `roi_naming` (names, normalize
+  clusters, coverage per canonical name and per patient, uncovered names, what
+  `--only-associated-rois` drops), `linkage` (link rules, fallback, unlinked, frame mismatches,
+  structure sets whose referenced series is absent, several structure sets per series, shared
+  doses, frames per study, other objects), and `flags`. `spacing` is `[x, y, z]`; `pixel_spacing`
+  keeps DICOM's `[row, column]` order. ROI naming counts each image series' default structure set
+  (its first linked, the one an export takes), as the desktop app's ROI browser and *Select ROIs*
+  do. [`examples/cohort-analysis.example.json`](examples/cohort-analysis.example.json) is the
+  document for a small synthesized cohort that raises every header-tier flag, and
+  [`examples/cohort-analysis-contours.example.json`](examples/cohort-analysis-contours.example.json)
+  one at `--tier contours` that raises every contours-tier flag; tests keep both current.
+- **`--csv-out FOLDER`** writes the same content as four tables with their own schema, apart from
+  the export manifest: `analysis_series.csv`, `analysis_rois.csv`, `analysis_roi_names.csv` and
+  `analysis_flags.csv`; `--tier contours` adds `analysis_roi_contours.csv` (a row per ROI of a
+  structure set that read) and `analysis_doses.csv` (a row per linked dose of a series). Every text
+  field is quoted, lists are joined with `;`, a missing value is empty.
+- **`--anonymize [--salt S] [--key-path K]`** works as on `--cohort-scan`: identifiers become the
+  hashes an anonymized export writes, the key is read and never written, and the input root, file
+  names and frames of reference are withheld.
+
+Every flag has a fixed code and severity: *serious* means the output is wrong unless someone acts,
+*warning* a guess or a silent choice worth a look, *info* a fact. The messages reuse the
+conversions' own warnings where there is one. The flags marked "badge" use the same predicate as
+the desktop app's badge (now in Core as `SeriesFlags`), so the two cannot disagree.
+
+| Code | Severity | Raised when |
+|---|---|---|
+| *header tier* | | |
+| `GEOM_NONUNIFORM_Z` | serious | slice gaps differ by enough that a volume from the written spacing is off by 5% or more (badge "non-uniform Z") |
+| `GEOM_UNPOSITIONED` | warning | slices without a usable ImagePositionPatient were left out (badge: the series inspector's missing positions) |
+| `GEOM_OBLIQUE` | warning | the slice normal is more than 0.1° off the patient z axis (gantry tilt, oblique, coronal or sagittal): spacing is measured along z, and contours are matched to slices by z ([issue 44](https://github.com/brianmanderson/DicomRtNiftiConverterGUI/issues/44), reported, not fixed) |
+| `GEOM_MIXED_ORIENTATION` | serious | the series' files carry different ImageOrientationPatient values |
+| `GEOM_MODALITY_MINORITY` | info | some instances carry a Modality the series' majority outvoted |
+| `LINK_FALLBACK` | warning | an RTSTRUCT or RTDOSE was linked by `LargestSeriesFallback` (badge "link guessed") |
+| `LINK_UNLINKED` | warning | an RTSTRUCT or RTDOSE is linked to no image series, so no export includes it (badge "unlinked") |
+| `LINK_FOR_MISMATCH` | serious | an RT object references the series by UID, but none of its frames of reference is the series' |
+| `LINK_REFERENCED_SERIES_ABSENT` | warning | a structure set references an image series its study does not hold |
+| `LINK_MULTIPLE_FRAMES` | info | a study's image series span several frames of reference (the study inspector's note) |
+| `RT_MULTIPLE_STRUCTS` | warning | several structure sets are linked to one series; an export takes one |
+| `ROI_DUPLICATE_NAME` | warning | a structure set lists one ROI name more than once |
+| `ROI_UNASSOCIATED` | info | with `--associations`: an ROI name no association covers (badge: the association browser's unmatched name) |
+| *contours tier* | | |
+| `RT_UNREADABLE` | serious | a linked structure set's contour data, or a linked dose, cannot be read in full; a conversion of it fails |
+| `ROI_EMPTY` | warning | an ROI has no contour with a point (no contours, or every one unparseable or shorter than one point), so an export writes no mask for it |
+| `ROI_DEGENERATE` | warning | every usable contour of an ROI is degenerate: a closed contour of fewer than three points or no area, or an open contour of one point |
+| `ROI_OFF_PLANE` | warning | planar contours are not on one z plane, or their plane is more than 0.05 mm from every slice; they are filled on the nearest slice |
+| `ROI_OUTSIDE_FOV` | warning | contours whose bounding box misses the image's voxels entirely, in-plane or in z: the wrong series, or structures beyond the scan |
+| `DOSE_NOT_ALIGNED` | warning | a linked dose's rows and columns do not run along the image's (a rotated dose grid); a coarser dose grid, the usual case, raises nothing |
+| `DOSE_NOT_COVERING_ROI` | warning | an ROI of the default structure set has contour points outside a linked dose's grid, so a DVH over it misses dose |
+
 ## Dependencies
 
 - **.NET 10** - cross-platform runtime (Windows, Linux, macOS)

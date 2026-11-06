@@ -1,0 +1,548 @@
+@implements IDisposable
+@using System.Text
+@using DicomRtNifti.Core.Analysis
+@using DicomRtNifti.Core.CommandLine
+@using DicomRtNifti.Core.Models
+@using DicomRtNifti.Web.Audit
+@using DicomRtNifti.Web.Features.Export
+@using DicomRtNifti.Web.Jobs
+@using DicomRtNifti.Web.State
+@using Microsoft.AspNetCore.Components.Forms
+@inject ExportSession Session
+@inject ProjectStore Projects
+@inject JobQueue Queue
+@inject JobEvents Events
+@inject ICohortScanSource Scans
+@inject DataRootResolver Resolver
+@inject RootPathPresenter Presenter
+@inject PathRedactor Redactor
+@inject ICurrentUser CurrentUser
+
+@* The body of ROI curation (plan section 4.5). The editor holds an association set; Save writes
+   it into the project through Core (ProjectStore), and Download gives back the exact JSON
+   --associations reads. The names, clusters, coverage and drops are Core's RoiNamingAnalysis over
+   the latest scan of the folder (ICohortScanSource: Inventory's snapshots, or the scans curation's own cohort-analyze jobs read), recounted against the set as it is being edited.
+   Nothing here names, resolves or counts an ROI itself. *@
+
+<ExportTarget ShowAssociationSet="false" Changed="TargetChanged" @ref="_target" />
+
+@if (_message is not null)
+{
+    <div class="notice curation-message" role="status">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="notice notice-failed curation-error" role="alert">@_error</div>
+}
+
+<h2>Association set</h2>
+<div class="curation-sets">
+    <label>
+        Set
+        <select class="curation-set" value="@(Session.AssociationSet ?? "")" @onchange="SetChosen">
+            <option value="">(new set)</option>
+            @foreach (string set in _sets)
+            {
+                <option value="@set">@set</option>
+            }
+        </select>
+    </label>
+    <label>
+        Name
+        <input class="curation-set-name" @bind="_setName" placeholder="e.g. head-and-neck" />
+    </label>
+    <button class="curation-save" @onclick="Save" disabled="@(Session.Project is null)">Save to project</button>
+    @if (SavedJson is { } saved && Session.AssociationSet is { } savedSet)
+    {
+        <a class="curation-download" href="@DataUrl(saved)" download="@ProjectStore.AssociationsFileName">Download @savedSet as @ProjectStore.AssociationsFileName</a>
+    }
+    <label class="curation-import">
+        Import JSON
+        <InputFile OnChange="Import" accept=".json,application/json" />
+    </label>
+</div>
+@if (Dirty)
+{
+    <p class="hint curation-unsaved">Unsaved changes: the export and the analysis use the saved set.</p>
+}
+
+<table class="roots curation-editor">
+    <thead>
+        <tr><th>Canonical name</th><th>Aliases (comma-separated)</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr @key="row">
+                <td><input class="curation-canonical" value="@row.Canonical" @onchange="e => Edit(row, e, canonical: true)" /></td>
+                <td><input class="curation-aliases" value="@row.Aliases" @onchange="e => Edit(row, e, canonical: false)" /></td>
+                <td><button class="curation-remove" @onclick="() => Remove(row)">Remove</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+<button class="curation-add" @onclick="Add">Add association</button>
+@foreach (string duplicate in DuplicateCanonicals)
+{
+    <p class="target-problem curation-duplicate">"@duplicate" is the canonical name of more than one association; Core matches the first.</p>
+}
+
+<h2>ROI names in the cohort</h2>
+<div class="curation-scan">
+    <button class="curation-run" @onclick="Analyze" disabled="@(!CanAnalyze)">Scan for ROI names</button>
+    @if (AnalysisJob is { } job)
+    {
+        <span class="curation-job">@job.State.DisplayName(): @Redactor.Redact(job.Title)@(job.Reason is null ? "" : " — " + Redactor.Redact(job.Reason))</span>
+    }
+</div>
+@if (AnalysisCli is { } analysisCli)
+{
+    <div class="cli"><pre><code class="curation-cli">@analysisCli</code></pre></div>
+}
+
+@if (_summary is null)
+{
+    @if (AnalysisJob is { State: JobState.Succeeded })
+    {
+        <p class="hint curation-rescan">The server no longer holds this scan (it restarted, or newer scans replaced it); scan again.</p>
+    }
+    else
+    {
+        <p class="hint curation-noscan">Scan the cohort folder to see its ROI names, the spellings that normalize together, and coverage per patient.</p>
+    }
+}
+else
+{
+    <h3>Names</h3>
+    <table class="roots curation-names">
+        <thead>
+            <tr><th>Name</th><th>Series</th><th>Patients</th><th>Structure sets</th><th>Canonical</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var name in _summary.Names)
+            {
+                bool uncovered = _summary.Uncovered.Contains(name.Name);
+                <tr class="@(uncovered ? "uncovered" : null)">
+                    <td>@name.Name</td>
+                    <td>@name.Series</td>
+                    <td>@name.Patients</td>
+                    <td>@name.StructureSets</td>
+                    <td>@name.CanonicalName</td>
+                    <td>
+                        @if (!name.Associated)
+                        {
+                            <button class="curation-adopt" @onclick="() => Adopt(name.Name)">New association</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    @if (_summary.Uncovered.Count > 0)
+    {
+        <p class="hint curation-uncovered">@_summary.Uncovered.Count name(s) match no association (highlighted).</p>
+    }
+
+    <h3>Spellings that normalize together</h3>
+    @if (_summary.Clusters.Count == 0)
+    {
+        <p class="hint curation-noclusters">No two names normalize to the same spelling.</p>
+    }
+    else
+    {
+        <ul class="curation-clusters">
+            @foreach (var cluster in _summary.Clusters)
+            {
+                <li>
+                    @string.Join(", ", cluster.Names) normalize equal (@cluster.Series series)
+                    <button class="curation-merge" @onclick="() => Merge(cluster)">Make one association</button>
+                </li>
+            }
+        </ul>
+    }
+
+    <h3>Coverage and the ROI selection</h3>
+    <p class="hint">
+        Tick the canonical names to export (the export's <code>--rois</code>); with none ticked every ROI is exported,
+        under its canonical name when an association covers it.
+    </p>
+    <label class="curation-only">
+        <input type="checkbox" checked="@Session.Options.OnlyAssociatedRois" @onchange="OnlyAssociatedChanged" />
+        Export only associated ROIs (<code>--only-associated-rois</code>)
+    </label>
+    <table class="roots curation-coverage">
+        <thead>
+            <tr><th>Export</th><th>Canonical name</th><th>From an association</th><th>Patients</th><th>Share</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var canonical in _summary.Coverage.Canonical)
+            {
+                <tr>
+                    <td><input type="checkbox" class="curation-select" checked="@Selected(canonical.CanonicalName)" @onchange="e => Select(canonical.CanonicalName, e)" /></td>
+                    <td>@canonical.CanonicalName</td>
+                    <td>@(canonical.FromAssociation ? "yes" : "no")</td>
+                    <td>@canonical.Patients of @_summary.Coverage.PatientsWithRois</td>
+                    <td>@canonical.Share.ToString("P0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    @if (Session.Options.RoiSelection.Count > 0)
+    {
+        <p class="curation-selection">Selected: @string.Join(", ", Session.Options.RoiSelection)</p>
+    }
+
+    <h3>Patients by canonical ROI</h3>
+    <div class="curation-matrix-wrap">
+        <table class="roots curation-matrix">
+            <thead>
+                <tr>
+                    <th>Patient</th>
+                    @foreach (var canonical in _summary.Coverage.Canonical)
+                    {
+                        <th>@canonical.CanonicalName</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var patient in _summary.Coverage.Patients.Take(MatrixRows))
+                {
+                    var names = new HashSet<string>(patient.CanonicalNames, StringComparer.OrdinalIgnoreCase);
+                    <tr>
+                        <td>@patient.PatientId</td>
+                        @foreach (var canonical in _summary.Coverage.Canonical)
+                        {
+                            <td class="@(names.Contains(canonical.CanonicalName) ? "has" : "missing")">@(names.Contains(canonical.CanonicalName) ? "✓" : "")</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (_summary.Coverage.Patients.Count > MatrixRows)
+    {
+        <p class="hint">The first @MatrixRows of @_summary.Coverage.Patients.Count patients.</p>
+    }
+
+    <h3>Dropped under only-associated</h3>
+    @if (_summary.DroppedIfOnlyAssociated.Count == 0)
+    {
+        <p class="hint curation-nodrops">Every name would be kept.</p>
+    }
+    else
+    {
+        <ul class="curation-dropped">
+            @foreach (var dropped in _summary.DroppedIfOnlyAssociated)
+            {
+                <li>@dropped.Name (@dropped.Series series)</li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    /// <summary>Patients shown in the coverage matrix.</summary>
+    public const int MatrixRows = 200;
+
+    /// <summary>The largest association file an import reads.</summary>
+    public const long MaxImportBytes = 1024 * 1024;
+
+    private sealed class Row
+    {
+        public string Canonical { get; set; } = "";
+        public string Aliases { get; set; } = "";
+    }
+
+    private ExportTarget? _target;
+    private List<Row> _rows = new();
+    private IReadOnlyList<string> _sets = Array.Empty<string>();
+    private string? _setName;
+    private string? _savedJson;
+    private string? _message;
+    private string? _error;
+    private RoiNamingSummary? _summary;
+    private JobEventThrottle? _throttle;
+
+    private string? SavedJson => _savedJson;
+
+    private bool Dirty => (_savedJson ?? ProjectStore.ToJson(Array.Empty<RoiAssociation>())) != ProjectStore.ToJson(Associations());
+
+    private JobRecord? AnalysisJob => Queue.Find(Session.AnalysisJobId);
+
+    private bool CanAnalyze => Session.InputRootId is not null && Queue.IsAvailable;
+
+    private IEnumerable<string> DuplicateCanonicals => Associations()
+        .GroupBy(a => a.CanonicalName, StringComparer.OrdinalIgnoreCase)
+        .Where(g => g.Count() > 1)
+        .Select(g => g.Key);
+
+    /// <summary>The command the analysis job runs (or would run) for the folder and saved set chosen.</summary>
+    private string? AnalysisCli
+    {
+        get
+        {
+            if (AnalysisJob is { } job)
+                return job.Cli;
+            if (Session.InputRootId is null || !Resolver.TryResolve(Session.InputRootId, Session.InputPath, RootAccess.Read, out var input, out _))
+                return null;
+            var command = new CohortCommand { Mode = CohortMode.Analyze, Options = new CohortExportOptions { InputRoot = input.FullPath } };
+            if (SavedSetPath() is { } path)
+                command.AssociationsPath = path;
+            return CommandLineText.Join(CohortCommandLine.Render(command, Presenter.Commands));
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        LoadSet();
+        Recount();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Only once interactive: a prerendered instance is thrown away and must not subscribe.
+        if (firstRender)
+            _throttle = new JobEventThrottle(Events, () => InvokeAsync(Refresh), change => change.JobId == Session.AnalysisJobId);
+    }
+
+    public void Dispose() => _throttle?.Dispose();
+
+    private void Refresh()
+    {
+        Recount();
+        StateHasChanged();
+    }
+
+    private void TargetChanged()
+    {
+        LoadSet();
+        Recount();
+    }
+
+    /// <summary>Loads the session's set (or an empty editor) and the project's list of sets.</summary>
+    private void LoadSet()
+    {
+        _error = null;
+        _sets = Projects.IsConfigured && Session.Project is { } project && Projects.CheckProjectName(project) is null
+            ? Projects.AssociationSets(project)
+            : Array.Empty<string>();
+        if (Session.AssociationSet is { } set && !_sets.Contains(set))
+            Session.AssociationSet = null;
+
+        _setName = Session.AssociationSet;
+        _savedJson = null;
+        var associations = new List<RoiAssociation>();
+        if (Session.AssociationSet is { } chosen)
+        {
+            try
+            {
+                associations = Projects.LoadAssociations(Session.Project!, chosen);
+                _savedJson = ProjectStore.ToJson(associations);
+            }
+            catch (InvalidDataException ex)
+            {
+                _error = Redactor.Redact(ex.Message);
+            }
+        }
+
+        _rows = associations.Select(a => new Row { Canonical = a.CanonicalName, Aliases = string.Join(", ", a.Aliases) }).ToList();
+    }
+
+    /// <summary>The editor's rows as associations, as Core reads a list: names trimmed, empty entries dropped.</summary>
+    private List<RoiAssociation> Associations() => _rows
+        .Where(r => !string.IsNullOrWhiteSpace(r.Canonical))
+        .Select(r => new RoiAssociation
+        {
+            CanonicalName = r.Canonical.Trim(),
+            Aliases = CohortExportOptions.ParseKeywordList(r.Aliases),
+        })
+        .ToList();
+
+    /// <summary>Core's ROI-naming analysis of the cached scan under the set being edited.</summary>
+    private void Recount()
+    {
+        var scan = Scans.Find(Session.InputRootId, Session.InputPath);
+        _summary = scan is null ? null : RoiNamingAnalysis.Analyze(scan, Associations(), id => id);
+    }
+
+    private void SetChosen(ChangeEventArgs e)
+    {
+        string value = e.Value?.ToString() ?? "";
+        Session.AssociationSet = value.Length == 0 ? null : value;
+        Session.NotifyChanged();
+        _message = null;
+        LoadSet();
+        Recount();
+    }
+
+    private void Edit(Row row, ChangeEventArgs e, bool canonical)
+    {
+        string value = e.Value?.ToString() ?? "";
+        if (canonical)
+            row.Canonical = value;
+        else
+            row.Aliases = value;
+        Recount();
+    }
+
+    private void Add() => _rows.Add(new Row());
+
+    private void Remove(Row row)
+    {
+        _rows.Remove(row);
+        Recount();
+    }
+
+    /// <summary>A discovered name nothing covers becomes the canonical name of a new association.</summary>
+    private void Adopt(string name)
+    {
+        _rows.Add(new Row { Canonical = name });
+        Recount();
+    }
+
+    /// <summary>
+    /// One association for a cluster: the association that already names one of its spellings
+    /// takes the others as aliases; otherwise a new one, canonical name the first spelling.
+    /// </summary>
+    private void Merge(RoiNameCluster cluster)
+    {
+        var row = _rows.FirstOrDefault(r => cluster.Names.Contains(r.Canonical.Trim(), StringComparer.OrdinalIgnoreCase));
+        if (row is null)
+        {
+            row = new Row { Canonical = cluster.Names[0] };
+            _rows.Add(row);
+        }
+
+        var aliases = CohortExportOptions.ParseKeywordList(row.Aliases);
+        foreach (string name in cluster.Names)
+        {
+            if (!string.Equals(name, row.Canonical.Trim(), StringComparison.OrdinalIgnoreCase)
+                && !aliases.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                aliases.Add(name);
+            }
+        }
+
+        row.Aliases = string.Join(", ", aliases);
+        Recount();
+    }
+
+    private void Save()
+    {
+        _message = null;
+        _error = null;
+        if (Session.Project is not { } project)
+        {
+            _error = "Choose the output project first.";
+            return;
+        }
+
+        if (Projects.CheckProjectName(project) is { } refusedProject)
+        {
+            _error = refusedProject;
+            return;
+        }
+
+        if (ProjectStore.CheckSetName(_setName) is { } refused)
+        {
+            _error = refused;
+            return;
+        }
+
+        var associations = Associations();
+        try
+        {
+            Projects.SaveAssociations(project, _setName!, associations);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _error = "The association set could not be written: " + Redactor.Redact(ex.Message);
+            return;
+        }
+
+        Session.AssociationSet = _setName;
+        Session.NotifyChanged();
+        _message = $"Saved {associations.Count} association(s) as '{_setName}' in project {project}.";
+        LoadSet();
+        Recount();
+        _target?.Reload();
+    }
+
+    /// <summary>
+    /// Reads an association file into the editor. A file that does not parse is refused and the
+    /// editor keeps what it held, as the desktop app's import does; a parsed one stays unsaved until Save.
+    /// </summary>
+    private async Task Import(InputFileChangeEventArgs e)
+    {
+        _message = null;
+        _error = null;
+        string json;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(MaxImportBytes);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            json = await reader.ReadToEndAsync();
+        }
+        catch (IOException)
+        {
+            _error = $"The file is larger than {MaxImportBytes / 1024} KiB, or could not be read; nothing was replaced.";
+            return;
+        }
+
+        if (!ProjectStore.TryParse(json, out var associations, out string? problem))
+        {
+            _error = problem + " Nothing was replaced.";
+            return;
+        }
+
+        _rows = associations.Select(a => new Row { Canonical = a.CanonicalName, Aliases = string.Join(", ", a.Aliases) }).ToList();
+        _message = $"Imported {associations.Count} association(s); Save to keep them in the project.";
+        Recount();
+    }
+
+    private void Analyze()
+    {
+        _message = null;
+        _error = null;
+        string? associations = null;
+        if (Session.Project is { } project && Session.AssociationSet is { } set && Projects.AssociationSetExists(project, set))
+            associations = ProjectStore.AssociationsFile(project, set);
+
+        var submission = Queue.Submit(RoiAnalysisJobHandler.KindName,
+            new RoiAnalysisJobParameters(Session.InputRootId!, Session.InputPath, associations), CurrentUser.Id);
+        if (!submission.Accepted)
+        {
+            _error = submission.Refusal;
+            return;
+        }
+
+        Session.AnalysisJobId = submission.Job!.Id;
+        Session.NotifyChanged();
+        Recount();
+    }
+
+    private bool Selected(string canonical) => Session.Options.RoiSelection.Contains(canonical, StringComparer.OrdinalIgnoreCase);
+
+    private void Select(string canonical, ChangeEventArgs e)
+    {
+        var selection = Session.Options.RoiSelection;
+        selection.RemoveAll(n => string.Equals(n, canonical, StringComparison.OrdinalIgnoreCase));
+        if (e.Value is true)
+            selection.Add(canonical);
+        Session.NotifyChanged();
+    }
+
+    private void OnlyAssociatedChanged(ChangeEventArgs e)
+    {
+        Session.Options.OnlyAssociatedRois = e.Value is true;
+        Session.NotifyChanged();
+    }
+
+    private string? SavedSetPath() =>
+        Session.Project is { } project && Session.AssociationSet is { } set && Projects.AssociationSetExists(project, set)
+            ? Projects.AssociationsPath(project, set).FullPath
+            : null;
+
+    private static string DataUrl(string json) =>
+        "data:application/json;charset=utf-8;base64," + Convert.ToBase64String(new UTF8Encoding(false).GetBytes(json));
+}

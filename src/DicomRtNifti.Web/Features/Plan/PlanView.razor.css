@@ -1,0 +1,18 @@
+.plan-mode, .plan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin: 0.5rem 0;
+}
+
+.plan-tree details {
+    margin-left: 1rem;
+}
+
+.plan-tree summary {
+    cursor: pointer;
+}
+
+.plan-series code {
+    font-size: 0.85rem;
+}

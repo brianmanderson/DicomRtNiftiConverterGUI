@@ -252,6 +252,15 @@ namespace DicomRtNifti.Core.Services
             /// <summary>Non-empty ROI names in file order (RTSTRUCT only).</summary>
             public List<string> RoiNames;
             public string ReferencedSeriesUid;
+            // Read for the header-tier analysis; nothing the hierarchy is grouped or linked by.
+            public double[] ImageOrientationPatient;
+            public int? Rows;
+            public int? Columns;
+            public double? RescaleSlope;
+            public double? RescaleIntercept;
+            public int? NumberOfFrames;
+            /// <summary>Every frame of reference a structure set names (RTSTRUCT only).</summary>
+            public List<string> FrameOfReferenceUids;
         }
 
         /// <summary>
@@ -313,8 +322,12 @@ namespace DicomRtNifti.Core.Services
             // RTSTRUCT has no Frame of Reference module: the top-level tag is normally absent and
             // the frame lives in ReferencedFrameOfReferenceSequence / on each ROI. Reading only the
             // top-level tag left the frame-of-reference link rule dead for real structure sets.
-            if (string.IsNullOrEmpty(header.FrameOfReferenceUid) && string.Equals(modality, "RTSTRUCT", StringComparison.OrdinalIgnoreCase))
-                header.FrameOfReferenceUid = ExtractRtStructFrameOfReferenceUids(ds).FirstOrDefault() ?? "";
+            if (string.Equals(modality, "RTSTRUCT", StringComparison.OrdinalIgnoreCase))
+            {
+                header.FrameOfReferenceUids = ExtractRtStructFrameOfReferenceUids(ds);
+                if (string.IsNullOrEmpty(header.FrameOfReferenceUid))
+                    header.FrameOfReferenceUid = header.FrameOfReferenceUids.FirstOrDefault() ?? "";
+            }
 
             if (string.IsNullOrEmpty(header.StudyUid) || string.IsNullOrEmpty(header.SeriesUid))
                 return null;
@@ -353,6 +366,16 @@ namespace DicomRtNifti.Core.Services
                 }
                 catch { /* optional; only used as the single-slice fallback */ }
             }
+
+            // The grid facts the header-tier analysis reports (orientation, field of view, rescale,
+            // multi-frame). Every one sorts before ROIContourSequence and the functional group
+            // sequences, so the partial read has them; a malformed value is left null.
+            header.ImageOrientationPatient = ReadDoubles(ds, DicomTag.ImageOrientationPatient, 6);
+            header.Rows = ReadInt(ds, DicomTag.Rows);
+            header.Columns = ReadInt(ds, DicomTag.Columns);
+            header.RescaleSlope = ReadDoubles(ds, DicomTag.RescaleSlope, 1)?[0];
+            header.RescaleIntercept = ReadDoubles(ds, DicomTag.RescaleIntercept, 1)?[0];
+            header.NumberOfFrames = ReadInt(ds, DicomTag.NumberOfFrames);
 
             if (modality == "RTSTRUCT")
                 header.RoiNames = ReadRoiNames(ds);
@@ -446,6 +469,8 @@ namespace DicomRtNifti.Core.Services
             if (series.SliceThickness == null && header.SliceThickness != null)
                 series.SliceThickness = header.SliceThickness;
 
+            RecordGridFacts(series, header);
+
             if (header.RoiNames != null)
             {
                 foreach (var roiName in header.RoiNames)
@@ -453,11 +478,113 @@ namespace DicomRtNifti.Core.Services
                     if (!series.RoiNames.Contains(roiName))
                         series.RoiNames.Add(roiName);
                 }
+
+                // RoiNames keeps one copy of a name; the analysis needs to know a structure set
+                // listed it twice, which an export resolves by suffixing the later ROINumbers.
+                var seenInFile = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var roiName in header.RoiNames)
+                {
+                    if (!seenInFile.Add(roiName) && !series.DuplicateRoiNames.Contains(roiName))
+                        series.DuplicateRoiNames.Add(roiName);
+                }
+            }
+
+            if (header.FrameOfReferenceUids != null)
+            {
+                foreach (var frame in header.FrameOfReferenceUids)
+                {
+                    if (!series.FrameOfReferenceUIDs.Contains(frame))
+                        series.FrameOfReferenceUIDs.Add(frame);
+                }
             }
 
             if (!string.IsNullOrEmpty(header.ReferencedSeriesUid))
             {
                 series.ReferencedSeriesUID = header.ReferencedSeriesUid;
+            }
+        }
+
+        /// <summary>Two direction cosines within this much of each other are the same orientation.</summary>
+        private const double OrientationTolerance = 1e-4;
+
+        /// <summary>
+        /// The grid facts a series keeps from its first file, as <see cref="DicomSeriesGroup.PixelSpacing"/>
+        /// does, plus whether a later file disagrees. Whether the files agree does not depend on
+        /// which was first, so the "varies" flags are the same for any walk order even though the
+        /// first file's values are not.
+        /// </summary>
+        private static void RecordGridFacts(DicomSeriesGroup series, FileHeader header)
+        {
+            if (header.ImageOrientationPatient != null)
+            {
+                if (series.ImageOrientationPatient == null)
+                    series.ImageOrientationPatient = header.ImageOrientationPatient;
+                else if (!SameOrientation(series.ImageOrientationPatient, header.ImageOrientationPatient))
+                    series.OrientationVaries = true;
+            }
+
+            if (series.Rows == null && header.Rows != null)
+                series.Rows = header.Rows;
+            if (series.Columns == null && header.Columns != null)
+                series.Columns = header.Columns;
+            if (series.NumberOfFrames == null && header.NumberOfFrames != null)
+                series.NumberOfFrames = header.NumberOfFrames;
+
+            if (header.RescaleSlope != null || header.RescaleIntercept != null)
+            {
+                if (!series.HasRescale)
+                {
+                    series.RescaleSlope = header.RescaleSlope;
+                    series.RescaleIntercept = header.RescaleIntercept;
+                    series.HasRescale = true;
+                }
+                else if (series.RescaleSlope != header.RescaleSlope || series.RescaleIntercept != header.RescaleIntercept)
+                {
+                    series.RescaleVaries = true;
+                }
+            }
+        }
+
+        private static bool SameOrientation(double[] a, double[] b)
+        {
+            for (int i = 0; i < 6; i++)
+            {
+                if (Math.Abs(a[i] - b[i]) > OrientationTolerance)
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>The first <paramref name="count"/> values of a numeric tag, or null when absent, short or unparseable.</summary>
+        private static double[] ReadDoubles(DicomDataset ds, DicomTag tag, int count)
+        {
+            try
+            {
+                if (!ds.Contains(tag)) return null;
+                var values = ds.GetValues<double>(tag);
+                if (values == null || values.Length < count) return null;
+                for (int i = 0; i < count; i++)
+                {
+                    if (double.IsNaN(values[i]) || double.IsInfinity(values[i])) return null;
+                }
+                return values.Take(count).ToArray();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static int? ReadInt(DicomDataset ds, DicomTag tag)
+        {
+            try
+            {
+                if (!ds.Contains(tag)) return null;
+                return ds.GetSingleValue<int>(tag);
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
@@ -858,6 +985,8 @@ namespace DicomRtNifti.Core.Services
         /// Without this the series modality was whichever file happened to win the parallel
         /// GetOrAdd race — non-deterministic, and the cause of an MR series occasionally
         /// being badged [CT] when a stray instance carried a different Modality tag.
+        /// The tally itself is kept on the series (<see cref="DicomSeriesGroup.ModalityCounts"/>),
+        /// so the instances the majority outvoted can still be reported.
         /// </summary>
         private static void ReconcileSeriesModalities(
             ConcurrentDictionary<string, DicomSeriesGroup> seriesLookup,
@@ -868,6 +997,8 @@ namespace DicomRtNifti.Core.Services
                 if (modalityCounts.TryGetValue(kvp.Key, out var counts) && counts.Count > 0)
                 {
                     kvp.Value.Modality = PickDominantModality(counts);
+                    foreach (var count in counts.OrderBy(c => c.Key, StringComparer.Ordinal))
+                        kvp.Value.ModalityCounts[count.Key] = count.Value;
                 }
             }
         }

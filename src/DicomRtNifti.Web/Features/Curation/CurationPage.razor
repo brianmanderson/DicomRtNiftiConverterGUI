@@ -1,3 +1,21 @@
 @page "/curation"
+@inject FeatureCatalog Catalog
 
-<FeatureStub Feature="typeof(CurationFeature)" DeliveredBy="W4-H" />
+@* Plan section 4.5. The body is CurationView, which carries the page's scoped styles, so this
+   page's own markup stays plain. *@
+
+<PageTitle>ROI curation · DicomRtNifti</PageTitle>
+
+<h1>ROI curation</h1>
+<p class="summary">@_feature.Feature.Summary</p>
+
+<CurationView />
+
+<h2>CLI equivalent</h2>
+<CliCommand Cli="_feature.Feature.Cli" />
+
+@code {
+    private FeatureDescriptor _feature = default!;
+
+    protected override void OnInitialized() => _feature = Catalog.For(typeof(CurationFeature));
+}

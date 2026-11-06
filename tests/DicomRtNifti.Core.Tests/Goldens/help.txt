@@ -79,3 +79,14 @@ Options for --cohort-convert only:
       Keywords are fo-dicom names (PatientAge, KVP, DoseUnits) plus computed
       values (@VoxelSize, @RoiNames, @MaxDose, @DoseVoxelSize).
   --no-images | --no-structures | --no-doses   skip that output
+
+Cohort analyze (linkage, geometry, orientation, ROI naming and flags; no conversion):
+  --cohort-analyze --input PATH [--tier header|contours] [--associations FILE.json]
+                   [--anonymize [--salt STRING] [--key-path FILE]]
+                   [--json-out PATH] [--csv-out FOLDER]
+    --tier header costs nothing beyond the scan; contours adds a full read of each
+                   linked structure set and dose (empty, off-plane and out-of-view ROIs,
+                   dose grid alignment and coverage); raster is not yet available (exit 2)
+    --csv-out writes analysis_series.csv, analysis_rois.csv,
+                   analysis_roi_names.csv and analysis_flags.csv
+                   (contours adds analysis_roi_contours.csv and analysis_doses.csv)

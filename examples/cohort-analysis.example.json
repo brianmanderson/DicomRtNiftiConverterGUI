@@ -1,0 +1,946 @@
+{
+  "schema": "dicomrtnifti.cohort-analysis/1",
+  "tier": "header",
+  "anonymized": false,
+  "input_root": "<ROOT>/in",
+  "associations": "associations.json",
+  "output_spacing": null,
+  "summary": {
+    "patients": 3,
+    "studies": 4,
+    "image_series": 4,
+    "rtstructs": 3,
+    "rtdoses": 2,
+    "other_objects": 0,
+    "flags_by_severity": {
+      "serious": 3,
+      "warning": 7,
+      "info": 5
+    },
+    "flags_by_code": {
+      "GEOM_NONUNIFORM_Z": 1,
+      "GEOM_UNPOSITIONED": 1,
+      "GEOM_OBLIQUE": 1,
+      "GEOM_MIXED_ORIENTATION": 1,
+      "GEOM_MODALITY_MINORITY": 1,
+      "LINK_FALLBACK": 1,
+      "LINK_UNLINKED": 1,
+      "LINK_FOR_MISMATCH": 1,
+      "LINK_REFERENCED_SERIES_ABSENT": 1,
+      "LINK_MULTIPLE_FRAMES": 1,
+      "RT_MULTIPLE_STRUCTS": 1,
+      "ROI_DUPLICATE_NAME": 1,
+      "ROI_UNASSOCIATED": 3
+    }
+  },
+  "geometry": {
+    "image_series": 4,
+    "with_positions": 4,
+    "uniform": 3,
+    "non_uniform_within_tolerance": 0,
+    "non_uniform_material": 1,
+    "with_unpositioned_slices": 1,
+    "planes": {
+      "axial": 2,
+      "coronal": 0,
+      "sagittal": 0,
+      "oblique": 1,
+      "unknown": 1
+    },
+    "pixel_spacing_x_mm": {
+      "series": 4,
+      "min": 0.9,
+      "median": 0.9,
+      "max": 0.9,
+      "values": [
+        {
+          "value": 0.9,
+          "series": 4
+        }
+      ]
+    },
+    "pixel_spacing_y_mm": {
+      "series": 4,
+      "min": 0.7,
+      "median": 0.7,
+      "max": 0.7,
+      "values": [
+        {
+          "value": 0.7,
+          "series": 4
+        }
+      ]
+    },
+    "slice_spacing_mm": {
+      "series": 4,
+      "min": 2.0,
+      "median": 2.5,
+      "max": 3.0,
+      "values": [
+        {
+          "value": 2.0,
+          "series": 2
+        },
+        {
+          "value": 3.0,
+          "series": 2
+        }
+      ]
+    },
+    "slice_count": {
+      "series": 4,
+      "min": 3.0,
+      "median": 4.5,
+      "max": 6.0,
+      "values": [
+        {
+          "value": 3.0,
+          "series": 1
+        },
+        {
+          "value": 4.0,
+          "series": 1
+        },
+        {
+          "value": 5.0,
+          "series": 1
+        },
+        {
+          "value": 6.0,
+          "series": 1
+        }
+      ]
+    },
+    "extent_z_mm": {
+      "series": 4,
+      "min": 4.0,
+      "median": 8.5,
+      "max": 18.0,
+      "values": [
+        {
+          "value": 4.0,
+          "series": 1
+        },
+        {
+          "value": 8.0,
+          "series": 1
+        },
+        {
+          "value": 9.0,
+          "series": 1
+        },
+        {
+          "value": 18.0,
+          "series": 1
+        }
+      ]
+    },
+    "grids": [
+      {
+        "rows": 16,
+        "columns": 20,
+        "series": 4
+      }
+    ]
+  },
+  "series": [
+    {
+      "patient_id": "AN_01",
+      "study_uid": "2.1.1",
+      "series_uid": "2.1.1.1",
+      "modality": "CT",
+      "series_description": "Planning CT",
+      "geometry": {
+        "instance_count": 5,
+        "slice_count": 5,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          0.7,
+          0.9
+        ],
+        "spacing": [
+          0.9,
+          0.7,
+          2.0
+        ],
+        "slice_spacing": 2.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          2.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 8.0,
+        "extent_mm": 8.0,
+        "slice_thickness": 2.0,
+        "rows": 16,
+        "columns": 20,
+        "field_of_view_mm": [
+          18.0,
+          11.2
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": 1.0,
+        "rescale_intercept": -1024.0,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 5
+        }
+      },
+      "links": {
+        "rtstructs": [
+          {
+            "series_uid": "2.1.1.3",
+            "series_description": "Plan structures",
+            "match_rule": "ReferencedSeriesUid",
+            "roi_count": 3,
+            "frame_of_reference_match": true
+          },
+          {
+            "series_uid": "2.1.1.4",
+            "series_description": "Other frame",
+            "match_rule": "ReferencedSeriesUid",
+            "roi_count": 1,
+            "frame_of_reference_match": false
+          }
+        ],
+        "default_rtstruct": "2.1.1.3"
+      },
+      "rois": [
+        {
+          "structure_set_uid": "2.1.1.3",
+          "name": "GTV",
+          "canonical_name": "GTV",
+          "associated": false,
+          "output_name": "GTV",
+          "kept_if_only_associated": false,
+          "duplicate": true
+        },
+        {
+          "structure_set_uid": "2.1.1.3",
+          "name": "Spinal-Cord",
+          "canonical_name": "SpinalCord",
+          "associated": true,
+          "output_name": "SpinalCord",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        },
+        {
+          "structure_set_uid": "2.1.1.3",
+          "name": "Lung_L",
+          "canonical_name": "Lung_L",
+          "associated": true,
+          "output_name": "Lung_L",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        },
+        {
+          "structure_set_uid": "2.1.1.4",
+          "name": "Heart",
+          "canonical_name": "Heart",
+          "associated": false,
+          "output_name": "Heart",
+          "kept_if_only_associated": false,
+          "duplicate": false
+        }
+      ],
+      "dose": [
+        {
+          "series_uid": "2.1.1.5",
+          "series_description": "dose",
+          "match_rule": "FrameOfReferenceUid",
+          "file_count": 1,
+          "linked_series": 1,
+          "frame_of_reference_match": true
+        }
+      ],
+      "flags": [
+        "LINK_FOR_MISMATCH",
+        "RT_MULTIPLE_STRUCTS",
+        "ROI_DUPLICATE_NAME"
+      ]
+    },
+    {
+      "patient_id": "AN_01",
+      "study_uid": "2.1.1",
+      "series_uid": "2.1.1.2",
+      "modality": "MR",
+      "series_description": "T1 tilted",
+      "geometry": {
+        "instance_count": 4,
+        "slice_count": 4,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          0.7,
+          0.9
+        ],
+        "spacing": [
+          0.9,
+          0.7,
+          3.0
+        ],
+        "slice_spacing": 3.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          3.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 9.0,
+        "extent_mm": 9.0,
+        "slice_thickness": 2.0,
+        "rows": 16,
+        "columns": 20,
+        "field_of_view_mm": [
+          18.0,
+          11.2
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          0.984808,
+          0.173648
+        ],
+        "slice_normal": [
+          0.0,
+          -0.173648,
+          0.984808
+        ],
+        "plane": "oblique",
+        "axis_aligned": false,
+        "normal_tilt_degrees": 9.999988
+      },
+      "header": {
+        "rescale_slope": 1.0,
+        "rescale_intercept": -1024.0,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "MR": 4
+        }
+      },
+      "links": {
+        "rtstructs": [],
+        "default_rtstruct": null
+      },
+      "rois": [],
+      "dose": [],
+      "flags": [
+        "GEOM_OBLIQUE"
+      ]
+    },
+    {
+      "patient_id": "AN_02",
+      "study_uid": "2.2.1",
+      "series_uid": "2.2.1.1",
+      "modality": "CT",
+      "series_description": "CT",
+      "geometry": {
+        "instance_count": 6,
+        "slice_count": 6,
+        "unpositioned_slices": 1,
+        "pixel_spacing": [
+          0.7,
+          0.9
+        ],
+        "spacing": [
+          0.9,
+          0.7,
+          3.0
+        ],
+        "slice_spacing": 3.0,
+        "slice_spacing_uniform": false,
+        "slice_spacing_values": [
+          3.0,
+          6.0
+        ],
+        "spacing_error_factor": 1.666667,
+        "z_min": 0.0,
+        "z_max": 18.0,
+        "extent_mm": 18.0,
+        "slice_thickness": 2.0,
+        "rows": 16,
+        "columns": 20,
+        "field_of_view_mm": [
+          18.0,
+          11.2
+        ]
+      },
+      "orientation": {
+        "row_cosines": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "column_cosines": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "slice_normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "plane": "axial",
+        "axis_aligned": true,
+        "normal_tilt_degrees": 0.0
+      },
+      "header": {
+        "rescale_slope": 1.0,
+        "rescale_intercept": -1024.0,
+        "rescale_varies": false,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 6,
+          "OT": 1
+        }
+      },
+      "links": {
+        "rtstructs": [
+          {
+            "series_uid": "2.2.1.3",
+            "series_description": "Unmatched frame",
+            "match_rule": "LargestSeriesFallback",
+            "roi_count": 3,
+            "frame_of_reference_match": false
+          }
+        ],
+        "default_rtstruct": "2.2.1.3"
+      },
+      "rois": [
+        {
+          "structure_set_uid": "2.2.1.3",
+          "name": "spinal cord",
+          "canonical_name": "SpinalCord",
+          "associated": true,
+          "output_name": "SpinalCord",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        },
+        {
+          "structure_set_uid": "2.2.1.3",
+          "name": "Lung-L",
+          "canonical_name": "Lung_L",
+          "associated": true,
+          "output_name": "Lung_L",
+          "kept_if_only_associated": true,
+          "duplicate": false
+        },
+        {
+          "structure_set_uid": "2.2.1.3",
+          "name": "PTV 70",
+          "canonical_name": "PTV 70",
+          "associated": false,
+          "output_name": "PTV 70",
+          "kept_if_only_associated": false,
+          "duplicate": false
+        }
+      ],
+      "dose": [],
+      "flags": [
+        "GEOM_NONUNIFORM_Z",
+        "GEOM_UNPOSITIONED",
+        "GEOM_MODALITY_MINORITY",
+        "LINK_FALLBACK",
+        "LINK_REFERENCED_SERIES_ABSENT"
+      ]
+    },
+    {
+      "patient_id": "AN_03",
+      "study_uid": "2.3.1",
+      "series_uid": "2.3.1.1",
+      "modality": "CT",
+      "series_description": "CT",
+      "geometry": {
+        "instance_count": 3,
+        "slice_count": 3,
+        "unpositioned_slices": 0,
+        "pixel_spacing": [
+          0.7,
+          0.9
+        ],
+        "spacing": [
+          0.9,
+          0.7,
+          2.0
+        ],
+        "slice_spacing": 2.0,
+        "slice_spacing_uniform": true,
+        "slice_spacing_values": [
+          2.0
+        ],
+        "spacing_error_factor": 1.0,
+        "z_min": 0.0,
+        "z_max": 4.0,
+        "extent_mm": 4.0,
+        "slice_thickness": 2.0,
+        "rows": 16,
+        "columns": 20,
+        "field_of_view_mm": [
+          18.0,
+          11.2
+        ]
+      },
+      "orientation": null,
+      "header": {
+        "rescale_slope": null,
+        "rescale_intercept": null,
+        "rescale_varies": true,
+        "number_of_frames": null,
+        "modality_counts": {
+          "CT": 3
+        }
+      },
+      "links": {
+        "rtstructs": [],
+        "default_rtstruct": null
+      },
+      "rois": [],
+      "dose": [],
+      "flags": [
+        "GEOM_MIXED_ORIENTATION"
+      ]
+    }
+  ],
+  "roi_naming": {
+    "names": [
+      {
+        "name": "GTV",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "gtv",
+        "canonical_name": "GTV",
+        "associated": false
+      },
+      {
+        "name": "Heart",
+        "series": 0,
+        "patients": 0,
+        "structure_sets": 1,
+        "normalized": "heart",
+        "canonical_name": "Heart",
+        "associated": false
+      },
+      {
+        "name": "Lung-L",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "lung l",
+        "canonical_name": "Lung_L",
+        "associated": true
+      },
+      {
+        "name": "Lung_L",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "lung l",
+        "canonical_name": "Lung_L",
+        "associated": true
+      },
+      {
+        "name": "PTV 70",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "ptv 70",
+        "canonical_name": "PTV 70",
+        "associated": false
+      },
+      {
+        "name": "spinal cord",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "spinal cord",
+        "canonical_name": "SpinalCord",
+        "associated": true
+      },
+      {
+        "name": "Spinal-Cord",
+        "series": 1,
+        "patients": 1,
+        "structure_sets": 1,
+        "normalized": "spinal cord",
+        "canonical_name": "SpinalCord",
+        "associated": true
+      }
+    ],
+    "clusters": [
+      {
+        "normalized": "lung l",
+        "names": [
+          "Lung-L",
+          "Lung_L"
+        ],
+        "series": 2
+      },
+      {
+        "normalized": "spinal cord",
+        "names": [
+          "spinal cord",
+          "Spinal-Cord"
+        ],
+        "series": 2
+      }
+    ],
+    "coverage": {
+      "patients_with_rois": 2,
+      "canonical": [
+        {
+          "canonical_name": "GTV",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "Lung_L",
+          "from_association": true,
+          "patients": 2,
+          "share": 1.0
+        },
+        {
+          "canonical_name": "PTV 70",
+          "from_association": false,
+          "patients": 1,
+          "share": 0.5
+        },
+        {
+          "canonical_name": "SpinalCord",
+          "from_association": true,
+          "patients": 2,
+          "share": 1.0
+        }
+      ],
+      "patients": [
+        {
+          "patient_id": "AN_01",
+          "canonical_names": [
+            "GTV",
+            "Lung_L",
+            "SpinalCord"
+          ]
+        },
+        {
+          "patient_id": "AN_02",
+          "canonical_names": [
+            "Lung_L",
+            "PTV 70",
+            "SpinalCord"
+          ]
+        }
+      ]
+    },
+    "uncovered": [
+      "GTV",
+      "Heart",
+      "PTV 70"
+    ],
+    "dropped_if_only_associated": [
+      {
+        "name": "GTV",
+        "series": 1
+      },
+      {
+        "name": "PTV 70",
+        "series": 1
+      }
+    ]
+  },
+  "linkage": {
+    "rule_counts": {
+      "RTSTRUCT": {
+        "ReferencedSeriesUid": 2,
+        "FrameOfReferenceUid": 0,
+        "LargestSeriesFallback": 1,
+        "None": 0
+      },
+      "RTDOSE": {
+        "ReferencedSeriesUid": 0,
+        "FrameOfReferenceUid": 1,
+        "LargestSeriesFallback": 0,
+        "None": 1
+      }
+    },
+    "fallback": [
+      {
+        "patient_id": "AN_02",
+        "study_uid": "2.2.1",
+        "object_uid": "2.2.1.3",
+        "modality": "RTSTRUCT",
+        "series_description": "Unmatched frame",
+        "match_rule": "LargestSeriesFallback",
+        "linked_to": [
+          "2.2.1.1"
+        ],
+        "referenced_series": null,
+        "reason": null
+      }
+    ],
+    "unlinked": [
+      {
+        "patient_id": "AN_03",
+        "study_uid": "2.3.2",
+        "object_uid": "2.3.2.5",
+        "modality": "RTDOSE",
+        "series_description": "dose",
+        "match_rule": "None",
+        "linked_to": [],
+        "referenced_series": null,
+        "reason": "no image series in study"
+      }
+    ],
+    "for_mismatch": [
+      {
+        "patient_id": "AN_01",
+        "study_uid": "2.1.1",
+        "object_uid": "2.1.1.4",
+        "modality": "RTSTRUCT",
+        "series_description": "Other frame",
+        "match_rule": "ReferencedSeriesUid",
+        "linked_to": [
+          "2.1.1.1"
+        ],
+        "referenced_series": null,
+        "reason": null
+      }
+    ],
+    "referenced_series_absent": [
+      {
+        "patient_id": "AN_02",
+        "study_uid": "2.2.1",
+        "object_uid": "2.2.1.3",
+        "modality": "RTSTRUCT",
+        "series_description": "Unmatched frame",
+        "match_rule": "LargestSeriesFallback",
+        "linked_to": [
+          "2.2.1.1"
+        ],
+        "referenced_series": "2.2.1.8",
+        "reason": null
+      }
+    ],
+    "multi_struct_series": [
+      {
+        "patient_id": "AN_01",
+        "study_uid": "2.1.1",
+        "series_uid": "2.1.1.1",
+        "structure_sets": [
+          "2.1.1.3",
+          "2.1.1.4"
+        ],
+        "default_rtstruct": "2.1.1.3"
+      }
+    ],
+    "shared_doses": [],
+    "series_without_rtstruct": 2,
+    "series_without_rtdose": 3,
+    "frames_per_study": [
+      {
+        "patient_id": "AN_01",
+        "study_uid": "2.1.1",
+        "image_series": 2,
+        "frames": 2,
+        "image_series_without_frame": 0
+      },
+      {
+        "patient_id": "AN_02",
+        "study_uid": "2.2.1",
+        "image_series": 1,
+        "frames": 1,
+        "image_series_without_frame": 0
+      },
+      {
+        "patient_id": "AN_03",
+        "study_uid": "2.3.1",
+        "image_series": 1,
+        "frames": 1,
+        "image_series_without_frame": 0
+      }
+    ],
+    "other_objects": []
+  },
+  "flags": [
+    {
+      "code": "LINK_FOR_MISMATCH",
+      "severity": "serious",
+      "patient_id": "AN_01",
+      "study_uid": "2.1.1",
+      "series_uid": "2.1.1.1",
+      "object_uid": "2.1.1.4",
+      "roi": null,
+      "message": "RTSTRUCT 2.1.1.4 references series 2.1.1.1 by UID, but the series' frame of reference is 2.1.1.90, none of the frames of reference it names (2.1.1.99): its coordinates may not be the series'."
+    },
+    {
+      "code": "RT_MULTIPLE_STRUCTS",
+      "severity": "warning",
+      "patient_id": "AN_01",
+      "study_uid": "2.1.1",
+      "series_uid": "2.1.1.1",
+      "object_uid": null,
+      "roi": null,
+      "message": "series 2.1.1.1: 2 structure sets are linked to it. An export takes one: a --struct-series choice, then --struct-description's match, then the first linked (2.1.1.3), which the desktop app's Convert Selected always takes."
+    },
+    {
+      "code": "ROI_DUPLICATE_NAME",
+      "severity": "warning",
+      "patient_id": "AN_01",
+      "study_uid": "2.1.1",
+      "series_uid": "2.1.1.1",
+      "object_uid": "2.1.1.3",
+      "roi": "GTV",
+      "message": "structure set 2.1.1.3: more than one ROI is named 'GTV'. DICOM does not require ROI names to be unique; an export keeps 'GTV' for the lowest ROINumber and suffixes the rest with their ROINumber."
+    },
+    {
+      "code": "GEOM_OBLIQUE",
+      "severity": "warning",
+      "patient_id": "AN_01",
+      "study_uid": "2.1.1",
+      "series_uid": "2.1.1.2",
+      "object_uid": null,
+      "roi": null,
+      "message": "series 2.1.1.2: the slice normal is 10 degrees off the patient z axis (oblique). Its slice spacing is measured along z and does not describe it, and contours are matched to its slices by z (toolkit issue 44)."
+    },
+    {
+      "code": "LINK_MULTIPLE_FRAMES",
+      "severity": "info",
+      "patient_id": "AN_01",
+      "study_uid": "2.1.1",
+      "series_uid": null,
+      "object_uid": null,
+      "roi": null,
+      "message": "study 2.1.1: its image series span 2 frames of reference, so they do not share one patient coordinate system. A structure set or dose applies to the series of its own frame; its masks do not overlay a series in another frame without a registration."
+    },
+    {
+      "code": "GEOM_NONUNIFORM_Z",
+      "severity": "serious",
+      "patient_id": "AN_02",
+      "study_uid": "2.2.1",
+      "series_uid": "2.2.1.1",
+      "object_uid": null,
+      "roi": null,
+      "message": "WARNING: series 2.2.1.1 has non-uniform slice spacing — 6 slices with gaps from 3 mm to 6 mm. NIfTI carries one spacing per axis, so the output will be written at 3.6 mm throughout and any volume computed from it will be off by up to 1.67x. Resample the source series to a uniform grid before converting if the geometry matters. Note: 1 slice(s) of this series were skipped for lacking a usable ImagePositionPatient, and the gaps above include the holes they left."
+    },
+    {
+      "code": "GEOM_UNPOSITIONED",
+      "severity": "warning",
+      "patient_id": "AN_02",
+      "study_uid": "2.2.1",
+      "series_uid": "2.2.1.1",
+      "object_uid": null,
+      "roi": null,
+      "message": "WARNING: series 2.2.1.1: 1 of 7 image slice(s) carry no usable ImagePositionPatient and were skipped — ct_x.dcm (InstanceNumber 1): ImagePositionPatient missing. The remaining 6 slice(s) are converted as a series with a gap where each skipped slice was; any slice-spacing warning that follows judges that reduced series."
+    },
+    {
+      "code": "GEOM_MODALITY_MINORITY",
+      "severity": "info",
+      "patient_id": "AN_02",
+      "study_uid": "2.2.1",
+      "series_uid": "2.2.1.1",
+      "object_uid": null,
+      "roi": null,
+      "message": "series 2.2.1.1: 1 of 7 instance(s) carry another Modality (OT 1); the series is CT by majority."
+    },
+    {
+      "code": "LINK_FALLBACK",
+      "severity": "warning",
+      "patient_id": "AN_02",
+      "study_uid": "2.2.1",
+      "series_uid": "2.2.1.1",
+      "object_uid": "2.2.1.3",
+      "roi": null,
+      "message": "RTSTRUCT 2.2.1.3 ('Unmatched frame') was linked to series 2.2.1.1 by LargestSeriesFallback: neither its referenced series nor its frame of reference matched an image series of the study, so the study's largest series was assumed."
+    },
+    {
+      "code": "LINK_REFERENCED_SERIES_ABSENT",
+      "severity": "warning",
+      "patient_id": "AN_02",
+      "study_uid": "2.2.1",
+      "series_uid": "2.2.1.1",
+      "object_uid": "2.2.1.3",
+      "roi": null,
+      "message": "RTSTRUCT 2.2.1.3 ('Unmatched frame') references image series 2.2.1.8, which its study does not hold (not in the input, or in another study); it was linked to series 2.2.1.1 by LargestSeriesFallback instead."
+    },
+    {
+      "code": "GEOM_MIXED_ORIENTATION",
+      "severity": "serious",
+      "patient_id": "AN_03",
+      "study_uid": "2.3.1",
+      "series_uid": "2.3.1.1",
+      "object_uid": null,
+      "roi": null,
+      "message": "series 2.3.1.1: its files carry more than one ImageOrientationPatient, so they are not one stack of parallel slices; no orientation is reported for it."
+    },
+    {
+      "code": "LINK_UNLINKED",
+      "severity": "warning",
+      "patient_id": "AN_03",
+      "study_uid": "2.3.2",
+      "series_uid": null,
+      "object_uid": "2.3.2.5",
+      "roi": null,
+      "message": "RTDOSE 2.3.2.5 ('dose') is linked to no image series in its study (no image series in study), so no export includes it."
+    },
+    {
+      "code": "ROI_UNASSOCIATED",
+      "severity": "info",
+      "patient_id": null,
+      "study_uid": null,
+      "series_uid": null,
+      "object_uid": null,
+      "roi": "GTV",
+      "message": "ROI name 'GTV' (1 series, 1 structure set(s)) matches no association in associations.json: --only-associated-rois drops it; without that flag it is exported under its own name."
+    },
+    {
+      "code": "ROI_UNASSOCIATED",
+      "severity": "info",
+      "patient_id": null,
+      "study_uid": null,
+      "series_uid": null,
+      "object_uid": null,
+      "roi": "Heart",
+      "message": "ROI name 'Heart' (0 series, 1 structure set(s)) matches no association in associations.json: --only-associated-rois drops it; without that flag it is exported under its own name."
+    },
+    {
+      "code": "ROI_UNASSOCIATED",
+      "severity": "info",
+      "patient_id": null,
+      "study_uid": null,
+      "series_uid": null,
+      "object_uid": null,
+      "roi": "PTV 70",
+      "message": "ROI name 'PTV 70' (1 series, 1 structure set(s)) matches no association in associations.json: --only-associated-rois drops it; without that flag it is exported under its own name."
+    }
+  ]
+}
